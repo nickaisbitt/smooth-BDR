@@ -1,13 +1,15 @@
 
 import { Lead, StrategyNode, AgentLog, ServiceProfile, EmailJSConfig, LeadStatus } from '../types';
 
-const STORAGE_KEY = 'smooth_ai_crm_db_v1';
-const BACKUP_KEY = 'smooth_ai_crm_emergency_backup'; // Safety Net
-const API_KEY_STORAGE_KEY = 'smooth_ai_openrouter_key';
-const STRATEGY_KEY = 'smooth_ai_strategy_queue_v1';
-const LOGS_KEY = 'smooth_ai_agent_logs_v1';
-const PROFILE_KEY = 'smooth_ai_profile_v1';
-const EMAIL_CONFIG_KEY = 'smooth_ai_emailjs_config';
+// --- STORAGE KEYS MAP ---
+// These keys ensure data persists across browser sessions.
+export const STORAGE_KEY = 'smooth_ai_crm_db_v1';           // Main Database
+export const BACKUP_KEY = 'smooth_ai_crm_emergency_backup'; // Safety Net
+export const STRATEGY_KEY = 'smooth_ai_strategy_queue_v1';  // AI Conquest Plan
+export const LOGS_KEY = 'smooth_ai_agent_logs_v1';          // Terminal History
+export const PROFILE_KEY = 'smooth_ai_profile_v1';          // Identity (Nick)
+export const API_KEY_STORAGE_KEY = 'smooth_ai_openrouter_key'; // Hybrid Engine Key
+export const EMAIL_CONFIG_KEY = 'smooth_ai_emailjs_config';    // Email Bridge
 
 // --- GENERIC LOADERS ---
 
@@ -27,8 +29,6 @@ export const loadLeadsFromStorage = (): Lead[] => {
     });
   } catch (e) {
     console.error("Failed to load leads", e);
-    // If main load fails, try backup? 
-    // For now, return empty to prevent crash, but user can manually restore via settings.
     return [];
   }
 };
@@ -56,7 +56,10 @@ export const loadProfile = (): ServiceProfile | null => {
 
 export const loadOpenRouterKey = (): string => {
     // Returns user saved key, OR the hardcoded backup key provided by the user
-    return localStorage.getItem(API_KEY_STORAGE_KEY) || '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';
+    // We trim to ensure no accidental whitespace breaks the API call
+    const saved = localStorage.getItem(API_KEY_STORAGE_KEY);
+    const hardcoded = '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';
+    return (saved || hardcoded).trim();
 };
 
 export const loadEmailConfig = (): EmailJSConfig => {
@@ -105,7 +108,7 @@ export const saveProfile = (profile: ServiceProfile) => {
 };
 
 export const saveOpenRouterKey = (key: string) => {
-    localStorage.setItem(API_KEY_STORAGE_KEY, key);
+    localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
 };
 
 export const saveEmailConfig = (config: EmailJSConfig) => {
