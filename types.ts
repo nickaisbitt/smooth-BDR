@@ -7,10 +7,16 @@ export interface ServiceProfile {
   senderName?: string;
 }
 
-export interface EmailJSConfig {
-    serviceId: string;
-    templateId: string;
-    publicKey: string;
+export interface SMTPConfig {
+    host: string;
+    port: string;
+    user: string;
+    pass: string;
+    secure: boolean;
+}
+
+export interface GoogleSheetsConfig {
+    scriptUrl: string;
 }
 
 export enum LeadStatus {
@@ -31,6 +37,7 @@ export interface AnalysisResult {
 export interface DecisionMaker {
     name: string;
     role: string;
+    email?: string;
     linkedinUrl?: string;
 }
 
@@ -45,6 +52,10 @@ export interface EmailDraft {
     body: string;
     delayDays: number; // 0 for immediate
     context: string; // e.g. "Initial Hook", "Follow Up"
+    
+    // A/B Testing
+    variantLabel?: 'A' | 'B';
+    alternativeSubject?: string; 
 }
 
 export interface Lead {
@@ -55,22 +66,23 @@ export interface Lead {
   status: LeadStatus;
   analysis?: AnalysisResult;
   
-  // Deprecated single draft, keeping for backward compatibility
-  emailDraft?: string; 
-  
-  // New Sequence Engine
+  // Sequence Engine
   emailSequence?: EmailDraft[];
   triggers?: TriggerEvent[];
 
-  sourceUrl?: string; // From grounding
-  foundVia?: string; // The query strategy that found this lead
+  sourceUrl?: string;
+  foundVia?: string;
   
   // Enrichment Data
   decisionMaker?: DecisionMaker;
   techStack?: string[];
   
+  // A/B Test Tracking
+  activeVariant?: 'A' | 'B'; 
+
   createdAt: number;
   lastUpdated: number;
+  lastContactedAt?: number;
 }
 
 export interface SearchResult {
@@ -93,4 +105,10 @@ export interface StrategyNode {
   status: 'pending' | 'active' | 'completed' | 'failed';
 }
 
-export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings';
+export interface GlobalStats {
+    totalOperations: number;
+    estimatedCost: number; // In cents
+    abTestWins: { A: number, B: number };
+}
+
+export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control';

@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { ServiceProfile, Lead, LeadStatus, AnalysisResult, StrategyNode, DecisionMaker, TriggerEvent, EmailDraft } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 import { loadOpenRouterKey } from './storageService';
@@ -41,65 +41,70 @@ OpenAI, Anthropic, AWS, Google Cloud, Azure, n8n, LangChain, Pinecone, Zapier, S
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Robust JSON extraction helper.
- * Finds the first valid JSON object or array in a string.
+ * Robust JSON extraction that handles Markdown blocks, plain text preambles, and messy AI output.
  */
 function extractJson(text: string): any {
+    if (!text) return {};
     try {
         // 1. Try direct parse
         return JSON.parse(text);
     } catch (e) {
-        // 2. Try finding JSON block
-        const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-        if (jsonMatch) {
+        // 2. Remove Markdown code blocks if present
+        let cleanText = text.replace(/```json/g, '').replace(/```/g, '');
+        
+        // 3. Find the first '{' or '[' and the last '}' or ']'
+        const firstOpen = cleanText.search(/(\{|\[)/);
+        const lastClose = cleanText.search(/(\}|\])(?=[^}\]]*$)/);
+        
+        if (firstOpen !== -1 && lastClose !== -1) {
+            cleanText = cleanText.substring(firstOpen, lastClose + 1);
             try {
-                return JSON.parse(jsonMatch[0]);
+                return JSON.parse(cleanText);
             } catch (e2) {
-                console.warn("JSON regex match failed parse", e2);
+                console.warn("JSON Parse Failed even after cleanup:", cleanText);
             }
         }
-        // 3. Fallback: Return empty object or array based on guess
+        
+        // 4. Fallback for array literals in text
         if (text.trim().startsWith('[')) return [];
         return {};
     }
 }
 
+// COST TRACKING CALLBACK
+export let onCostIncrement: ((cents: number) => void) | null = null;
+export const setCostCallback = (cb: (cents: number) => void) => { onCostIncrement = cb; };
+
 /**
- * Executes an API call with exponential backoff for 429 errors.
- * If retries fail and an OpenRouter key exists, it triggers the fallback.
+ * Executes an API call with exponential backoff for 429/500 errors.
  */
 async function withHybridEngine<T>(
     primaryOperation: () => Promise<T>, 
     fallbackOperation: () => Promise<T>,
     retries = 5, 
-    backoff = 15000 // Increased to 15s to respect 15RPM limit
+    backoff = 5000 
 ): Promise<T> {
+    // Increment Operation Count (free tier default)
+    if (onCostIncrement) onCostIncrement(0); 
+
     try {
         return await primaryOperation();
     } catch (error: any) {
-        // Deep inspection for various error formats (Google SDK, Fetch, etc.)
-        const isQuotaError = 
-            error?.status === 429 || 
-            error?.code === 429 ||
-            error?.error?.code === 429 ||
-            error?.message?.includes('429') || 
-            error?.message?.includes('quota') ||
-            error?.message?.includes('RESOURCE_EXHAUSTED');
+        const isQuotaError = error?.status === 429 || error?.code === 429 || error?.error?.code === 429 || error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('RESOURCE_EXHAUSTED');
+        const isServerError = error?.status === 500 || error?.code === 500 || error?.error?.code === 500 || error?.message?.includes('Internal error') || error?.status === 503;
 
-        if (isQuotaError) {
+        if (isQuotaError || isServerError) {
+            console.warn(`⚠️ Engine Warning: ${isQuotaError ? 'Quota Limit' : 'Server Error'}. Retrying in ${backoff}ms...`);
             if (retries > 0) {
-                console.warn(`⚠️ Primary Quota hit. Retrying in ${backoff/1000}s...`);
                 await delay(backoff);
                 return withHybridEngine(primaryOperation, fallbackOperation, retries - 1, backoff * 1.5);
             } else {
-                // Check for Backup Key
                 const openRouterKey = loadOpenRouterKey();
                 if (openRouterKey) {
                     console.log("🔄 Switching to OpenRouter Fallback Engine...");
                     return await fallbackOperation();
                 } else {
-                    // Re-throw specific error so App.tsx knows it was a quota issue
-                    throw new Error("QUOTA_EXHAUSTED");
+                    throw new Error(isQuotaError ? "QUOTA_EXHAUSTED" : "SERVER_ERROR");
                 }
             }
         }
@@ -107,16 +112,12 @@ async function withHybridEngine<T>(
     }
 }
 
-/**
- * Calls OpenRouter API as a fallback
- */
-async function callOpenRouter(
-    model: string, 
-    messages: { role: string, content: string }[], 
-    responseSchema?: any
-): Promise<string> {
+async function callOpenRouter(model: string, messages: { role: string, content: string }[], responseSchema?: any): Promise<string> {
     const key = loadOpenRouterKey();
     if (!key) throw new Error("No OpenRouter Key available for fallback");
+
+    // Estimate Cost (Rough approximation: $0.0001 per call for flash models)
+    if (onCostIncrement) onCostIncrement(0.01);
 
     const payload: any = {
         model: model,
@@ -124,11 +125,6 @@ async function callOpenRouter(
         temperature: 0.7,
     };
     
-    // Markdown stripping helper
-    const stripMarkdown = (str: string) => {
-        return str.replace(/```json/g, '').replace(/```/g, '').trim();
-    };
-
     if (responseSchema && !model.includes('sonar')) {
          payload.response_format = { type: "json_object" };
     }
@@ -139,7 +135,7 @@ async function callOpenRouter(
             headers: {
                 "Authorization": `Bearer ${key}`,
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://smoothai.com", // Required by OpenRouter
+                "HTTP-Referer": "https://smoothai.com",
                 "X-Title": "Smooth AI AutoBDR"
             },
             body: JSON.stringify(payload)
@@ -152,353 +148,222 @@ async function callOpenRouter(
 
         const data = await response.json();
         let content = data.choices?.[0]?.message?.content || "";
-        if (responseSchema) {
-            content = stripMarkdown(content);
-        }
         return content;
     } catch (e) {
-        console.error("OpenRouter Call Failed", e);
         throw e;
     }
 }
 
 // --- SERVICES ---
 
-/**
- * Generates a "Master Plan" containing 6 distinct sub-niches.
- */
 export const generateMasterPlan = async (pastStrategies: string[]): Promise<StrategyNode[]> => {
     const historyContext = pastStrategies.slice(-15).join("; ");
     const systemPrompt = `Role: Head of Growth for Smooth AI. Context: Systematic attack plan. Avoid: [${historyContext}]`;
     const userPrompt = `
       TASK:
-      1. Choose a Major Industry we haven't targeted recently (Old World industries preferred).
-      2. Generate 6 distinct "Search Strategies" for sub-niches.
-      3. Return ONLY a JSON array. 
+      1. Use Google Search to identify 6 'Old World' industries facing operational headwinds right now.
+      2. Focus on: Logistics, HVAC, Manufacturing, Legal, Dentistry, Wholesale.
+      3. Generate 6 distinct "Search Strategies".
+      4. Return ONLY a JSON array. 
       Example: [{"sector": "HVAC Supply (Midwest)", "query": "HVAC wholesale distributors in Ohio", "rationale": "Paper invoices."}]
     `;
 
     return withHybridEngine(
-        // Primary (Google)
         async () => {
             if (!apiKey) throw new Error("API Key missing");
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: systemPrompt + userPrompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                sector: { type: Type.STRING },
-                                query: { type: Type.STRING },
-                                rationale: { type: Type.STRING },
-                            }
-                        }
-                    }
-                }
+                config: { tools: [{ googleSearch: {} }] }
             });
-            const plans = extractJson(response.text || "[]");
-            return plans.map((p: any) => ({ id: uuidv4(), sector: p.sector, query: p.query, rationale: p.rationale, status: 'pending' }));
+            const text = response.text || "[]";
+            const extracted = extractJson(text);
+            let plans: any[] = [];
+            if (Array.isArray(extracted)) plans = extracted;
+            else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
+            else if (extracted && Array.isArray(extracted.strategies)) plans = extracted.strategies;
+            else throw new Error("AI generated invalid plan format");
+
+            return plans.map((p: any) => ({ 
+                id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
+            }));
         },
-        // Fallback (OpenRouter)
         async () => {
-            const jsonStr = await callOpenRouter(
-                "google/gemini-2.0-flash-001", // Or 'openai/gpt-4o-mini'
-                [
-                    { role: "system", content: systemPrompt + " Return strictly valid JSON." },
-                    { role: "user", content: userPrompt }
-                ],
-                true
-            );
-            const plans = extractJson(jsonStr || "[]");
-            if (plans.plans) return plans.plans.map((p: any) => ({ id: uuidv4(), sector: p.sector, query: p.query, rationale: p.rationale, status: 'pending' }));
+            const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "system", content: systemPrompt + " Return JSON array." }, { role: "user", content: userPrompt }], true);
+            const extracted = extractJson(jsonStr || "[]");
+            let plans: any[] = [];
+             if (Array.isArray(extracted)) plans = extracted;
+            else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
+            else return [];
             return plans.map((p: any) => ({ id: uuidv4(), sector: p.sector, query: p.query, rationale: p.rationale, status: 'pending' }));
         }
     );
 };
 
-/**
- * Sources leads using Google Search Grounding (Primary) or Perplexity (Fallback).
- */
-export const findLeads = async (query: string): Promise<{ leads: Partial<Lead>[], urls: string[] }> => {
+export const findLeads = async (query: string, blacklist: string[] = []): Promise<{ leads: Partial<Lead>[], urls: string[] }> => {
   const promptText = `
     Role: Expert BDR.
     Task: Find 5-8 ACTUAL operating companies matching: "${query}".
-    STRICT RULES:
-    1. IGNORE directories (Yelp, LinkedIn, Clutch).
-    2. Look for DIRECT company websites.
-    3. Focus on "Old World" businesses (Logistics, Legal, Manufacturing) with likely manual processes.
     
-    OUTPUT FORMAT:
-    Do NOT output JSON. Output a list where each company is on a single line formatted EXACTLY like this:
+    CRITICAL FILTERS (Do Not Fail These):
+    1. EXCLUDE Directories (Yelp, LinkedIn, Clutch, YellowPages, BBB).
+    2. EXCLUDE domains containing: [${blacklist.join(', ')}].
+    3. EXCLUDE Government (.gov) or Education (.edu).
+    4. MUST be a private business website.
+    
+    OUTPUT FORMAT (Pipe Delimited):
     || Company Name || Website URL || 1-sentence description ||
   `;
 
+  const processLeads = (text: string) => {
+      const leads: Partial<Lead>[] = [];
+      const lines = text.split('\n');
+      lines.forEach(line => {
+          if (line.includes('||')) {
+              const parts = line.split('||').map(p => p.trim()).filter(p => p.length > 0);
+              if (parts.length >= 3) {
+                  const name = parts[0];
+                  let url = parts[1];
+                  const desc = parts[2];
+                  
+                  // Clean URL
+                  url = url.replace(/\/$/, ''); // Remove trailing slash
+                  if (!url.startsWith('http')) url = `https://${url}`;
+                  
+                  // Logic Check: Is it a directory?
+                  const isDirectory = /yelp|linkedin|clutch|yellowpages|bbb|facebook|instagram/i.test(url);
+                  const isBlocked = blacklist.some(term => url.toLowerCase().includes(term.toLowerCase()) || name.toLowerCase().includes(term.toLowerCase()));
+                  
+                  if (!isBlocked && !isDirectory && name.length > 2 && desc.length > 5) {
+                      leads.push({ companyName: name, website: url, description: desc, status: LeadStatus.NEW });
+                  }
+              }
+          }
+      });
+      return leads;
+  };
+
   return withHybridEngine(
-      // Primary: Google with Grounding
       async () => {
           if (!apiKey) throw new Error("API Key missing");
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
               contents: promptText,
-              // ENABLED Google Maps and Search tools
-              config: { tools: [{ googleSearch: {} }, { googleMaps: {} }], temperature: 0.7 },
+              config: { tools: [{ googleSearch: {} }], temperature: 0.7 },
           });
           
           const text = response.text || "";
           const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+          const validGroundingUrls = groundingChunks.map(c => c.web?.uri).filter(u => u && !u.includes('yelp') && !u.includes('linkedin')) as string[];
           
-          const validGroundingUrls = groundingChunks
-              .map(c => c.web?.uri)
-              .filter(u => u && !u.includes('yelp') && !u.includes('linkedin')) as string[];
-              
-          // Extract Google Maps URIs
-          const validMapUrls = groundingChunks
-              .map(c => c.maps?.uri)
-              .filter(u => u) as string[];
-          
-          return { leads: parseLeads(text), urls: [...validGroundingUrls, ...validMapUrls] };
+          return { leads: processLeads(text), urls: validGroundingUrls };
       },
-      // Fallback: OpenRouter (Perplexity for Search capability)
       async () => {
-          // Use Perplexity Sonar if possible for "Live Search" capability via OpenRouter
-          const fallbackModel = "perplexity/sonar-small-online"; 
-          
-          const text = await callOpenRouter(
-              fallbackModel,
-              [{ role: "user", content: promptText }]
-          );
-          
-          return { leads: parseLeads(text), urls: [] }; // Grounding URLs hard to extract from raw text without metadata
+          const text = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: promptText }]);
+          return { leads: processLeads(text), urls: [] };
       }
   );
 };
 
-function parseLeads(text: string): Partial<Lead>[] {
-    const leads: Partial<Lead>[] = [];
-    const lines = text.split('\n');
-    lines.forEach(line => {
-        if (line.includes('||')) {
-            const parts = line.split('||').map(p => p.trim()).filter(p => p.length > 0);
-            if (parts.length >= 3) {
-                const name = parts[0];
-                let url = parts[1];
-                const desc = parts[2];
-                if (!url.startsWith('http')) url = `https://${url}`;
-                if (name.length > 2 && desc.length > 5) {
-                    leads.push({ companyName: name, website: url, description: desc, status: LeadStatus.NEW });
-                }
-            }
-        }
-    });
-    return leads;
-}
-
-/**
- * Hunts for the Decision Maker (CEO/Founder/Owner).
- */
 export const findDecisionMaker = async (companyName: string, website: string): Promise<DecisionMaker | null> => {
-    const prompt = `
-        Task: Find the CEO, Founder, or Owner of "${companyName}" (${website}).
-        Return strictly JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL (optional)" }
-        If not found, return null.
-    `;
-
+    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL" }. If not found, guess based on 'About Us' page or return null.`;
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: { 
-                    tools: [{ googleSearch: {} }],
-                    // responseMimeType: "application/json" // REMOVED: Cannot use with tools
-                }
-            });
-            const text = response.text;
-            if (!text) return null;
-            return extractJson(text);
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
+            return extractJson(response.text || "");
         },
         async () => {
-            const jsonStr = await callOpenRouter(
-                "perplexity/sonar-small-online", 
-                [{ role: "user", content: prompt }]
-            );
+            const jsonStr = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: prompt }]);
             return extractJson(jsonStr) || null;
         }
     );
 };
 
-/**
- * Finds Trigger Events (News, Hiring, Expansion).
- */
 export const findTriggers = async (companyName: string, website: string): Promise<TriggerEvent[]> => {
-    const prompt = `
-        Task: Find recent hiring, news, or expansion signals for "${companyName}" (${website}).
-        Look for: "Hiring Data Entry", "New Office", "Acquisition", "Growing".
-        
-        Return JSON Array: 
-        [{ "type": "hiring"|"news"|"growth", "description": "Hiring 3 admins", "sourceUrl": "url" }]
-        
-        If nothing significant found, return empty array.
-    `;
-
+    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). Return JSON Array: [{ "type": "hiring"|"news", "description": "Hiring 3 admins", "sourceUrl": "url" }]`;
     return withHybridEngine(
         async () => {
              if (!apiKey) throw new Error("API Key missing");
-             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: { 
-                    tools: [{ googleSearch: {} }],
-                    // responseMimeType: "application/json" // REMOVED: Cannot use with tools
-                }
-            });
-            const text = response.text;
-            if (!text) return [];
-            return extractJson(text);
+             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
+            return extractJson(response.text || "") || [];
         },
         async () => {
-            const jsonStr = await callOpenRouter(
-                "perplexity/sonar-small-online", 
-                [{ role: "user", content: prompt }]
-            );
+            const jsonStr = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: prompt }]);
             return extractJson(jsonStr) || [];
         }
     );
 }
 
-/**
- * Analyzes a specific lead.
- */
 export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): Promise<{analysis: AnalysisResult, techStack: string[]}> => {
   const prompt = `
-    You are a Senior Automation Consultant for Smooth AI.
-    Analyze this lead: ${lead.companyName} (${lead.description}).
-    Website: ${lead.website}
+    Analyze lead: ${lead.companyName} (${lead.website}) for Smooth AI (Operational Automation).
     ${SMOOTH_AI_CONTEXT}
     
-    TASK:
-    1. Search for this company to get up-to-date context about their operations, tech stack, and recent news.
-    2. Score fitness (0-100).
-       - SCORE HIGH (70-100) IF: Old world industry (Logistics, Construction, Legal, Dental), signals of manual admin (paper forms, 'call to book', dispatching), scaling pains.
-       - SCORE LOW (0-40) IF: Tech company, SaaS, Marketing Agency, or Competitor.
-    
-    3. DETECT TECH STACK: Guess tools they use based on their description/industry (e.g. "Uses Paper", "Salesforce", "Shopify", "Legacy ERP", "Excel").
-    
-    4. REASONING: Write a detailed justification.
-       - Explicitly state the *suspected manual bottleneck* (e.g. "Likely managing 50 drivers via Excel").
-       - Explain *why* automation is urgent for them.
-       - Reference a specific Smooth AI case study (Logistics, Legal, or Healthcare) if applicable to show fit.
-    
-    5. Output JSON: { "score": number, "reasoning": string, "suggestedAngle": string, "painPoints": string[], "techStack": string[] }
+    SCORING RULES:
+    - If they look like a SaaS/Tech/Agency -> SCORE < 20 (Unqualified).
+    - If they look like a manual business (Construction, Logistics, Law, Medical) -> SCORE > 70.
+    - If they mention "Fax", "Paper", "Call to book" -> SCORE > 90.
+
+    OUTPUT JSON: { "score": number, "reasoning": "Be harsh and specific.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."] }
   `;
 
   return withHybridEngine(
-      // Primary
       async () => {
         if (!apiKey) throw new Error("API Key missing");
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                // ENABLED Search Tool for better context
-                tools: [{ googleSearch: {} }],
-                // REMOVED Schema/MimeType to be compatible with tools
-                // responseMimeType: "application/json",
-            }
-        });
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
         const res = extractJson(response.text || "{}");
-        return {
-            analysis: {
-                score: res.score,
-                reasoning: res.reasoning,
-                suggestedAngle: res.suggestedAngle,
-                painPoints: res.painPoints || []
-            },
-            techStack: res.techStack || []
-        };
+        return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [] }, techStack: res.techStack || [] };
       },
-      // Fallback
       async () => {
-          const jsonStr = await callOpenRouter(
-              "google/gemini-2.0-flash-001",
-              [{ role: "user", content: prompt + " Return strictly valid JSON." }],
-              true
-          );
+          const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: prompt + " Return JSON." }], true);
           const res = extractJson(jsonStr || "{}");
-           return {
-            analysis: {
-                score: res.score,
-                reasoning: res.reasoning,
-                suggestedAngle: res.suggestedAngle,
-                painPoints: res.painPoints || []
-            },
-            techStack: res.techStack || []
-        };
+           return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [] }, techStack: res.techStack || [] };
       }
   );
 };
 
-/**
- * Generates a 3-Step Email Sequence.
- */
 export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile, analysis: AnalysisResult, triggers: TriggerEvent[]): Promise<EmailDraft[]> => {
-    const contactName = lead.decisionMaker?.name ? lead.decisionMaker.name.split(' ')[0] : "Leader";
-    const techStackMention = lead.techStack && lead.techStack.length > 0 ? `I noticed you might be using ${lead.techStack[0]}...` : "";
-    const senderInfo = profile.senderName ? `${profile.senderName} from ${profile.companyName}` : profile.companyName;
-    const signOffEmail = profile.contactEmail ? `(${profile.contactEmail})` : '';
+    const contactName = lead.decisionMaker?.name ? lead.decisionMaker.name.split(' ')[0] : "Team";
+    const senderInfo = profile.senderName ? `${profile.senderName}` : profile.companyName;
 
-    // Construct Trigger Context
-    let triggerContext = "";
-    if (triggers.length > 0) {
-        triggerContext = `Recent Signal: ${triggers[0].description} (Type: ${triggers[0].type}). Use this as the hook!`;
-    } else {
-        triggerContext = `Hook: ${analysis.suggestedAngle}`;
-    }
+    const triggerContext = triggers.length > 0 ? `Trigger: ${triggers[0].description}` : `Hook: ${analysis.suggestedAngle}`;
 
     const prompt = `
-      Create a 3-Email Cold Outreach Sequence for Smooth AI.
-      Target: ${lead.companyName}
-      Recipient: ${contactName} (${lead.decisionMaker?.role || 'Exec'}).
-      Pain Points: ${analysis.painPoints.join(", ")}
-      Tech Stack: ${techStackMention}
-      ${triggerContext}
+      Write a 3-Email Cold Sequence from ${senderInfo} to ${contactName} at ${lead.companyName}.
       
-      Sign off as: ${senderInfo} ${signOffEmail}
+      CRITICAL INSTRUCTION:
+      - Tone: Professional, direct, "Founder to Founder". NO marketing fluff.
+      - Context: ${triggerContext}.
+      - Offer: We automate manual chaos (see case studies in knowledge base).
       
-      CADENCE:
-      1. Day 0: The Hook (Peer-to-peer, direct problem solving).
-      2. Day 3: The Value (Reference a Smooth AI Case Study: Logistics/Legal/Dental).
-      3. Day 7: The Breakup (Soft close, "Is this not a priority?").
-
-      Return JSON Array:
+      A/B TESTING TASK:
+      - Subject A: A direct question about operations.
+      - Subject B: A value-first statement about ${analysis.suggestedAngle}.
+      
+      OUTPUT JSON Array:
       [
-        { "subject": "string", "body": "string", "delayDays": 0, "context": "Initial Outreach" },
-        { "subject": "string", "body": "string", "delayDays": 3, "context": "Value Add" },
-        { "subject": "string", "body": "string", "delayDays": 7, "context": "Breakup" }
+        { 
+            "subject": "Subject A", 
+            "alternativeSubject": "Subject B",
+            "body": "Email 1 Body (Plain text, concise)", 
+            "delayDays": 0, 
+            "context": "Initial Hook",
+            "variantLabel": "A"
+        },
+        { "subject": "Re: [Subject A]", "body": "Email 2 Body (Case Study)", "delayDays": 3, "context": "Value Add" },
+        { "subject": "Re: [Subject A]", "body": "Email 3 Body (Breakup)", "delayDays": 7, "context": "Breakup" }
       ]
     `;
 
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
-            });
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: "application/json" } });
             return extractJson(response.text || "[]");
         },
         async () => {
-            const jsonStr = await callOpenRouter(
-                "google/gemini-2.0-flash-001",
-                [{ role: "user", content: prompt + " Return valid JSON array." }],
-                true
-            );
+            const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: prompt + " Return JSON array." }], true);
             return extractJson(jsonStr || "[]");
         }
     );

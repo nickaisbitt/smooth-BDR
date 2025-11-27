@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface Props {
@@ -5,7 +6,7 @@ interface Props {
   value: string | number;
   trend: string;
   trendUp?: boolean;
-  colorTheme: 'blue' | 'purple' | 'pink';
+  colorTheme: 'blue' | 'purple' | 'pink' | 'green';
   icon?: React.ReactNode;
 }
 
@@ -14,9 +15,11 @@ export const StatCard: React.FC<Props> = ({ title, value, trend, trendUp, colorT
     blue: { bg: 'bg-blue-50', text: 'text-blue-900', trendBg: 'bg-blue-200', trendText: 'text-blue-800' },
     purple: { bg: 'bg-purple-50', text: 'text-purple-900', trendBg: 'bg-purple-200', trendText: 'text-purple-800' },
     pink: { bg: 'bg-pink-50', text: 'text-pink-900', trendBg: 'bg-pink-200', trendText: 'text-pink-800' },
+    green: { bg: 'bg-green-50', text: 'text-green-900', trendBg: 'bg-green-200', trendText: 'text-green-800' },
   };
 
-  const theme = themes[colorTheme];
+  // Fallback to blue if the theme doesn't exist to prevent crashes
+  const theme = themes[colorTheme] || themes.blue;
 
   return (
     <div className={`${theme.bg} rounded-3xl p-6 relative overflow-hidden transition-all hover:shadow-lg`}>

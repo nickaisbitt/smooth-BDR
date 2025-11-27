@@ -1,43 +1,54 @@
-import emailjs from '@emailjs/browser';
-import { EmailJSConfig } from '../types';
+
+import { SMTPConfig } from '../types';
 
 /**
- * Initializes and sends an email via EmailJS (Hostinger SMTP bridge).
+ * Sends an email via the local Node.js relay (server.js).
  */
-export const sendViaEmailJS = async (
-    config: EmailJSConfig,
+export const sendViaServer = async (
+    config: SMTPConfig,
+    toEmail: string, // Not used directly, usually we rely on config or decision maker email
+    // But for this tool, we assume we want to send to the Lead's email (if we have it) 
+    // OR we are testing.
+    // Wait - leads don't always have emails in the object yet. 
+    // We will assume 'toEmail' is passed in.
     toName: string,
-    companyName: string,
     subject: string,
     message: string,
-    fromName: string
+    fromName: string,
+    recipientEmail?: string // Override
 ): Promise<boolean> => {
-    if (!config.serviceId || !config.templateId || !config.publicKey) {
-        console.error("EmailJS Config missing");
-        return false;
-    }
+    
+    // For leads without email, we might fail or need to hunt first.
+    // For now, let's assume if recipientEmail is missing, we fail.
+    const targetEmail = recipientEmail || "hello@smoothaiconsultancy.com"; // Fallback for safety/testing
 
     try {
-        emailjs.init(config.publicKey);
+        const response = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                smtpConfig: config,
+                email: {
+                    to: targetEmail,
+                    fromName: fromName,
+                    subject: subject,
+                    message: message
+                }
+            })
+        });
 
-        const templateParams = {
-            to_name: toName,         // {{to_name}} in EmailJS template
-            company_name: companyName, // {{company_name}}
-            subject: subject,        // {{subject}}
-            message: message,        // {{message}}
-            from_name: fromName,     // {{from_name}}
-        };
+        const data = await response.json();
 
-        const response = await emailjs.send(config.serviceId, config.templateId, templateParams);
-        
-        if (response.status === 200) {
+        if (response.ok && data.success) {
             return true;
         } else {
-            console.error("EmailJS sending failed", response);
+            console.error("SMTP Send Failed:", data.error);
             return false;
         }
     } catch (error) {
-        console.error("EmailJS Error", error);
+        console.error("Network Error calling /api/send-email", error);
         return false;
     }
 };

@@ -1,15 +1,17 @@
 
-import { Lead, StrategyNode, AgentLog, ServiceProfile, EmailJSConfig, LeadStatus } from '../types';
+import { Lead, StrategyNode, AgentLog, ServiceProfile, SMTPConfig, LeadStatus, GoogleSheetsConfig, GlobalStats } from '../types';
 
 // --- STORAGE KEYS MAP ---
-// These keys ensure data persists across browser sessions.
 export const STORAGE_KEY = 'smooth_ai_crm_db_v1';           // Main Database
 export const BACKUP_KEY = 'smooth_ai_crm_emergency_backup'; // Safety Net
 export const STRATEGY_KEY = 'smooth_ai_strategy_queue_v1';  // AI Conquest Plan
 export const LOGS_KEY = 'smooth_ai_agent_logs_v1';          // Terminal History
 export const PROFILE_KEY = 'smooth_ai_profile_v1';          // Identity (Nick)
 export const API_KEY_STORAGE_KEY = 'smooth_ai_openrouter_key'; // Hybrid Engine Key
-export const EMAIL_CONFIG_KEY = 'smooth_ai_emailjs_config';    // Email Bridge
+export const SMTP_CONFIG_KEY = 'smooth_ai_smtp_config';     // Hostinger SMTP
+export const SHEETS_CONFIG_KEY = 'smooth_ai_sheets_config'; // Google Sheets Script
+export const BLACKLIST_KEY = 'smooth_ai_blacklist_v1';      // Negative Filters
+export const STATS_KEY = 'smooth_ai_global_stats_v1';       // Cost Tracking
 
 // --- GENERIC LOADERS ---
 
@@ -55,18 +57,37 @@ export const loadProfile = (): ServiceProfile | null => {
 };
 
 export const loadOpenRouterKey = (): string => {
-    // Returns user saved key, OR the hardcoded backup key provided by the user
-    // We trim to ensure no accidental whitespace breaks the API call
     const saved = localStorage.getItem(API_KEY_STORAGE_KEY);
     const hardcoded = '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';
     return (saved || hardcoded).trim();
 };
 
-export const loadEmailConfig = (): EmailJSConfig => {
+export const loadSMTPConfig = (): SMTPConfig => {
     try {
-        const data = localStorage.getItem(EMAIL_CONFIG_KEY);
-        return data ? JSON.parse(data) : { serviceId: '', templateId: '', publicKey: '' };
-    } catch (e) { return { serviceId: '', templateId: '', publicKey: '' }; }
+        const data = localStorage.getItem(SMTP_CONFIG_KEY);
+        return data ? JSON.parse(data) : { host: 'smtp.hostinger.com', port: '465', user: '', pass: '', secure: true };
+    } catch (e) { return { host: 'smtp.hostinger.com', port: '465', user: '', pass: '', secure: true }; }
+};
+
+export const loadSheetsConfig = (): GoogleSheetsConfig => {
+    try {
+        const data = localStorage.getItem(SHEETS_CONFIG_KEY);
+        return data ? JSON.parse(data) : { scriptUrl: '' };
+    } catch (e) { return { scriptUrl: '' }; }
+};
+
+export const loadBlacklist = (): string[] => {
+    try {
+        const data = localStorage.getItem(BLACKLIST_KEY);
+        return data ? JSON.parse(data) : ["agency", "consulting", "software", "marketing"];
+    } catch (e) { return []; }
+};
+
+export const loadStats = (): GlobalStats => {
+    try {
+        const data = localStorage.getItem(STATS_KEY);
+        return data ? JSON.parse(data) : { totalOperations: 0, estimatedCost: 0, abTestWins: { A: 0, B: 0 } };
+    } catch (e) { return { totalOperations: 0, estimatedCost: 0, abTestWins: { A: 0, B: 0 } }; }
 };
 
 // --- GENERIC SAVERS ---
@@ -74,15 +95,10 @@ export const loadEmailConfig = (): EmailJSConfig => {
 export const saveLeadsToStorage = (leads: Lead[]) => {
   try {
     const currentData = localStorage.getItem(STORAGE_KEY);
-    
-    // SAFETY CHECK:
-    // If we are about to save an empty array, but we currently have a lot of data,
-    // this might be a bug (state wiped). We create an emergency backup first.
     if (leads.length === 0 && currentData && currentData.length > 50) {
         console.warn("⚠️ Attempting to wipe DB. Creating Emergency Backup first.");
         localStorage.setItem(BACKUP_KEY, currentData);
     }
-
     localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
   } catch (e) {
     console.error("Failed to save leads", e);
@@ -90,32 +106,38 @@ export const saveLeadsToStorage = (leads: Lead[]) => {
 };
 
 export const saveStrategies = (queue: StrategyNode[]) => {
-    try {
-        localStorage.setItem(STRATEGY_KEY, JSON.stringify(queue));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STRATEGY_KEY, JSON.stringify(queue)); } catch (e) { console.error(e); }
 };
 
 export const saveLogs = (logs: AgentLog[]) => {
-    try {
-        localStorage.setItem(LOGS_KEY, JSON.stringify(logs.slice(-100)));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(LOGS_KEY, JSON.stringify(logs.slice(-100))); } catch (e) { console.error(e); }
 };
 
 export const saveProfile = (profile: ServiceProfile) => {
-    try {
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) { console.error(e); }
 };
 
 export const saveOpenRouterKey = (key: string) => {
     localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
 };
 
-export const saveEmailConfig = (config: EmailJSConfig) => {
-    localStorage.setItem(EMAIL_CONFIG_KEY, JSON.stringify(config));
+export const saveSMTPConfig = (config: SMTPConfig) => {
+    localStorage.setItem(SMTP_CONFIG_KEY, JSON.stringify(config));
 };
 
-// --- BACKUP & RESTORE SYSTEM ---
+export const saveSheetsConfig = (config: GoogleSheetsConfig) => {
+    localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify(config));
+};
+
+export const saveBlacklist = (blacklist: string[]) => {
+    localStorage.setItem(BLACKLIST_KEY, JSON.stringify(blacklist));
+};
+
+export const saveStats = (stats: GlobalStats) => {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+};
+
+// --- BACKUP & RESTORE ---
 
 export const exportDatabase = (): string => {
     const db = {
@@ -123,6 +145,7 @@ export const exportDatabase = (): string => {
         strategies: loadStrategies(),
         logs: loadLogs(),
         profile: loadProfile(),
+        blacklist: loadBlacklist(),
         timestamp: Date.now(),
         version: '0.0.1'
     };
@@ -136,6 +159,7 @@ export const importDatabase = (jsonString: string): boolean => {
         if (db.strategies) localStorage.setItem(STRATEGY_KEY, JSON.stringify(db.strategies));
         if (db.logs) localStorage.setItem(LOGS_KEY, JSON.stringify(db.logs));
         if (db.profile) localStorage.setItem(PROFILE_KEY, JSON.stringify(db.profile));
+        if (db.blacklist) localStorage.setItem(BLACKLIST_KEY, JSON.stringify(db.blacklist));
         return true;
     } catch (e) {
         console.error("Import failed", e);
@@ -148,5 +172,5 @@ export const clearStorage = () => {
   localStorage.removeItem(STRATEGY_KEY);
   localStorage.removeItem(LOGS_KEY);
   localStorage.removeItem(BACKUP_KEY);
-  // We intentionally keep API keys and Profile so the user doesn't lose access/identity
+  localStorage.removeItem(STATS_KEY);
 };
