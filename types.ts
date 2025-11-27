@@ -5,6 +5,7 @@ export interface ServiceProfile {
   valueProposition: string;
   contactEmail?: string;
   senderName?: string;
+  theme?: 'light' | 'dark';
 }
 
 export interface SMTPConfig {
@@ -13,10 +14,16 @@ export interface SMTPConfig {
     user: string;
     pass: string;
     secure: boolean;
+    publicUrl?: string; // For Tracking Pixel
 }
 
 export interface GoogleSheetsConfig {
     scriptUrl: string;
+}
+
+export interface IntegrationConfig {
+    webhookUrl?: string;
+    autoSync?: boolean;
 }
 
 export enum LeadStatus {
@@ -25,6 +32,8 @@ export enum LeadStatus {
   QUALIFIED = 'QUALIFIED',
   UNQUALIFIED = 'UNQUALIFIED',
   CONTACTED = 'CONTACTED',
+  OPENED = 'OPENED', // New Status
+  ARCHIVED = 'ARCHIVED',
 }
 
 export interface AnalysisResult {
@@ -32,6 +41,9 @@ export interface AnalysisResult {
   reasoning: string;
   suggestedAngle: string;
   painPoints: string[];
+  budgetEstimate?: string;
+  competitors?: string[];
+  employeeSentiment?: string;
 }
 
 export interface DecisionMaker {
@@ -56,6 +68,7 @@ export interface EmailDraft {
     // A/B Testing
     variantLabel?: 'A' | 'B';
     alternativeSubject?: string; 
+    critique?: string;
 }
 
 export interface Lead {
@@ -111,4 +124,10 @@ export interface GlobalStats {
     abTestWins: { A: number, B: number };
 }
 
-export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control';
+export interface Shortcut {
+    key: string;
+    label: string;
+    action: () => void;
+}
+
+export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin';

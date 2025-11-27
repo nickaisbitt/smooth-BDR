@@ -78,7 +78,7 @@ export const setCostCallback = (cb: (cents: number) => void) => { onCostIncremen
 /**
  * Executes an API call with exponential backoff for 429/500 errors.
  */
-async function withHybridEngine<T>(
+export async function withHybridEngine<T>(
     primaryOperation: () => Promise<T>, 
     fallbackOperation: () => Promise<T>,
     retries = 5, 
@@ -234,7 +234,10 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
                   const isDirectory = /yelp|linkedin|clutch|yellowpages|bbb|facebook|instagram/i.test(url);
                   const isBlocked = blacklist.some(term => url.toLowerCase().includes(term.toLowerCase()) || name.toLowerCase().includes(term.toLowerCase()));
                   
-                  if (!isBlocked && !isDirectory && name.length > 2 && desc.length > 5) {
+                  // B2B FILTER: Reject personal emails or bad domains
+                  const isPersonal = /gmail\.com|yahoo\.com|hotmail\.com|outlook\.com|aol\.com/i.test(url);
+                  
+                  if (!isBlocked && !isDirectory && !isPersonal && name.length > 2 && desc.length > 5) {
                       leads.push({ companyName: name, website: url, description: desc, status: LeadStatus.NEW });
                   }
               }
@@ -259,7 +262,8 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
           return { leads: processLeads(text), urls: validGroundingUrls };
       },
       async () => {
-          const text = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: promptText }]);
+          // Use valid Perplexity model ID
+          const text = await callOpenRouter("perplexity/sonar", [{ role: "user", content: promptText }]);
           return { leads: processLeads(text), urls: [] };
       }
   );
@@ -274,7 +278,8 @@ export const findDecisionMaker = async (companyName: string, website: string): P
             return extractJson(response.text || "");
         },
         async () => {
-            const jsonStr = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: prompt }]);
+            // Use valid Perplexity model ID
+            const jsonStr = await callOpenRouter("perplexity/sonar", [{ role: "user", content: prompt }]);
             return extractJson(jsonStr) || null;
         }
     );
@@ -289,7 +294,8 @@ export const findTriggers = async (companyName: string, website: string): Promis
             return extractJson(response.text || "") || [];
         },
         async () => {
-            const jsonStr = await callOpenRouter("perplexity/sonar-small-online", [{ role: "user", content: prompt }]);
+            // Use valid Perplexity model ID
+            const jsonStr = await callOpenRouter("perplexity/sonar", [{ role: "user", content: prompt }]);
             return extractJson(jsonStr) || [];
         }
     );
@@ -300,12 +306,17 @@ export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): P
     Analyze lead: ${lead.companyName} (${lead.website}) for Smooth AI (Operational Automation).
     ${SMOOTH_AI_CONTEXT}
     
+    TASK:
+    1. Estimate Tech Spend/Budget.
+    2. Identify Competitors.
+    3. Analyze Sentiment (Glassdoor/Reviews for manual work complaints).
+
     SCORING RULES:
     - If they look like a SaaS/Tech/Agency -> SCORE < 20 (Unqualified).
     - If they look like a manual business (Construction, Logistics, Law, Medical) -> SCORE > 70.
     - If they mention "Fax", "Paper", "Call to book" -> SCORE > 90.
 
-    OUTPUT JSON: { "score": number, "reasoning": "Be harsh and specific.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."] }
+    OUTPUT JSON: { "score": number, "reasoning": "Be harsh and specific.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."], "budgetEstimate": "e.g. $5k/mo", "competitors": ["..."], "employeeSentiment": "Negative/Positive" }
   `;
 
   return withHybridEngine(
@@ -313,12 +324,12 @@ export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): P
         if (!apiKey) throw new Error("API Key missing");
         const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
         const res = extractJson(response.text || "{}");
-        return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [] }, techStack: res.techStack || [] };
+        return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [], budgetEstimate: res.budgetEstimate, competitors: res.competitors, employeeSentiment: res.employeeSentiment }, techStack: res.techStack || [] };
       },
       async () => {
           const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: prompt + " Return JSON." }], true);
           const res = extractJson(jsonStr || "{}");
-           return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [] }, techStack: res.techStack || [] };
+           return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [], budgetEstimate: res.budgetEstimate, competitors: res.competitors, employeeSentiment: res.employeeSentiment }, techStack: res.techStack || [] };
       }
   );
 };
@@ -330,11 +341,16 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
     const triggerContext = triggers.length > 0 ? `Trigger: ${triggers[0].description}` : `Hook: ${analysis.suggestedAngle}`;
 
     const prompt = `
+      You are the Head of Growth for Smooth AI.
       Write a 3-Email Cold Sequence from ${senderInfo} to ${contactName} at ${lead.companyName}.
       
-      CRITICAL INSTRUCTION:
-      - Tone: Professional, direct, "Founder to Founder". NO marketing fluff.
-      - Context: ${triggerContext}.
+      REFLECTIVE AI TASK:
+      1. Draft the email first (internal thought).
+      2. CRITIQUE it: Is it too long? Too salesy? Does it reference the case study?
+      3. REWRITE it to be punchy, direct, and valuable.
+      
+      CONTEXT:
+      - Trigger: ${triggerContext}
       - Offer: We automate manual chaos (see case studies in knowledge base).
       
       A/B TESTING TASK:
@@ -346,13 +362,14 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
         { 
             "subject": "Subject A", 
             "alternativeSubject": "Subject B",
-            "body": "Email 1 Body (Plain text, concise)", 
+            "body": "Email 1 Body (Polished)", 
             "delayDays": 0, 
             "context": "Initial Hook",
-            "variantLabel": "A"
+            "variantLabel": "A",
+            "critique": "Draft 1 was generic. I polished it to reference their specific tech stack."
         },
-        { "subject": "Re: [Subject A]", "body": "Email 2 Body (Case Study)", "delayDays": 3, "context": "Value Add" },
-        { "subject": "Re: [Subject A]", "body": "Email 3 Body (Breakup)", "delayDays": 7, "context": "Breakup" }
+        { "subject": "Re: [Subject A]", "body": "Email 2 Body (Case Study)", "delayDays": 3, "context": "Value Add", "critique": "Added specific metrics." },
+        { "subject": "Re: [Subject A]", "body": "Email 3 Body (Breakup)", "delayDays": 7, "context": "Breakup", "critique": "Kept it low friction." }
       ]
     `;
 

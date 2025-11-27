@@ -1,26 +1,32 @@
 
 import { SMTPConfig } from '../types';
 
+// Rate Limiter State
+let lastSentTimestamp = 0;
+const MIN_SEND_INTERVAL = 5000; // 5 seconds
+
 /**
  * Sends an email via the local Node.js relay (server.js).
  */
 export const sendViaServer = async (
     config: SMTPConfig,
-    toEmail: string, // Not used directly, usually we rely on config or decision maker email
-    // But for this tool, we assume we want to send to the Lead's email (if we have it) 
-    // OR we are testing.
-    // Wait - leads don't always have emails in the object yet. 
-    // We will assume 'toEmail' is passed in.
+    leadId: string, // ID needed for tracking
+    toEmail: string, 
     toName: string,
     subject: string,
     message: string,
     fromName: string,
-    recipientEmail?: string // Override
+    recipientEmail?: string 
 ): Promise<boolean> => {
     
-    // For leads without email, we might fail or need to hunt first.
-    // For now, let's assume if recipientEmail is missing, we fail.
-    const targetEmail = recipientEmail || "hello@smoothaiconsultancy.com"; // Fallback for safety/testing
+    // 1. Rate Check
+    const now = Date.now();
+    if (now - lastSentTimestamp < MIN_SEND_INTERVAL) {
+        console.warn("SMTP Rate Limit Hit. Skipping send.");
+        return false;
+    }
+
+    const targetEmail = recipientEmail || "hello@smoothaiconsultancy.com"; 
 
     try {
         const response = await fetch('/api/send-email', {
@@ -30,6 +36,8 @@ export const sendViaServer = async (
             },
             body: JSON.stringify({
                 smtpConfig: config,
+                leadId: leadId,
+                publicUrl: config.publicUrl, // Pass URL for pixel generation
                 email: {
                     to: targetEmail,
                     fromName: fromName,
@@ -42,6 +50,7 @@ export const sendViaServer = async (
         const data = await response.json();
 
         if (response.ok && data.success) {
+            lastSentTimestamp = Date.now(); // Update timestamp on success
             return true;
         } else {
             console.error("SMTP Send Failed:", data.error);

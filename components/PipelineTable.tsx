@@ -52,6 +52,17 @@ const EmailSequenceViewer = ({ sequence, decisionMaker, onMarkContacted, lastCon
                 </div>
 
                 <div className="space-y-3">
+                    {/* REFLECTIVE AI CRITIQUE */}
+                    {draft.critique && (
+                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 mb-2">
+                             <div className="flex items-center gap-2 mb-1">
+                                 <svg className="w-3 h-3 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                 <span className="text-[9px] font-bold text-purple-700 uppercase tracking-wide">AI Refinement</span>
+                             </div>
+                             <p className="text-[10px] text-purple-800 italic leading-snug">"{draft.critique}"</p>
+                        </div>
+                    )}
+
                     <div className="bg-slate-50 p-2 rounded border border-slate-200">
                         <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Subject</span>
                         <p className="text-xs font-semibold text-slate-800">{draft.subject || "(No Subject)"}</p>

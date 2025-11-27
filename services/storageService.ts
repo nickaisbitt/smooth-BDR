@@ -1,5 +1,5 @@
 
-import { Lead, StrategyNode, AgentLog, ServiceProfile, SMTPConfig, LeadStatus, GoogleSheetsConfig, GlobalStats } from '../types';
+import { Lead, StrategyNode, AgentLog, ServiceProfile, SMTPConfig, LeadStatus, GoogleSheetsConfig, GlobalStats, IntegrationConfig } from '../types';
 
 // --- STORAGE KEYS MAP ---
 export const STORAGE_KEY = 'smooth_ai_crm_db_v1';           // Main Database
@@ -12,6 +12,7 @@ export const SMTP_CONFIG_KEY = 'smooth_ai_smtp_config';     // Hostinger SMTP
 export const SHEETS_CONFIG_KEY = 'smooth_ai_sheets_config'; // Google Sheets Script
 export const BLACKLIST_KEY = 'smooth_ai_blacklist_v1';      // Negative Filters
 export const STATS_KEY = 'smooth_ai_global_stats_v1';       // Cost Tracking
+export const INTEGRATION_CONFIG_KEY = 'smooth_ai_integration_config_v1'; // Webhooks
 
 // --- GENERIC LOADERS ---
 
@@ -90,6 +91,13 @@ export const loadStats = (): GlobalStats => {
     } catch (e) { return { totalOperations: 0, estimatedCost: 0, abTestWins: { A: 0, B: 0 } }; }
 };
 
+export const loadIntegrationConfig = (): IntegrationConfig => {
+    try {
+        const data = localStorage.getItem(INTEGRATION_CONFIG_KEY);
+        return data ? JSON.parse(data) : { webhookUrl: '', autoSync: false };
+    } catch (e) { return { webhookUrl: '', autoSync: false }; }
+};
+
 // --- GENERIC SAVERS ---
 
 export const saveLeadsToStorage = (leads: Lead[]) => {
@@ -137,6 +145,43 @@ export const saveStats = (stats: GlobalStats) => {
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
 };
 
+export const saveIntegrationConfig = (config: IntegrationConfig) => {
+    localStorage.setItem(INTEGRATION_CONFIG_KEY, JSON.stringify(config));
+};
+
+// --- GARBAGE COLLECTOR ---
+export const manageStorageQuota = () => {
+    try {
+        let total = 0;
+        for (let x in localStorage) {
+            if (localStorage.hasOwnProperty(x)) {
+                total += ((localStorage[x].length * 2));
+            }
+        }
+        const usageKB = total / 1024;
+        // Limit is roughly 5MB (5120KB). If we cross 80% (4000KB), clean up.
+        if (usageKB > 4000) {
+            console.warn(`Storage usage high (${usageKB.toFixed(0)}KB). Running Garbage Collector.`);
+            // 1. Trim Logs aggressively
+            const logs = loadLogs();
+            if (logs.length > 20) {
+                saveLogs(logs.slice(-20)); // Keep only last 20
+            } else {
+                saveLogs([]); // Wipe logs if desperate
+            }
+            
+            // 2. Trim Completed Strategies
+            const strats = loadStrategies();
+            const active = strats.filter(s => s.status !== 'completed');
+            if (active.length !== strats.length) {
+                saveStrategies(active);
+            }
+        }
+    } catch (e) {
+        console.error("GC Failed", e);
+    }
+};
+
 // --- BACKUP & RESTORE ---
 
 export const exportDatabase = (): string => {
@@ -146,6 +191,7 @@ export const exportDatabase = (): string => {
         logs: loadLogs(),
         profile: loadProfile(),
         blacklist: loadBlacklist(),
+        integrationConfig: loadIntegrationConfig(),
         timestamp: Date.now(),
         version: '0.0.1'
     };
@@ -160,6 +206,7 @@ export const importDatabase = (jsonString: string): boolean => {
         if (db.logs) localStorage.setItem(LOGS_KEY, JSON.stringify(db.logs));
         if (db.profile) localStorage.setItem(PROFILE_KEY, JSON.stringify(db.profile));
         if (db.blacklist) localStorage.setItem(BLACKLIST_KEY, JSON.stringify(db.blacklist));
+        if (db.integrationConfig) localStorage.setItem(INTEGRATION_CONFIG_KEY, JSON.stringify(db.integrationConfig));
         return true;
     } catch (e) {
         console.error("Import failed", e);
@@ -173,4 +220,5 @@ export const clearStorage = () => {
   localStorage.removeItem(LOGS_KEY);
   localStorage.removeItem(BACKUP_KEY);
   localStorage.removeItem(STATS_KEY);
+  localStorage.removeItem(INTEGRATION_CONFIG_KEY);
 };

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats } from './types';
+import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, IntegrationConfig, Shortcut } from './types';
 import { PipelineTable } from './components/PipelineTable';
 import { PipelineBoard } from './components/PipelineBoard';
 import { StatCard } from './components/StatCard';
@@ -10,20 +10,30 @@ import { AgentTerminal } from './components/AgentTerminal';
 import { StrategyQueue } from './components/StrategyQueue';
 import { AnalyticsView } from './components/AnalyticsView';
 import { QualityControlView } from './components/QualityControlView';
-import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback } from './services/geminiService';
+import { DebugView } from './components/DebugView';
+import { CalendarView } from './components/CalendarView'; // NEW
+import { LinkedInView } from './components/LinkedInView'; // NEW
+import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, withHybridEngine } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
     saveLogs, loadLogs, saveProfile, loadProfile, saveSMTPConfig, loadSMTPConfig,
     saveSheetsConfig, loadSheetsConfig, clearStorage, saveOpenRouterKey, loadOpenRouterKey,
-    exportDatabase, importDatabase, saveBlacklist, loadBlacklist, saveStats, loadStats
+    exportDatabase, importDatabase, saveBlacklist, loadBlacklist, saveStats, loadStats,
+    saveIntegrationConfig, loadIntegrationConfig, manageStorageQuota
 } from './services/storageService';
+import { fetchLeadsFromSheet, saveLeadsToSheet } from './services/googleSheetsService';
+import { sendViaServer } from './services/emailService';
+import { syncLeadToWebhook } from './services/integrationService';
+import { MOCK_LEADS } from './services/mockData'; // NEW
+import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_PROFILE: ServiceProfile = {
   companyName: "Smooth AI Consulting",
   description: "Operational AI Consultancy.",
   valueProposition: "We replace manual functions with AI.",
   senderName: "Nick",
-  contactEmail: "nick@smoothaiconsultancy.com"
+  contactEmail: "nick@smoothaiconsultancy.com",
+  theme: 'light'
 };
 
 function App() {
@@ -37,12 +47,16 @@ function App() {
   const [customApiKey, setCustomApiKey] = useState(() => loadOpenRouterKey());
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig>(() => loadSMTPConfig());
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => loadSheetsConfig());
+  const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(() => loadIntegrationConfig());
   const [blacklist, setBlacklist] = useState<string[]>(() => loadBlacklist());
   const [stats, setStats] = useState<GlobalStats>(() => loadStats());
   
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
   
+  // CIRCUIT BREAKER STATE
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+
   // Rate Limiting
   const [cooldownTime, setCooldownTime] = useState(0);
   const [maxCooldown, setMaxCooldown] = useState(60);
@@ -51,6 +65,68 @@ function App() {
   const isGrowthEngineActiveRef = useRef(isGrowthEngineActive);
   const leadsRef = useRef(leads); 
   const strategyQueueRef = useRef(strategyQueue);
+
+  // Theme Init
+  useEffect(() => {
+    if (serviceProfile.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [serviceProfile.theme]);
+
+  // Garbage Collector Hook
+  useEffect(() => {
+    const gcInterval = setInterval(() => {
+      manageStorageQuota();
+    }, 60000); // Check every minute
+    return () => clearInterval(gcInterval);
+  }, []);
+
+  // OPEN TRACKING POLLER (v3.0)
+  useEffect(() => {
+      const pollOpens = async () => {
+          try {
+              const res = await fetch('/api/track/status');
+              if (res.ok) {
+                  const data = await res.json();
+                  // data is { leadId: [{type: 'OPEN', timestamp: ...}] }
+                  let hasUpdates = false;
+                  const updatedLeads = leadsRef.current.map(l => {
+                      if (data[l.id] && l.status !== LeadStatus.OPENED && l.status !== LeadStatus.QUALIFIED) { // Don't demote qualified
+                          hasUpdates = true;
+                          return { ...l, status: LeadStatus.OPENED };
+                      }
+                      return l;
+                  });
+                  if (hasUpdates) setLeads(updatedLeads);
+              }
+          } catch (e) { /* ignore polling errors */ }
+      };
+      
+      const interval = setInterval(pollOpens, 30000); // Check every 30s
+      return () => clearInterval(interval);
+  }, []);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Ctrl/Cmd + K: Toggle Dashboard/Prospects (Command Palette style)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            setCurrentView(prev => prev === 'dashboard' ? 'prospects' : 'dashboard');
+        }
+        // Shift + A: Analyze first New Lead
+        if (e.shiftKey && e.key === 'A') {
+            const firstNew = leads.find(l => l.status === LeadStatus.NEW);
+            if (firstNew && !analyzingIds.has(firstNew.id)) {
+                handleAnalyze(firstNew);
+            }
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [leads, analyzingIds]);
 
   // EFFECTS: Persist Data
   useEffect(() => { saveLeadsToStorage(leads); leadsRef.current = leads; }, [leads]);
@@ -106,6 +182,53 @@ function App() {
       link.click();
   };
 
+  const handleCloudSync = async () => {
+      addLog("Syncing to Google Sheets...", 'info');
+      const success = await saveLeadsToSheet(sheetsConfig.scriptUrl, leads);
+      if (success) addLog("Cloud Sync Complete", 'success');
+      else addLog("Cloud Sync Failed", 'error');
+  };
+  
+  const handleCloudLoad = async () => {
+      if (!confirm("This will overwrite your local data with Cloud data. Continue?")) return;
+      addLog("Loading from Google Sheets...", 'info');
+      const remoteLeads = await fetchLeadsFromSheet(sheetsConfig.scriptUrl);
+      if (remoteLeads) {
+          setLeads(remoteLeads);
+          addLog(`Loaded ${remoteLeads.length} leads from Cloud`, 'success');
+      } else {
+          addLog("Cloud Load Failed", 'error');
+      }
+  };
+
+  const handleDemoLoad = () => {
+      if (!confirm("Load Demo Data? This is for testing only.")) return;
+      setLeads(prev => [...MOCK_LEADS, ...prev]);
+      addLog("Demo Data Loaded", 'success');
+  };
+
+  const handleTestAI = async () => {
+      // Simple test call
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: 'Test connection',
+      });
+  };
+
+  const handleTestEmail = async () => {
+      const result = await sendViaServer(
+          smtpConfig,
+          'test_id',
+          serviceProfile.senderName || "Test",
+          "Test Email from Smooth AI",
+          "This is a diagnostic test email.",
+          serviceProfile.senderName || "System",
+          serviceProfile.contactEmail
+      );
+      if (!result) throw new Error("SMTP Send returned false");
+  };
+
   const handleAnalyze = async (lead: Lead, isBackground = false): Promise<boolean> => {
     if (!isBackground) setAnalyzingIds(prev => new Set(prev).add(lead.id));
 
@@ -133,6 +256,12 @@ function App() {
               }
           }
           lead.activeVariant = variant;
+          
+          // Auto-Sync Webhook
+          if (integrationConfig.webhookUrl && integrationConfig.autoSync) {
+             syncLeadToWebhook({ ...lead, analysis, decisionMaker: dm, techStack, triggers, emailSequence, status: LeadStatus.QUALIFIED }, integrationConfig.webhookUrl); 
+          }
+
       } else {
           addLog(`Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
       }
@@ -158,8 +287,14 @@ function App() {
   };
 
   const runGrowthCycle = async () => {
-    // Safety Checks
+    // Safety Checks & Circuit Breaker
     if (!isGrowthEngineActiveRef.current || cooldownTime > 0) return;
+    if (consecutiveFailures >= 3) {
+        addLog("🚨 CIRCUIT BREAKER TRIPPED. Engine Stopped.", 'error');
+        setIsGrowthEngineActive(false);
+        setConsecutiveFailures(0);
+        return;
+    }
 
     try {
         // 1. SELECT STRATEGY
@@ -177,8 +312,9 @@ function App() {
                     setStrategyQueue(prev => [...prev, ...newPlan]);
                     if (isGrowthEngineActiveRef.current) setTimeout(() => runGrowthCycle(), 2000);
                     return;
-                } catch (e) {
-                     // If Master Plan fails, wait and retry
+                } catch (e: any) {
+                     addLog(`Plan Failed: ${e.message}`, 'error');
+                     setConsecutiveFailures(prev => prev + 1);
                      setTimeout(() => runGrowthCycle(), 8000); return;
                 }
             }
@@ -218,11 +354,15 @@ function App() {
         if (newCandidates.length) {
             setLeads(prev => [...newCandidates, ...prev]);
             addLog(`Found ${newCandidates.length} new candidates. Starting Deep Analysis...`, 'info');
+            setConsecutiveFailures(0); // Reset failures on success
             
             for (const lead of newCandidates) {
                 if (!isGrowthEngineActiveRef.current || cooldownTime > 0) break;
                 const success = await handleAnalyze(lead, true);
-                if (!success) break; // If analysis fails (quota/error), stop batch
+                if (!success) {
+                    setConsecutiveFailures(prev => prev + 1);
+                    break; 
+                }
                 await new Promise(r => setTimeout(r, 20000)); // 20s delay between analyses
             }
         } else {
@@ -238,16 +378,16 @@ function App() {
             setCooldownTime(90); setMaxCooldown(90); 
         } else {
             console.error(e);
+            setConsecutiveFailures(prev => prev + 1);
             setTimeout(() => runGrowthCycle(), 10000);
         }
     }
   };
 
   const qualifiedCount = leads.filter(l => l.status === LeadStatus.QUALIFIED).length;
-  const pendingReviewCount = leads.filter(l => l.status === LeadStatus.QUALIFIED && !l.lastContactedAt).length;
-
+  
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors">
       <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
       <main className="flex-1 p-4 lg:p-8 overflow-y-auto h-screen flex flex-col">
@@ -277,6 +417,11 @@ function App() {
                                 {isGrowthEngineActive ? 'STOP NEURAL AGENT' : 'START GROWTH ENGINE'}
                             </button>
                         )}
+                        {consecutiveFailures > 0 && (
+                            <div className="text-[10px] text-red-500 font-bold text-center animate-pulse">
+                                Warning: {consecutiveFailures}/3 Failures Detected
+                            </div>
+                        )}
                      </div>
                      <div className="w-full xl:w-80">
                          <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />
@@ -299,7 +444,7 @@ function App() {
                     onMarkContacted={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.CONTACTED, lastContactedAt: Date.now()} : p))}
                     onAddManualLead={(l) => setLeads(prev => [l, ...prev])}
                     onExport={() => {
-                         const csv = "Company,Website,Score,Status\n" + leads.map(l => `${l.companyName},${l.website},${l.analysis?.score || 0},${l.status}`).join('\n');
+                         const csv = "Company,Website,Score,Status,Reasoning\n" + leads.map(l => `${l.companyName},${l.website},${l.analysis?.score || 0},${l.status},"${l.analysis?.reasoning?.replace(/"/g, '""') || ''}"`).join('\n');
                          const blob = new Blob([csv], { type: 'text/csv' });
                          const url = window.URL.createObjectURL(blob);
                          const a = document.createElement('a');
@@ -309,15 +454,36 @@ function App() {
              </div>
         )}
         
+        {/* VIEW: CALENDAR */}
+        {currentView === 'calendar' && <CalendarView leads={leads} />}
+
+        {/* VIEW: LINKEDIN */}
+        {currentView === 'linkedin' && <LinkedInView />}
+        
         {/* VIEW: QUALITY CONTROL */}
         {currentView === 'quality_control' && (
             <div className="h-full animate-fadeIn">
                 <QualityControlView 
                     leads={leads} 
-                    onApprove={(l) => { /* Logic is technically 'do nothing' as it's already qualified, but maybe move to contacted? For now just keep. */ }}
+                    onApprove={(l) => { /* Logic handled in component or extended later */ }}
                     onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))}
                 />
             </div>
+        )}
+        
+        {/* VIEW: DEBUG */}
+        {currentView === 'debug' && (
+             <div className="h-full animate-fadeIn">
+                 <DebugView 
+                    logs={logs}
+                    stats={stats}
+                    smtpConfig={smtpConfig}
+                    sheetsConfig={sheetsConfig}
+                    onClearLogs={() => setLogs([])}
+                    onTestAI={handleTestAI}
+                    onTestEmail={handleTestEmail}
+                 />
+             </div>
         )}
         
         {/* VIEW: ANALYTICS */}
@@ -325,21 +491,73 @@ function App() {
 
         {/* VIEW: SETTINGS */}
         {currentView === 'settings' && (
-            <div className="max-w-xl mx-auto space-y-6 pb-20 animate-fadeIn">
-                <h1 className="text-2xl font-bold text-slate-800">System Configuration</h1>
+            <div className="max-w-xl mx-auto space-y-6 pb-20 animate-fadeIn text-slate-800 dark:text-slate-200">
+                <h1 className="text-2xl font-bold">System Configuration</h1>
                 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                {/* Profile */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="font-bold mb-2">Sender Identity</h3>
-                    <input className="w-full border p-2 rounded mb-2 text-sm" value={serviceProfile.senderName} onChange={e => setServiceProfile({...serviceProfile, senderName: e.target.value})} placeholder="Your Name" />
-                    <input className="w-full border p-2 rounded mb-2 text-sm" value={serviceProfile.contactEmail} onChange={e => setServiceProfile({...serviceProfile, contactEmail: e.target.value})} placeholder="Email Address" />
-                    <button onClick={() => { saveProfile(serviceProfile); addLog("Profile Saved", 'success'); }} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Save Identity</button>
+                    <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" value={serviceProfile.senderName} onChange={e => setServiceProfile({...serviceProfile, senderName: e.target.value})} placeholder="Your Name" />
+                    <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" value={serviceProfile.contactEmail} onChange={e => setServiceProfile({...serviceProfile, contactEmail: e.target.value})} placeholder="Email Address" />
+                    <div className="flex items-center gap-2 mt-2">
+                        <label className="text-xs font-bold">Theme:</label>
+                        <button onClick={() => setServiceProfile({...serviceProfile, theme: serviceProfile.theme === 'dark' ? 'light' : 'dark'})} className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-xs">
+                            {serviceProfile.theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
+                        </button>
+                    </div>
+                    <button onClick={() => { saveProfile(serviceProfile); addLog("Profile Saved", 'success'); }} className="mt-3 bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Save Identity</button>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                {/* Cloud Sync */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <h3 className="font-bold mb-2">Cloud Integrations</h3>
+                    
+                    {/* Webhook */}
+                    <div className="mb-4">
+                        <label className="text-xs font-bold text-slate-500 block mb-1">Webhook URL (Zapier/n8n)</label>
+                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm mb-1" value={integrationConfig.webhookUrl || ''} onChange={e => setIntegrationConfig({...integrationConfig, webhookUrl: e.target.value})} placeholder="https://hooks.zapier.com/..." />
+                        <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={integrationConfig.autoSync || false} onChange={e => setIntegrationConfig({...integrationConfig, autoSync: e.target.checked})} />
+                            <span className="text-xs">Auto-Sync Qualified Leads</span>
+                        </label>
+                        <button onClick={() => { saveIntegrationConfig(integrationConfig); addLog("Webhook Saved", 'success'); }} className="mt-2 text-xs font-bold text-blue-500 hover:underline">Save Webhook</button>
+                    </div>
+
+                    <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
+                         <label className="text-xs font-bold text-slate-500 block mb-1">Google Sheets Script URL</label>
+                         <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm mb-2" value={sheetsConfig.scriptUrl} onChange={e => setSheetsConfig({scriptUrl: e.target.value})} placeholder="https://script.google.com/..." />
+                         <div className="flex gap-2">
+                            <button onClick={() => { saveSheetsConfig(sheetsConfig); addLog("Sheets Config Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold">Save</button>
+                            <button onClick={handleCloudSync} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold">Sync to Cloud</button>
+                            <button onClick={handleCloudLoad} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-bold">Load from Cloud</button>
+                         </div>
+                    </div>
+                </div>
+
+                {/* Email Server */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                     <h3 className="font-bold mb-2">Email Relay (Hostinger/SMTP)</h3>
+                     <p className="text-xs text-slate-500 mb-2">Requires Node.js server running.</p>
+                     <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host (smtp.hostinger.com)" value={smtpConfig.host} onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port (465)" value={smtpConfig.port} onChange={e => setSmtpConfig({...smtpConfig, port: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="User (email)" value={smtpConfig.user} onChange={e => setSmtpConfig({...smtpConfig, user: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Password" type="password" value={smtpConfig.pass} onChange={e => setSmtpConfig({...smtpConfig, pass: e.target.value})} />
+                     </div>
+                     <div className="mb-2">
+                        <label className="text-xs font-bold text-slate-500">Public URL (For Open Tracking)</label>
+                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="https://your-site.com" value={smtpConfig.publicUrl || ''} onChange={e => setSmtpConfig({...smtpConfig, publicUrl: e.target.value})} />
+                     </div>
+                     <div className="flex gap-2">
+                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
+                         <button onClick={handleTestEmail} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
+                     </div>
+                </div>
+                
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="font-bold mb-2">Negative Filter (Blacklist)</h3>
-                    <p className="text-xs text-slate-500 mb-2">The AI will strictly ignore domains containing these words.</p>
                     <textarea 
-                        className="w-full border p-2 rounded text-xs" 
+                        className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-xs" 
                         rows={4}
                         value={blacklist.join(', ')}
                         onChange={(e) => setBlacklist(e.target.value.split(',').map(s => s.trim()))}
@@ -347,17 +565,17 @@ function App() {
                     />
                 </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                      <h3 className="font-bold mb-2">OpenRouter API Key</h3>
-                     <p className="text-xs text-slate-500 mb-2">Required for Hybrid Engine fallback.</p>
-                     <input type="password" value={customApiKey} onChange={e => setCustomApiKey(e.target.value)} className="w-full border p-2 rounded mb-2 text-sm" placeholder="sk-or-..." />
-                     <button onClick={() => { saveOpenRouterKey(customApiKey); addLog("Key Saved", 'success'); }} className="bg-slate-900 text-white px-4 py-2 rounded text-sm font-bold">Save Key</button>
+                     <input type="password" value={customApiKey} onChange={e => setCustomApiKey(e.target.value)} className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" placeholder="sk-or-..." />
+                     <button onClick={() => { saveOpenRouterKey(customApiKey); addLog("Key Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save Key</button>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                      <h3 className="font-bold mb-2">Data Management</h3>
                      <div className="flex gap-4">
-                        <button onClick={handleBackup} className="border border-slate-300 px-4 py-2 rounded text-sm font-bold hover:bg-slate-50">Download Backup</button>
+                        <button onClick={handleBackup} className="border border-slate-300 dark:border-slate-600 px-4 py-2 rounded text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800">Download Backup</button>
+                        <button onClick={handleDemoLoad} className="text-blue-600 text-sm font-bold hover:underline">Load Demo Data</button>
                         <button onClick={() => { if(confirm("Are you sure? This will wipe everything.")) { clearStorage(); window.location.reload(); }}} className="text-red-500 text-sm font-bold hover:underline">Factory Reset</button>
                      </div>
                 </div>
