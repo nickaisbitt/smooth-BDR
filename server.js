@@ -5,6 +5,9 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,18 +18,43 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// TRACKING DB (Simple JSON for now)
-const TRACKING_FILE = join(__dirname, 'tracking.json');
-const getTrackingData = () => {
-    if (!fs.existsSync(TRACKING_FILE)) return {};
-    return JSON.parse(fs.readFileSync(TRACKING_FILE, 'utf8'));
-};
-const saveTrackingEvent = (leadId, type) => {
-    const data = getTrackingData();
-    if (!data[leadId]) data[leadId] = [];
-    data[leadId].push({ type, timestamp: Date.now() });
-    fs.writeFileSync(TRACKING_FILE, JSON.stringify(data, null, 2));
-};
+// RATE LIMITER: Protect SMTP Reputation
+const limiter = rateLimit({
+	windowMs: 1 * 60 * 1000, // 1 minute
+	limit: 60, // Limit each IP to 60 requests per windowMs
+    message: "Too many requests, please try again later."
+});
+app.use('/api/', limiter);
+
+// DATABASE SETUP (SQLite)
+let db;
+(async () => {
+    try {
+        db = await open({
+            filename: join(__dirname, 'smooth_ai.db'),
+            driver: sqlite3.Database
+        });
+        
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS email_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id TEXT,
+                to_email TEXT,
+                subject TEXT,
+                sent_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS tracking_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id TEXT,
+                type TEXT,
+                timestamp INTEGER
+            );
+        `);
+        console.log("✅ SQLite Database Initialized");
+    } catch (e) {
+        console.error("❌ Database Init Failed:", e);
+    }
+})();
 
 // API Route: Send Email
 app.post('/api/send-email', async (req, res) => {
@@ -48,7 +76,7 @@ app.post('/api/send-email', async (req, res) => {
         let htmlBody = email.message.replace(/\n/g, '<br>');
         if (publicUrl && leadId) {
             const pixelUrl = `${publicUrl}/api/track/open/${leadId}`;
-            htmlBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none;" />`;
+            htmlBody += `<br><img src="${pixelUrl}" width="1" height="1" style="display:none;" />`;
         }
 
         const info = await transporter.sendMail({
@@ -58,6 +86,14 @@ app.post('/api/send-email', async (req, res) => {
             text: email.message, 
             html: htmlBody, 
         });
+
+        // Log to DB
+        if (db) {
+            await db.run(
+                'INSERT INTO email_logs (lead_id, to_email, subject, sent_at) VALUES (?, ?, ?, ?)',
+                [leadId, email.to, email.subject, Date.now()]
+            );
+        }
 
         console.log("Message sent: %s", info.messageId);
         res.status(200).json({ success: true, messageId: info.messageId });
@@ -69,10 +105,16 @@ app.post('/api/send-email', async (req, res) => {
 });
 
 // API Route: Tracking Pixel
-app.get('/api/track/open/:leadId', (req, res) => {
+app.get('/api/track/open/:leadId', async (req, res) => {
     const { leadId } = req.params;
     console.log(`👁️ Email Opened by Lead: ${leadId}`);
-    saveTrackingEvent(leadId, 'OPEN');
+    
+    if (db) {
+        await db.run(
+            'INSERT INTO tracking_events (lead_id, type, timestamp) VALUES (?, ?, ?)',
+            [leadId, 'OPEN', Date.now()]
+        );
+    }
     
     // Return transparent 1x1 GIF
     const img = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -84,8 +126,16 @@ app.get('/api/track/open/:leadId', (req, res) => {
 });
 
 // API Route: Get Opens (For Frontend Polling)
-app.get('/api/track/status', (req, res) => {
-    res.json(getTrackingData());
+app.get('/api/track/status', async (req, res) => {
+    if (!db) return res.json({});
+    try {
+        const rows = await db.all('SELECT lead_id, MAX(timestamp) as last_open FROM tracking_events WHERE type="OPEN" GROUP BY lead_id');
+        const map = {};
+        rows.forEach(r => map[r.lead_id] = r.last_open);
+        res.json(map);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Serve React App

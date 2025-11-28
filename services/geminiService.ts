@@ -287,7 +287,12 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
 };
 
 export const findDecisionMaker = async (companyName: string, website: string): Promise<DecisionMaker | null> => {
-    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL", "email": "guess@company.com" }. If not found, guess based on 'About Us' page or return null.`;
+    // UPDATED PROMPT: Aggressively hunt for email addresses
+    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). 
+    CRITICAL: HUNT FOR EMAIL ADDRESSES. Try to find direct email (e.g. first@company.com) or generic (hello@company.com).
+    Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL", "email": "found_or_guessed_email" }. 
+    If not found, guess based on common patterns.`;
+    
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");

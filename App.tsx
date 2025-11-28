@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, IntegrationConfig, Shortcut } from './types';
+import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, Shortcut } from './types';
 import { PipelineTable } from './components/PipelineTable';
 import { PipelineBoard } from './components/PipelineBoard';
 import { StatCard } from './components/StatCard';
@@ -11,20 +11,19 @@ import { StrategyQueue } from './components/StrategyQueue';
 import { AnalyticsView } from './components/AnalyticsView';
 import { QualityControlView } from './components/QualityControlView';
 import { DebugView } from './components/DebugView';
-import { CalendarView } from './components/CalendarView'; // NEW
-import { LinkedInView } from './components/LinkedInView'; // NEW
+import { CalendarView } from './components/CalendarView';
+import { LinkedInView } from './components/LinkedInView';
 import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, withHybridEngine, testOpenRouterConnection } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
     saveLogs, loadLogs, saveProfile, loadProfile, saveSMTPConfig, loadSMTPConfig,
     saveSheetsConfig, loadSheetsConfig, clearStorage, saveOpenRouterKey, loadOpenRouterKey,
     exportDatabase, importDatabase, saveBlacklist, loadBlacklist, saveStats, loadStats,
-    saveIntegrationConfig, loadIntegrationConfig, manageStorageQuota
+    manageStorageQuota
 } from './services/storageService';
 import { fetchLeadsFromSheet, saveLeadsToSheet } from './services/googleSheetsService';
 import { sendViaServer } from './services/emailService';
-import { syncLeadToWebhook } from './services/integrationService';
-import { MOCK_LEADS } from './services/mockData'; // NEW
+import { MOCK_LEADS } from './services/mockData';
 import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_PROFILE: ServiceProfile = {
@@ -49,6 +48,11 @@ function App() {
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => loadSheetsConfig());
   const [blacklist, setBlacklist] = useState<string[]>(() => loadBlacklist());
   const [stats, setStats] = useState<GlobalStats>(() => loadStats());
+  
+  // UI STATUS STATE
+  const [smtpStatus, setSmtpStatus] = useState<string>('');
+  const [sheetsStatus, setSheetsStatus] = useState<string>('');
+  const [routerStatus, setRouterStatus] = useState<string>('');
   
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
@@ -85,6 +89,45 @@ function App() {
     return () => clearInterval(gcInterval);
   }, []);
 
+  // --- GOOGLE SHEETS AUTO-SYNC ENGINE ---
+  
+  // 1. Auto-Load on Startup
+  useEffect(() => {
+    if (sheetsConfig.scriptUrl) {
+        addLog("☁️ Connecting to Google Sheets...", 'info');
+        setSheetsStatus("Syncing...");
+        fetchLeadsFromSheet(sheetsConfig.scriptUrl).then(remoteLeads => {
+            if (remoteLeads && remoteLeads.length > 0) {
+                // Determine if we should merge or overwrite? For safety, we overwrite local with cloud if cloud has data.
+                // Or merge? Let's stick to Cloud as Truth for now.
+                setLeads(remoteLeads);
+                addLog(`✅ Database loaded from Cloud (${remoteLeads.length} records)`, 'success');
+                setSheetsStatus("☁️ Synced");
+            } else {
+                setSheetsStatus("☁️ Connected");
+            }
+        }).catch(err => {
+            addLog("❌ Cloud Load Failed", 'error');
+            setSheetsStatus("❌ Error");
+        });
+    }
+  }, [sheetsConfig.scriptUrl]); // Run once on mount if URL exists
+
+  // 2. Auto-Save on Change (Debounced)
+  useEffect(() => {
+      if (!sheetsConfig.scriptUrl) return;
+
+      const handler = setTimeout(async () => {
+          setSheetsStatus('♻️ Saving...');
+          const success = await saveLeadsToSheet(sheetsConfig.scriptUrl, leads);
+          if (success) setSheetsStatus('☁️ Synced');
+          else setSheetsStatus('❌ Save Failed');
+      }, 3000); // Wait 3 seconds after last change
+
+      return () => clearTimeout(handler);
+  }, [leads, sheetsConfig.scriptUrl]);
+
+
   // OPEN TRACKING POLLER (v3.0)
   useEffect(() => {
       const pollOpens = async () => {
@@ -92,10 +135,9 @@ function App() {
               const res = await fetch('/api/track/status');
               if (res.ok) {
                   const data = await res.json();
-                  // data is { leadId: [{type: 'OPEN', timestamp: ...}] }
                   let hasUpdates = false;
                   const updatedLeads = leadsRef.current.map(l => {
-                      if (data[l.id] && l.status !== LeadStatus.OPENED && l.status !== LeadStatus.QUALIFIED) { // Don't demote qualified
+                      if (data[l.id] && l.status !== LeadStatus.OPENED && l.status !== LeadStatus.QUALIFIED) {
                           hasUpdates = true;
                           return { ...l, status: LeadStatus.OPENED };
                       }
@@ -113,12 +155,10 @@ function App() {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        // Ctrl/Cmd + K: Toggle Dashboard/Prospects (Command Palette style)
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
             e.preventDefault();
             setCurrentView(prev => prev === 'dashboard' ? 'prospects' : 'dashboard');
         }
-        // Shift + A: Analyze first New Lead
         if (e.shiftKey && e.key === 'A') {
             const firstNew = leads.find(l => l.status === LeadStatus.NEW);
             if (firstNew && !analyzingIds.has(firstNew.id)) {
@@ -156,7 +196,6 @@ function App() {
         };
         requestWakeLock();
     } else {
-        // Release Wake Lock
         if (wakeLockRef.current) {
             wakeLockRef.current.release()
                 .then(() => { wakeLockRef.current = null; })
@@ -187,7 +226,6 @@ function App() {
         interval = setInterval(() => {
             setCooldownTime(prev => {
                 if (prev <= 1) {
-                    // Auto resume if active
                     if (isGrowthEngineActiveRef.current) setTimeout(() => runGrowthCycle(), 1000);
                     return 0;
                 }
@@ -210,40 +248,39 @@ function App() {
       link.click();
   };
 
-  const handleCloudSync = async () => {
-      addLog("Syncing to Google Sheets...", 'info');
-      const success = await saveLeadsToSheet(sheetsConfig.scriptUrl, leads);
-      if (success) addLog("Cloud Sync Complete", 'success');
-      else addLog("Cloud Sync Failed", 'error');
-  };
-
   const handleTestSheets = async () => {
-      if (!sheetsConfig.scriptUrl) { alert("Please enter a Script URL first."); return; }
+      if (!sheetsConfig.scriptUrl) { setSheetsStatus("⚠️ Missing URL"); return; }
+      setSheetsStatus("Testing...");
       const success = await saveLeadsToSheet(sheetsConfig.scriptUrl, []);
-      if (success) alert("✅ Connection Successful! App can talk to Google Sheet.");
-      else alert("❌ Connection Failed. Check URL or Permissions.");
+      if (success) setSheetsStatus("✅ Connected");
+      else setSheetsStatus("❌ Failed");
+      setTimeout(() => setSheetsStatus(''), 3000);
   }
   
   const handleCloudLoad = async () => {
-      if (!confirm("This will overwrite your local data with Cloud data. Continue?")) return;
+      if (!sheetsConfig.scriptUrl) { setSheetsStatus("⚠️ Missing URL"); return; }
+      if (!confirm("Overwrite local data with Cloud data?")) return;
       addLog("Loading from Google Sheets...", 'info');
+      setSheetsStatus('Loading...');
       const remoteLeads = await fetchLeadsFromSheet(sheetsConfig.scriptUrl);
       if (remoteLeads) {
           setLeads(remoteLeads);
           addLog(`Loaded ${remoteLeads.length} leads from Cloud`, 'success');
+          setSheetsStatus('✅ Loaded');
       } else {
           addLog("Cloud Load Failed", 'error');
+          setSheetsStatus('❌ Error');
       }
+      setTimeout(() => setSheetsStatus(''), 3000);
   };
 
   const handleDemoLoad = () => {
-      if (!confirm("Load Demo Data? This is for testing only.")) return;
+      if (!confirm("Load Demo Data?")) return;
       setLeads(prev => [...MOCK_LEADS, ...prev]);
       addLog("Demo Data Loaded", 'success');
   };
 
   const handleTestAI = async () => {
-      // Simple test call
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       await ai.models.generateContent({
           model: 'gemini-2.5-flash',
@@ -252,31 +289,48 @@ function App() {
   };
 
   const handleTestOpenRouter = async () => {
+      setRouterStatus("Testing...");
       try {
           const success = await testOpenRouterConnection();
-          if (success) alert("✅ OpenRouter Key is Valid!");
-          else alert("❌ OpenRouter Test Failed.");
+          if (success) setRouterStatus("✅ Active");
+          else setRouterStatus("❌ Failed");
       } catch (e: any) {
-          alert(`❌ Error: ${e.message}`);
+          setRouterStatus("❌ Error");
       }
+      setTimeout(() => setRouterStatus(''), 3000);
   };
 
   const handleTestEmail = async () => {
+      setSmtpStatus("Sending...");
       try {
         const result = await sendViaServer(
             smtpConfig,
             'test_id',
-            serviceProfile.senderName || "Test",
-            "Test Email from Smooth AI",
-            "This is a diagnostic test email.",
+            serviceProfile.contactEmail || "nick@smoothaiconsultancy.com",
+            serviceProfile.senderName || "Nick",
+            "Smooth AI Test",
+            "This confirms your SMTP relay is working.",
             serviceProfile.senderName || "System",
             serviceProfile.contactEmail
         );
-        if (result) alert("✅ Email Sent Successfully! Check your inbox.");
-        else alert("❌ Email Send Failed. Check Server Logs.");
+        if (result) setSmtpStatus("✅ Sent");
+        else setSmtpStatus("❌ Failed");
       } catch (e: any) {
-          alert(`❌ Error: ${e.message}`);
+          setSmtpStatus(`❌ ${e.message}`);
       }
+      setTimeout(() => setSmtpStatus(''), 3000);
+  };
+
+  const handleDeleteLead = (leadId: string) => {
+      if (confirm("Are you sure you want to delete this lead?")) {
+          setLeads(prev => prev.filter(l => l.id !== leadId));
+          addLog("Lead deleted", 'warning');
+      }
+  };
+
+  const handleUpdateLead = (updatedLead: Lead) => {
+      setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
+      addLog("Lead updated manually", 'info');
   };
 
   const handleAnalyze = async (lead: Lead, isBackground = false): Promise<boolean> => {
@@ -287,19 +341,16 @@ function App() {
       
       let dm: any = null, triggers: any[] = [], emailSequence: any[] = [];
 
-      // Only burn tokens on Sequence Gen if they are qualified
       if (analysis.score > 60) {
           addLog(`Qualified ${lead.companyName} (${analysis.score}). Deep diving...`, 'success');
           dm = await findDecisionMaker(lead.companyName, lead.website);
           triggers = await findTriggers(lead.companyName, lead.website);
           emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
           
-          // Automated A/B Testing Logic
           const variant = Math.random() > 0.5 ? 'B' : 'A';
           if (emailSequence.length > 0 && emailSequence[0].alternativeSubject) {
               emailSequence[0].variantLabel = variant;
               if (variant === 'B') {
-                   // Swap subjects for display/sending convenience
                    const temp = emailSequence[0].subject;
                    emailSequence[0].subject = emailSequence[0].alternativeSubject;
                    emailSequence[0].alternativeSubject = temp;
@@ -331,7 +382,6 @@ function App() {
   };
 
   const runGrowthCycle = async () => {
-    // Safety Checks & Circuit Breaker
     if (!isGrowthEngineActiveRef.current || cooldownTime > 0) return;
     if (consecutiveFailures >= 3) {
         addLog("🚨 CIRCUIT BREAKER TRIPPED. Engine Stopped.", 'error');
@@ -341,7 +391,6 @@ function App() {
     }
 
     try {
-        // 1. SELECT STRATEGY
         let currentStrategy: StrategyNode | null = strategyQueueRef.current.find(s => s.status === 'active') || null;
 
         if (!currentStrategy) {
@@ -364,7 +413,6 @@ function App() {
             }
         }
 
-        // 2. EXECUTE SEARCH
         addLog(`Executing: ${currentStrategy.query}`, 'action');
         const { leads: foundLeads } = await findLeads(currentStrategy.query, blacklist);
         
@@ -375,7 +423,6 @@ function App() {
             return;
         }
 
-        // 3. FILTER DUPLICATES
         const newCandidates: Lead[] = [];
         const existing = new Set(leadsRef.current.map(l => l.website));
 
@@ -394,11 +441,10 @@ function App() {
             }
         });
 
-        // 4. BATCH ANALYZE
         if (newCandidates.length) {
             setLeads(prev => [...newCandidates, ...prev]);
             addLog(`Found ${newCandidates.length} new candidates. Starting Deep Analysis...`, 'info');
-            setConsecutiveFailures(0); // Reset failures on success
+            setConsecutiveFailures(0); 
             
             for (const lead of newCandidates) {
                 if (!isGrowthEngineActiveRef.current || cooldownTime > 0) break;
@@ -407,13 +453,12 @@ function App() {
                     setConsecutiveFailures(prev => prev + 1);
                     break; 
                 }
-                await new Promise(r => setTimeout(r, 20000)); // 20s delay between analyses
+                await new Promise(r => setTimeout(r, 20000));
             }
         } else {
             addLog("All found leads were duplicates.", 'warning');
         }
 
-        // 5. COMPLETE STRATEGY
         setStrategyQueue(prev => prev.map(s => s.id === currentStrategy!.id ? { ...s, status: 'completed' } : s));
         if (isGrowthEngineActiveRef.current) setTimeout(() => runGrowthCycle(), 5000);
 
@@ -435,7 +480,19 @@ function App() {
       <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
       <main className="flex-1 p-4 lg:p-8 overflow-y-auto h-screen flex flex-col">
-        {/* VIEW: DASHBOARD */}
+        {/* Sync Status Badge (Top Right) */}
+        {sheetsConfig.scriptUrl && (
+            <div className="absolute top-4 right-4 z-50">
+                <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm border transition-all ${
+                    sheetsStatus.includes('Synced') ? 'bg-green-100 text-green-700 border-green-200' :
+                    sheetsStatus.includes('Error') ? 'bg-red-100 text-red-700 border-red-200' :
+                    'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                    {sheetsStatus || "☁️ Cloud Active"}
+                </span>
+            </div>
+        )}
+
         {currentView === 'dashboard' && (
             <div className="flex flex-col gap-6 animate-fadeIn">
                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -461,17 +518,6 @@ function App() {
                                 {isGrowthEngineActive ? 'STOP NEURAL AGENT' : 'START GROWTH ENGINE'}
                             </button>
                         )}
-                        {isGrowthEngineActive && (
-                             <div className="text-[10px] text-green-500 font-mono text-center flex justify-center items-center gap-1">
-                                 <svg className="w-3 h-3 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                 HIGH PERFORMANCE MODE ACTIVE
-                             </div>
-                        )}
-                        {consecutiveFailures > 0 && (
-                            <div className="text-[10px] text-red-500 font-bold text-center animate-pulse">
-                                Warning: {consecutiveFailures}/3 Failures Detected
-                            </div>
-                        )}
                      </div>
                      <div className="w-full xl:w-80">
                          <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />
@@ -479,12 +525,18 @@ function App() {
                  </div>
 
                  <div className="flex-1 min-h-[400px]">
-                     <PipelineTable leads={leads} onAnalyze={handleAnalyze} analyzingIds={analyzingIds} onHunt={(l) => addLog("Hunt triggered", 'info')} />
+                     <PipelineTable 
+                        leads={leads} 
+                        onAnalyze={handleAnalyze} 
+                        analyzingIds={analyzingIds} 
+                        onHunt={(l) => addLog("Hunt triggered", 'info')} 
+                        onUpdateLead={handleUpdateLead}
+                        onDeleteLead={handleDeleteLead}
+                    />
                  </div>
             </div>
         )}
 
-        {/* VIEW: PROSPECTS */}
         {currentView === 'prospects' && (
              <div className="h-full animate-fadeIn">
                 <PipelineTable 
@@ -493,8 +545,10 @@ function App() {
                     analyzingIds={analyzingIds} 
                     onMarkContacted={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.CONTACTED, lastContactedAt: Date.now()} : p))}
                     onAddManualLead={(l) => setLeads(prev => [l, ...prev])}
+                    onUpdateLead={handleUpdateLead}
+                    onDeleteLead={handleDeleteLead}
                     onExport={() => {
-                         const csv = "Company,Website,Score,Status,Reasoning\n" + leads.map(l => `${l.companyName},${l.website},${l.analysis?.score || 0},${l.status},"${l.analysis?.reasoning?.replace(/"/g, '""') || ''}"`).join('\n');
+                         const csv = "Company,Website,Score,Status\n" + leads.map(l => `${l.companyName},${l.website},${l.analysis?.score || 0},${l.status}`).join('\n');
                          const blob = new Blob([csv], { type: 'text/csv' });
                          const url = window.URL.createObjectURL(blob);
                          const a = document.createElement('a');
@@ -504,71 +558,34 @@ function App() {
              </div>
         )}
         
-        {/* VIEW: CALENDAR */}
         {currentView === 'calendar' && <CalendarView leads={leads} />}
-
-        {/* VIEW: LINKEDIN */}
         {currentView === 'linkedin' && <LinkedInView />}
-        
-        {/* VIEW: QUALITY CONTROL */}
-        {currentView === 'quality_control' && (
-            <div className="h-full animate-fadeIn">
-                <QualityControlView 
-                    leads={leads} 
-                    onApprove={(l) => { /* Logic handled in component or extended later */ }}
-                    onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))}
-                />
-            </div>
-        )}
-        
-        {/* VIEW: DEBUG */}
-        {currentView === 'debug' && (
-             <div className="h-full animate-fadeIn">
-                 <DebugView 
-                    logs={logs}
-                    stats={stats}
-                    smtpConfig={smtpConfig}
-                    sheetsConfig={sheetsConfig}
-                    onClearLogs={() => setLogs([])}
-                    onTestAI={handleTestAI}
-                    onTestEmail={handleTestEmail}
-                 />
-             </div>
-        )}
-        
-        {/* VIEW: ANALYTICS */}
+        {currentView === 'quality_control' && <QualityControlView leads={leads} onApprove={()=>{}} onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))} />}
+        {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={smtpConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
         {currentView === 'analytics' && <AnalyticsView leads={leads} />}
 
-        {/* VIEW: SETTINGS */}
         {currentView === 'settings' && (
             <div className="max-w-xl mx-auto space-y-6 pb-20 animate-fadeIn text-slate-800 dark:text-slate-200">
                 <h1 className="text-2xl font-bold">System Configuration</h1>
                 
                 {/* Profile */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
                     <h3 className="font-bold mb-2">Sender Identity</h3>
                     <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" value={serviceProfile.senderName} onChange={e => setServiceProfile({...serviceProfile, senderName: e.target.value})} placeholder="Your Name" />
                     <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" value={serviceProfile.contactEmail} onChange={e => setServiceProfile({...serviceProfile, contactEmail: e.target.value})} placeholder="Email Address" />
-                    <div className="flex items-center gap-2 mt-2">
-                        <label className="text-xs font-bold">Theme:</label>
-                        <button onClick={() => setServiceProfile({...serviceProfile, theme: serviceProfile.theme === 'dark' ? 'light' : 'dark'})} className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-xs">
-                            {serviceProfile.theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
-                        </button>
-                    </div>
                     <button onClick={() => { saveProfile(serviceProfile); addLog("Profile Saved", 'success'); }} className="mt-3 bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Save Identity</button>
                 </div>
 
-                {/* Cloud Sync */}
+                {/* Cloud Sync (Webhooks Removed, Sheets Kept) */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="font-bold mb-2">Cloud Integrations</h3>
                     <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
                          <label className="text-xs font-bold text-slate-500 block mb-1">Google Sheets Script URL</label>
                          <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm mb-2" value={sheetsConfig.scriptUrl} onChange={e => setSheetsConfig({scriptUrl: e.target.value})} placeholder="https://script.google.com/..." />
-                         <div className="flex gap-2">
+                         <div className="flex gap-2 items-center">
                             <button onClick={() => { saveSheetsConfig(sheetsConfig); addLog("Sheets Config Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold">Save</button>
                             <button onClick={handleTestSheets} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-xs font-bold border border-blue-200">Test Connection</button>
-                            <button onClick={handleCloudSync} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold">Sync to Cloud</button>
-                            <button onClick={handleCloudLoad} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-bold">Load from Cloud</button>
+                            {sheetsStatus && <span className="text-xs font-bold animate-fadeIn">{sheetsStatus}</span>}
                          </div>
                     </div>
                 </div>
@@ -576,50 +593,37 @@ function App() {
                 {/* Email Server */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                      <h3 className="font-bold mb-2">Email Relay (Hostinger/SMTP)</h3>
-                     <p className="text-xs text-slate-500 mb-2">Requires Node.js server running.</p>
                      <div className="grid grid-cols-2 gap-2 mb-2">
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host (smtp.hostinger.com)" value={smtpConfig.host} onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port (465)" value={smtpConfig.port} onChange={e => setSmtpConfig({...smtpConfig, port: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="User (email)" value={smtpConfig.user} onChange={e => setSmtpConfig({...smtpConfig, user: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Password" type="password" value={smtpConfig.pass} onChange={e => setSmtpConfig({...smtpConfig, pass: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host" value={smtpConfig.host} onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port" value={smtpConfig.port} onChange={e => setSmtpConfig({...smtpConfig, port: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="User" value={smtpConfig.user} onChange={e => setSmtpConfig({...smtpConfig, user: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Pass" type="password" value={smtpConfig.pass} onChange={e => setSmtpConfig({...smtpConfig, pass: e.target.value})} />
                      </div>
                      <div className="mb-2">
-                        <label className="text-xs font-bold text-slate-500">Public URL (For Open Tracking)</label>
-                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="https://your-site.com" value={smtpConfig.publicUrl || ''} onChange={e => setSmtpConfig({...smtpConfig, publicUrl: e.target.value})} />
+                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Public URL (for Tracking Pixel)" value={smtpConfig.publicUrl || ''} onChange={e => setSmtpConfig({...smtpConfig, publicUrl: e.target.value})} />
                      </div>
-                     <div className="flex gap-2">
-                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); alert("✅ Settings Saved"); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
+                     <div className="flex gap-2 items-center">
+                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); setSmtpStatus('✅ Saved'); setTimeout(()=>setSmtpStatus(''), 2000); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
                          <button onClick={handleTestEmail} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
+                         {smtpStatus && <span className="text-xs font-bold animate-fadeIn">{smtpStatus}</span>}
                      </div>
-                </div>
-                
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <h3 className="font-bold mb-2">Negative Filter (Blacklist)</h3>
-                    <textarea 
-                        className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-xs" 
-                        rows={4}
-                        value={blacklist.join(', ')}
-                        onChange={(e) => setBlacklist(e.target.value.split(',').map(s => s.trim()))}
-                        placeholder="agency, competitor, marketing..."
-                    />
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                {/* OpenRouter Key */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm border-dashed border-2">
                      <h3 className="font-bold mb-2">OpenRouter API Key</h3>
                      <input type="password" value={customApiKey} onChange={e => setCustomApiKey(e.target.value)} className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" placeholder="sk-or-..." />
-                     <div className="flex gap-2">
+                     <div className="flex gap-2 items-center">
                         <button onClick={() => { saveOpenRouterKey(customApiKey); addLog("Key Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save Key</button>
                         <button onClick={handleTestOpenRouter} className="bg-purple-50 text-purple-600 px-4 py-2 rounded text-sm font-bold border border-purple-200">Test Key</button>
+                        {routerStatus && <span className="text-xs font-bold animate-fadeIn">{routerStatus}</span>}
                      </div>
                 </div>
 
+                {/* Blacklist */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                     <h3 className="font-bold mb-2">Data Management</h3>
-                     <div className="flex gap-4">
-                        <button onClick={handleBackup} className="border border-slate-300 dark:border-slate-600 px-4 py-2 rounded text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800">Download Backup</button>
-                        <button onClick={handleDemoLoad} className="text-blue-600 text-sm font-bold hover:underline">Load Demo Data</button>
-                        <button onClick={() => { if(confirm("Are you sure? This will wipe everything.")) { clearStorage(); window.location.reload(); }}} className="text-red-500 text-sm font-bold hover:underline">Factory Reset</button>
-                     </div>
+                    <h3 className="font-bold mb-2">Negative Filter (Blacklist)</h3>
+                    <textarea className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-xs" rows={4} value={blacklist.join(', ')} onChange={(e) => setBlacklist(e.target.value.split(',').map(s => s.trim()))} />
                 </div>
             </div>
         )}

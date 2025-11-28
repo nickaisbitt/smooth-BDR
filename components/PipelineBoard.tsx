@@ -7,10 +7,11 @@ interface Props {
   leads: Lead[];
   onAnalyze: (lead: Lead) => void;
   onMarkContacted?: (lead: Lead) => void;
+  onDeleteLead?: (leadId: string) => void;
   analyzingIds: Set<string>;
 }
 
-export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, analyzingIds }) => {
+export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds }) => {
   const columns = [
     { id: LeadStatus.NEW, label: 'Identified', color: 'bg-slate-100', text: 'text-slate-600' },
     { id: LeadStatus.ANALYZING, label: 'Processing', color: 'bg-yellow-50', text: 'text-yellow-700' },
@@ -40,7 +41,7 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                 </div>
                             )}
                             {colLeads.map(lead => (
-                                <div key={lead.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2">
+                                <div key={lead.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2 relative">
                                     <div className="flex justify-between items-start">
                                         <div className="w-6 h-6 rounded bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-[10px] shrink-0 uppercase">
                                             {lead.companyName.substring(0,1)}
@@ -53,7 +54,7 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                     </div>
                                     
                                     <div>
-                                        <h4 className="font-bold text-slate-800 text-sm leading-tight truncate" title={lead.companyName}>{lead.companyName}</h4>
+                                        <h4 className="font-bold text-slate-800 text-sm leading-tight truncate pr-4" title={lead.companyName}>{lead.companyName}</h4>
                                         <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">{lead.description}</p>
                                     </div>
                                     
@@ -119,6 +120,16 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                             </span>
                                         )}
                                     </div>
+                                    
+                                    {onDeleteLead && (
+                                        <button 
+                                            onClick={() => onDeleteLead(lead.id)} 
+                                            className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Delete"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

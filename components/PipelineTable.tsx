@@ -10,6 +10,8 @@ interface Props {
   onHunt?: (lead: Lead) => void;
   onMarkContacted?: (lead: Lead) => void;
   onAddManualLead?: (lead: Lead) => void;
+  onUpdateLead?: (lead: Lead) => void;
+  onDeleteLead?: (leadId: string) => void;
   analyzingIds: Set<string>;
   onExport?: () => void;
 }
@@ -97,19 +99,35 @@ const EmailSequenceViewer = ({ sequence, decisionMaker, onMarkContacted, lastCon
     );
 };
 
-export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMarkContacted, onAddManualLead, analyzingIds, onExport }) => {
+export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMarkContacted, onAddManualLead, onUpdateLead, onDeleteLead, analyzingIds, onExport }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [page, setPage] = useState(0);
   const ITEMS_PER_PAGE = 50;
 
-  // Pagination Logic
-  const totalPages = Math.ceil(leads.length / ITEMS_PER_PAGE);
-  const displayedLeads = leads.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
+  // Search & Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'ALL'>('ALL');
+
+  // Edit State
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{companyName: string, website: string, description: string}>({companyName:'', website:'', description:''});
 
   // Manual Add State
   const [manualCompany, setManualCompany] = useState('');
   const [manualWebsite, setManualWebsite] = useState('');
   const [manualDesc, setManualDesc] = useState('');
+
+  // Filtering Logic
+  const filteredLeads = leads.filter(l => {
+      const matchesSearch = l.companyName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            l.website.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'ALL' || l.status === statusFilter;
+      return matchesSearch && matchesStatus;
+  });
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredLeads.length / ITEMS_PER_PAGE);
+  const displayedLeads = filteredLeads.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
 
   const handleManualSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -120,28 +138,66 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
       setManualCompany(''); setManualWebsite(''); setManualDesc(''); setIsAdding(false);
   };
 
+  const startEdit = (lead: Lead) => {
+      setEditingLeadId(lead.id);
+      setEditForm({ companyName: lead.companyName, website: lead.website, description: lead.description });
+  };
+
+  const saveEdit = () => {
+      if (editingLeadId && onUpdateLead) {
+          const lead = leads.find(l => l.id === editingLeadId);
+          if (lead) {
+              onUpdateLead({ ...lead, ...editForm });
+          }
+      }
+      setEditingLeadId(null);
+  };
+
   const getStatusBadge = (status: LeadStatus) => {
     const styles = {
         [LeadStatus.NEW]: "bg-slate-100 text-slate-600 border-slate-200",
         [LeadStatus.ANALYZING]: "bg-yellow-100 text-yellow-700 border-yellow-200 animate-pulse",
         [LeadStatus.QUALIFIED]: "bg-green-100 text-green-700 border-green-200",
         [LeadStatus.CONTACTED]: "bg-blue-100 text-blue-700 border-blue-200",
-        [LeadStatus.UNQUALIFIED]: "bg-red-50 text-red-400 border-red-100"
+        [LeadStatus.UNQUALIFIED]: "bg-red-50 text-red-400 border-red-100",
+        [LeadStatus.OPENED]: "bg-purple-100 text-purple-700 border-purple-200 shadow-sm",
+        [LeadStatus.ARCHIVED]: "bg-slate-200 text-slate-500 border-slate-300"
     };
     return <span className={`px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wide ${styles[status]}`}>{status}</span>;
   };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full relative">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
+      {/* Header & Controls */}
+      <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50/50 rounded-t-2xl gap-4">
         <div className="flex items-center gap-3">
              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Prospect Pipeline</h2>
-             <span className="text-xs text-slate-500 font-medium bg-slate-200 px-2 py-0.5 rounded-full">{leads.length}</span>
+             <span className="text-xs text-slate-500 font-medium bg-slate-200 px-2 py-0.5 rounded-full">{filteredLeads.length}</span>
         </div>
-        <div className="flex gap-2">
-            {onAddManualLead && <button onClick={() => setIsAdding(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors">+ Add Lead</button>}
-            {onExport && <button onClick={onExport} className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2 transition-colors">Export CSV</button>}
+
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <input 
+                className="text-xs border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
+                placeholder="Search pipeline..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <select 
+                className="text-xs border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+                <option value="ALL">All Status</option>
+                <option value={LeadStatus.NEW}>New</option>
+                <option value={LeadStatus.QUALIFIED}>Qualified</option>
+                <option value={LeadStatus.CONTACTED}>Contacted</option>
+                <option value={LeadStatus.OPENED}>Opened 👁️</option>
+                <option value={LeadStatus.UNQUALIFIED}>Disqualified</option>
+            </select>
+            <div className="flex gap-2">
+                {onAddManualLead && <button onClick={() => setIsAdding(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors whitespace-nowrap">+ Add</button>}
+                {onExport && <button onClick={onExport} className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2 transition-colors whitespace-nowrap">Export</button>}
+            </div>
         </div>
       </div>
       
@@ -163,6 +219,24 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
           </div>
       )}
 
+      {/* Edit Modal */}
+      {editingLeadId && (
+          <div className="absolute inset-0 bg-white/95 z-40 flex items-center justify-center p-4 rounded-2xl backdrop-blur-sm">
+               <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl p-6 w-full max-w-md animate-fadeIn">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4">Edit Lead Details</h3>
+                  <div className="space-y-3">
+                      <input className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={editForm.companyName} onChange={(e) => setEditForm({...editForm, companyName: e.target.value})} placeholder="Company Name" />
+                      <input className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={editForm.website} onChange={(e) => setEditForm({...editForm, website: e.target.value})} placeholder="Website URL" />
+                      <textarea className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={editForm.description} onChange={(e) => setEditForm({...editForm, description: e.target.value})} placeholder="Notes" rows={2} />
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                      <button onClick={() => setEditingLeadId(null)} className="flex-1 py-2 text-sm font-bold text-slate-500 bg-slate-50 rounded-lg hover:bg-slate-100">Cancel</button>
+                      <button onClick={saveEdit} className="flex-1 py-2 text-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Changes</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Responsive Table/Card View */}
       <div className="flex-1 overflow-y-auto">
         <table className="w-full text-left border-collapse">
@@ -172,7 +246,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
               <th className="px-6 py-3">Fit Score</th>
               <th className="px-6 py-3">Key Contact</th>
               <th className="px-6 py-3">Source</th>
-              <th className="px-6 py-3 text-right">Next Action</th>
+              <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -181,8 +255,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                     <td colSpan={5} className="px-6 py-20 text-center">
                         <div className="flex flex-col items-center justify-center text-slate-300">
                             <svg className="w-12 h-12 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                            <p className="text-sm font-medium">Pipeline is empty.</p>
-                            <p className="text-xs">Start the Agent to find leads.</p>
+                            <p className="text-sm font-medium">No leads match your filter.</p>
                         </div>
                     </td>
                 </tr>
@@ -200,7 +273,12 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                                 {lead.companyName.substring(0,1)}
                             </div>
                             <div className="min-w-0">
-                                <div className="font-bold text-slate-800 text-sm leading-tight mb-0.5 truncate pr-8 md:pr-0">{lead.companyName}</div>
+                                <div className="font-bold text-slate-800 text-sm leading-tight mb-0.5 truncate pr-8 md:pr-0 flex items-center gap-2">
+                                    {lead.companyName}
+                                    <button onClick={() => startEdit(lead)} className="text-slate-300 hover:text-blue-500 hidden group-hover:block" title="Edit">
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                </div>
                                 <a href={lead.website} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline block truncate mb-1">{lead.website}</a>
                                 <p className="text-[10px] text-slate-400 line-clamp-2 md:line-clamp-1 leading-normal">{lead.description}</p>
                             </div>
@@ -257,20 +335,28 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
 
                     {/* Column 5: Action */}
                     <td className="md:px-6 md:py-4 align-top md:text-right mt-4 md:mt-0 border-t md:border-none pt-3 md:pt-0 border-slate-50">
-                        {lead.status === LeadStatus.NEW ? (
-                            <button onClick={() => onAnalyze(lead)} disabled={analyzingIds.has(lead.id)} className="w-full md:w-auto text-xs font-bold bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
-                                {analyzingIds.has(lead.id) ? 'Analyzing...' : 'Analyze'}
-                            </button>
-                        ) : lead.emailSequence && lead.emailSequence.length > 0 ? (
-                            <div className="flex flex-col md:items-end gap-1.5">
-                                <EmailSequenceViewer sequence={lead.emailSequence} decisionMaker={lead.decisionMaker} onMarkContacted={() => onMarkContacted && onMarkContacted(lead)} lastContactedAt={lead.lastContactedAt} />
-                                {lead.activeVariant && (
-                                    <span className="text-[9px] font-bold text-purple-400 px-1">
-                                        Testing Variant {lead.activeVariant}
-                                    </span>
-                                )}
-                            </div>
-                        ) : <span className="hidden md:inline text-slate-300">-</span>}
+                        <div className="flex flex-col md:items-end gap-2">
+                            {lead.status === LeadStatus.NEW ? (
+                                <button onClick={() => onAnalyze(lead)} disabled={analyzingIds.has(lead.id)} className="w-full md:w-auto text-xs font-bold bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
+                                    {analyzingIds.has(lead.id) ? 'Analyzing...' : 'Analyze'}
+                                </button>
+                            ) : lead.emailSequence && lead.emailSequence.length > 0 ? (
+                                <>
+                                    <EmailSequenceViewer sequence={lead.emailSequence} decisionMaker={lead.decisionMaker} onMarkContacted={() => onMarkContacted && onMarkContacted(lead)} lastContactedAt={lead.lastContactedAt} />
+                                    {lead.activeVariant && (
+                                        <span className="text-[9px] font-bold text-purple-400 px-1">
+                                            Testing Variant {lead.activeVariant}
+                                        </span>
+                                    )}
+                                </>
+                            ) : <span className="hidden md:inline text-slate-300">-</span>}
+                            
+                            {onDeleteLead && (
+                                <button onClick={() => onDeleteLead(lead.id)} className="text-slate-300 hover:text-red-500 md:hidden group-hover:inline-block transition-colors" title="Delete Lead">
+                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            )}
+                        </div>
                     </td>
                 </tr>
                 ))

@@ -14,37 +14,31 @@ interface Props {
 
 export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConfig, onClearLogs, onTestAI, onTestEmail }) => {
   const [activeTab, setActiveTab] = useState<'health' | 'logs'>('health');
-  const [storageUsage, setStorageUsage] = useState<number>(0);
+  const [storageBreakdown, setStorageBreakdown] = useState<Record<string, string>>({});
+  const [totalStorage, setTotalStorage] = useState(0);
+  const [latency, setLatency] = useState<string>('Checking...');
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
-  
-  // Advanced Diagnostics State
-  const [latency, setLatency] = useState<string>('Checking...');
-  const [dbIntegrity, setDbIntegrity] = useState<boolean>(true);
-  const [envCheck, setEnvCheck] = useState<boolean>(true);
 
   useEffect(() => {
-    // 1. Calculate LocalStorage usage approximation
+    // 1. Storage Breakdown
     let total = 0;
+    const breakdown: Record<string, string> = {};
     for (let x in localStorage) {
         if (localStorage.hasOwnProperty(x)) {
-            total += ((localStorage[x].length * 2));
+            const size = localStorage[x].length * 2;
+            total += size;
+            breakdown[x] = (size / 1024).toFixed(2) + ' KB';
         }
     }
-    setStorageUsage(total / 1024); // KB
-    
-    // 2. Latency Check (Ping server)
+    setStorageBreakdown(breakdown);
+    setTotalStorage(total / 1024);
+
+    // 2. Latency
     const start = Date.now();
-    fetch('/api/track/status').then(() => {
+    fetch(window.location.origin).then(() => {
         setLatency(`${Date.now() - start}ms`);
     }).catch(() => setLatency('Offline'));
-
-    // 3. Integrity Check
-    try {
-        const leads = JSON.parse(localStorage.getItem('smooth_ai_crm_db_v1') || '[]');
-        if (!Array.isArray(leads)) setDbIntegrity(false);
-    } catch { setDbIntegrity(false); }
-
   }, []);
 
   const runTest = async (name: string, fn: () => Promise<void>) => {
@@ -60,13 +54,10 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
       }
   };
 
-  const getStatusColor = (ok: boolean) => ok ? 'text-green-600 bg-green-50 border-green-200' : 'text-red-600 bg-red-50 border-red-200';
-
   return (
     <div className="bg-slate-50 min-h-screen p-6 animate-fadeIn font-mono">
       <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
             System Diagnostics
           </h1>
           <div className="flex bg-white rounded-lg p-1 border border-slate-200">
@@ -76,89 +67,49 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
       </div>
 
       {activeTab === 'health' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* SYSTEM VITALS */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Vitals</h3>
-                  <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                          <span className="text-sm font-medium text-slate-600">API Latency</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded border ${latency === 'Offline' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                              {latency}
-                          </span>
+                  <div className="space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                          <span className="text-sm font-medium text-slate-600">Client Latency</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded border ${latency === 'Offline' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{latency}</span>
                       </div>
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                          <span className="text-sm font-medium text-slate-600">Storage Usage</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded border ${storageUsage > 4500 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
-                              {storageUsage.toFixed(2)} KB / 5000 KB
-                          </span>
-                      </div>
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                          <span className="text-sm font-medium text-slate-600">Database Integrity</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded border ${dbIntegrity ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                              {dbIntegrity ? 'Valid' : 'Corrupted'}
-                          </span>
-                      </div>
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                          <span className="text-sm font-medium text-slate-600">Total Ops</span>
-                          <span className="text-xs font-bold text-slate-800">{stats?.totalOperations || 0}</span>
+                      <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                          <span className="text-sm font-medium text-slate-600">Total Storage</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded border ${totalStorage > 4500 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'}`}>{totalStorage.toFixed(2)} KB</span>
                       </div>
                       <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-slate-600">Est. Cost</span>
-                          <span className="text-xs font-bold text-slate-800">${((stats?.estimatedCost || 0) / 100).toFixed(4)}</span>
+                          <span className="text-sm font-medium text-slate-600">Environment</span>
+                          <span className="text-xs font-bold text-slate-500">{process.env.NODE_ENV || 'development'}</span>
                       </div>
                   </div>
               </div>
 
-              {/* CONFIG CHECK */}
+              {/* STORAGE BREAKDOWN */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Configuration Status</h3>
-                  <div className="space-y-3">
-                      <div className={`p-3 rounded-lg border flex justify-between items-center ${getStatusColor(!!smtpConfig.host && !!smtpConfig.user)}`}>
-                          <span className="text-xs font-bold flex items-center gap-2">
-                              ✉️ SMTP Bridge
-                          </span>
-                          <span className="text-[10px] uppercase font-bold">{!!smtpConfig.host && !!smtpConfig.user ? 'Configured' : 'Missing'}</span>
-                      </div>
-                      <div className={`p-3 rounded-lg border flex justify-between items-center ${getStatusColor(!!sheetsConfig.scriptUrl)}`}>
-                          <span className="text-xs font-bold flex items-center gap-2">
-                              📊 Google Sheets
-                          </span>
-                          <span className="text-[10px] uppercase font-bold">{!!sheetsConfig.scriptUrl ? 'Connected' : 'Disconnected'}</span>
-                      </div>
-                      <div className={`p-3 rounded-lg border flex justify-between items-center ${getStatusColor(envCheck)}`}>
-                          <span className="text-xs font-bold flex items-center gap-2">
-                              🤖 Gemini API
-                          </span>
-                          <span className="text-[10px] uppercase font-bold">Active</span>
-                      </div>
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Storage Usage</h3>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                      {Object.entries(storageBreakdown).map(([key, size]) => (
+                          <div key={key} className="flex justify-between items-center text-xs">
+                              <span className="text-slate-500 truncate w-40" title={key}>{key.replace('smooth_ai_', '')}</span>
+                              <span className="font-mono font-bold text-slate-700">{size}</span>
+                          </div>
+                      ))}
                   </div>
               </div>
 
               {/* TEST BENCH */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 md:col-span-2">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Diagnostic Tools</h3>
-                  <div className="flex gap-4 items-center">
-                      <button 
-                        onClick={() => runTest('AI Connection', onTestAI)}
-                        disabled={isRunningTest}
-                        className="px-4 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold hover:bg-purple-100 disabled:opacity-50"
-                      >
-                          Test Neural Engine
-                      </button>
-                      <button 
-                        onClick={() => runTest('Email Relay', onTestEmail)}
-                        disabled={isRunningTest}
-                        className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 disabled:opacity-50"
-                      >
-                          Test Email Relay
-                      </button>
-                      
-                      {isRunningTest && <span className="text-xs text-slate-400 animate-pulse">Running diagnostics...</span>}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Test Bench</h3>
+                  <div className="flex flex-col gap-2">
+                      <button onClick={() => runTest('AI Engine', onTestAI)} disabled={isRunningTest} className="w-full py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold hover:bg-purple-100 disabled:opacity-50 text-left px-4">⚡ Test Neural Engine</button>
+                      <button onClick={() => runTest('Email SMTP', onTestEmail)} disabled={isRunningTest} className="w-full py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 disabled:opacity-50 text-left px-4">✉️ Test Email Relay</button>
                       {testResult && (
-                          <span className={`text-xs font-bold px-3 py-1.5 rounded border ${testResult.includes('Passed') ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                          <div className={`mt-2 text-xs font-bold p-2 rounded ${testResult.includes('Passed') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                               {testResult}
-                          </span>
+                          </div>
                       )}
                   </div>
               </div>
@@ -175,14 +126,14 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
                   {logs.length === 0 && <span className="text-slate-600 italic">No logs recorded.</span>}
                   {logs.slice().reverse().map(log => (
                       <div key={log.id} className="flex gap-3 hover:bg-white/5 p-1 rounded">
-                          <span className="text-slate-500 shrink-0">{new Date(log.timestamp).toISOString().split('T')[1].slice(0,8)}</span>
+                          <span className="text-slate-500 shrink-0">{new Date(log.timestamp).toLocaleTimeString()}</span>
                           <span className={`
                               ${log.type === 'error' ? 'text-red-400 font-bold' : ''}
                               ${log.type === 'warning' ? 'text-yellow-400' : ''}
                               ${log.type === 'success' ? 'text-green-400' : ''}
                               ${log.type === 'action' ? 'text-blue-400' : 'text-slate-300'}
                           `}>
-                              [{log.type.toUpperCase()}] {log.message}
+                              {log.message}
                           </span>
                       </div>
                   ))}

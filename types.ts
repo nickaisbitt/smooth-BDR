@@ -21,18 +21,13 @@ export interface GoogleSheetsConfig {
     scriptUrl: string;
 }
 
-export interface IntegrationConfig {
-    webhookUrl?: string;
-    autoSync?: boolean;
-}
-
 export enum LeadStatus {
   NEW = 'NEW',
   ANALYZING = 'ANALYZING',
   QUALIFIED = 'QUALIFIED',
   UNQUALIFIED = 'UNQUALIFIED',
   CONTACTED = 'CONTACTED',
-  OPENED = 'OPENED', // New Status
+  OPENED = 'OPENED',
   ARCHIVED = 'ARCHIVED',
 }
 
@@ -128,6 +123,11 @@ export interface Shortcut {
     key: string;
     label: string;
     action: () => void;
+}
+
+export interface IntegrationConfig {
+    webhookUrl: string;
+    autoSync: boolean;
 }
 
 export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin';
