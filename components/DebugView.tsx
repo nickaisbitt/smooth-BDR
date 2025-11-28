@@ -17,9 +17,14 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
   const [storageUsage, setStorageUsage] = useState<number>(0);
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  
+  // Advanced Diagnostics State
+  const [latency, setLatency] = useState<string>('Checking...');
+  const [dbIntegrity, setDbIntegrity] = useState<boolean>(true);
+  const [envCheck, setEnvCheck] = useState<boolean>(true);
 
   useEffect(() => {
-    // Calculate LocalStorage usage approximation
+    // 1. Calculate LocalStorage usage approximation
     let total = 0;
     for (let x in localStorage) {
         if (localStorage.hasOwnProperty(x)) {
@@ -27,6 +32,19 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
         }
     }
     setStorageUsage(total / 1024); // KB
+    
+    // 2. Latency Check (Ping server)
+    const start = Date.now();
+    fetch('/api/track/status').then(() => {
+        setLatency(`${Date.now() - start}ms`);
+    }).catch(() => setLatency('Offline'));
+
+    // 3. Integrity Check
+    try {
+        const leads = JSON.parse(localStorage.getItem('smooth_ai_crm_db_v1') || '[]');
+        if (!Array.isArray(leads)) setDbIntegrity(false);
+    } catch { setDbIntegrity(false); }
+
   }, []);
 
   const runTest = async (name: string, fn: () => Promise<void>) => {
@@ -64,22 +82,30 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Vitals</h3>
                   <div className="space-y-4">
                       <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                          <span className="text-sm font-medium text-slate-600">API Latency</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded border ${latency === 'Offline' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                              {latency}
+                          </span>
+                      </div>
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                           <span className="text-sm font-medium text-slate-600">Storage Usage</span>
                           <span className={`text-xs font-bold px-2 py-1 rounded border ${storageUsage > 4500 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
                               {storageUsage.toFixed(2)} KB / 5000 KB
                           </span>
                       </div>
                       <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                          <span className="text-sm font-medium text-slate-600">Database Integrity</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded border ${dbIntegrity ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                              {dbIntegrity ? 'Valid' : 'Corrupted'}
+                          </span>
+                      </div>
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                           <span className="text-sm font-medium text-slate-600">Total Ops</span>
                           <span className="text-xs font-bold text-slate-800">{stats?.totalOperations || 0}</span>
                       </div>
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                      <div className="flex justify-between items-center">
                           <span className="text-sm font-medium text-slate-600">Est. Cost</span>
                           <span className="text-xs font-bold text-slate-800">${((stats?.estimatedCost || 0) / 100).toFixed(4)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-slate-600">Version</span>
-                          <span className="text-xs font-bold text-slate-400">v2.6.0-stable</span>
                       </div>
                   </div>
               </div>
@@ -100,7 +126,7 @@ export const DebugView: React.FC<Props> = ({ logs, stats, smtpConfig, sheetsConf
                           </span>
                           <span className="text-[10px] uppercase font-bold">{!!sheetsConfig.scriptUrl ? 'Connected' : 'Disconnected'}</span>
                       </div>
-                      <div className={`p-3 rounded-lg border flex justify-between items-center ${getStatusColor(true)}`}>
+                      <div className={`p-3 rounded-lg border flex justify-between items-center ${getStatusColor(envCheck)}`}>
                           <span className="text-xs font-bold flex items-center gap-2">
                               🤖 Gemini API
                           </span>

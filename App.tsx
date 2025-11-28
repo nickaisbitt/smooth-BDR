@@ -13,7 +13,7 @@ import { QualityControlView } from './components/QualityControlView';
 import { DebugView } from './components/DebugView';
 import { CalendarView } from './components/CalendarView'; // NEW
 import { LinkedInView } from './components/LinkedInView'; // NEW
-import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, withHybridEngine } from './services/geminiService';
+import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, withHybridEngine, testOpenRouterConnection } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
     saveLogs, loadLogs, saveProfile, loadProfile, saveSMTPConfig, loadSMTPConfig,
@@ -47,7 +47,6 @@ function App() {
   const [customApiKey, setCustomApiKey] = useState(() => loadOpenRouterKey());
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig>(() => loadSMTPConfig());
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => loadSheetsConfig());
-  const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(() => loadIntegrationConfig());
   const [blacklist, setBlacklist] = useState<string[]>(() => loadBlacklist());
   const [stats, setStats] = useState<GlobalStats>(() => loadStats());
   
@@ -65,6 +64,9 @@ function App() {
   const isGrowthEngineActiveRef = useRef(isGrowthEngineActive);
   const leadsRef = useRef(leads); 
   const strategyQueueRef = useRef(strategyQueue);
+  
+  // Wake Lock Ref
+  const wakeLockRef = useRef<any>(null);
 
   // Theme Init
   useEffect(() => {
@@ -135,10 +137,36 @@ function App() {
   useEffect(() => { saveBlacklist(blacklist); }, [blacklist]);
   useEffect(() => { saveStats(stats); }, [stats]);
 
-  // Sync Growth Engine Ref
+  // Sync Growth Engine Ref & Handle Wake Lock
   useEffect(() => {
     isGrowthEngineActiveRef.current = isGrowthEngineActive;
-    if (isGrowthEngineActive && cooldownTime === 0) runGrowthCycle();
+    if (isGrowthEngineActive && cooldownTime === 0) {
+        runGrowthCycle();
+        
+        // Request Wake Lock
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+                    addLog("⚡ High Performance Mode: Screen Wake Lock Active", 'success');
+                } catch (err) {
+                    console.warn("Wake Lock Error:", err);
+                }
+            }
+        };
+        requestWakeLock();
+    } else {
+        // Release Wake Lock
+        if (wakeLockRef.current) {
+            wakeLockRef.current.release()
+                .then(() => { wakeLockRef.current = null; })
+                .catch((e: any) => console.log(e));
+        }
+    }
+    
+    return () => {
+        if (wakeLockRef.current) wakeLockRef.current.release();
+    };
   }, [isGrowthEngineActive]);
 
   // Init Cost Callback
@@ -188,6 +216,13 @@ function App() {
       if (success) addLog("Cloud Sync Complete", 'success');
       else addLog("Cloud Sync Failed", 'error');
   };
+
+  const handleTestSheets = async () => {
+      if (!sheetsConfig.scriptUrl) { alert("Please enter a Script URL first."); return; }
+      const success = await saveLeadsToSheet(sheetsConfig.scriptUrl, []);
+      if (success) alert("✅ Connection Successful! App can talk to Google Sheet.");
+      else alert("❌ Connection Failed. Check URL or Permissions.");
+  }
   
   const handleCloudLoad = async () => {
       if (!confirm("This will overwrite your local data with Cloud data. Continue?")) return;
@@ -216,17 +251,32 @@ function App() {
       });
   };
 
+  const handleTestOpenRouter = async () => {
+      try {
+          const success = await testOpenRouterConnection();
+          if (success) alert("✅ OpenRouter Key is Valid!");
+          else alert("❌ OpenRouter Test Failed.");
+      } catch (e: any) {
+          alert(`❌ Error: ${e.message}`);
+      }
+  };
+
   const handleTestEmail = async () => {
-      const result = await sendViaServer(
-          smtpConfig,
-          'test_id',
-          serviceProfile.senderName || "Test",
-          "Test Email from Smooth AI",
-          "This is a diagnostic test email.",
-          serviceProfile.senderName || "System",
-          serviceProfile.contactEmail
-      );
-      if (!result) throw new Error("SMTP Send returned false");
+      try {
+        const result = await sendViaServer(
+            smtpConfig,
+            'test_id',
+            serviceProfile.senderName || "Test",
+            "Test Email from Smooth AI",
+            "This is a diagnostic test email.",
+            serviceProfile.senderName || "System",
+            serviceProfile.contactEmail
+        );
+        if (result) alert("✅ Email Sent Successfully! Check your inbox.");
+        else alert("❌ Email Send Failed. Check Server Logs.");
+      } catch (e: any) {
+          alert(`❌ Error: ${e.message}`);
+      }
   };
 
   const handleAnalyze = async (lead: Lead, isBackground = false): Promise<boolean> => {
@@ -256,12 +306,6 @@ function App() {
               }
           }
           lead.activeVariant = variant;
-          
-          // Auto-Sync Webhook
-          if (integrationConfig.webhookUrl && integrationConfig.autoSync) {
-             syncLeadToWebhook({ ...lead, analysis, decisionMaker: dm, techStack, triggers, emailSequence, status: LeadStatus.QUALIFIED }, integrationConfig.webhookUrl); 
-          }
-
       } else {
           addLog(`Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
       }
@@ -417,6 +461,12 @@ function App() {
                                 {isGrowthEngineActive ? 'STOP NEURAL AGENT' : 'START GROWTH ENGINE'}
                             </button>
                         )}
+                        {isGrowthEngineActive && (
+                             <div className="text-[10px] text-green-500 font-mono text-center flex justify-center items-center gap-1">
+                                 <svg className="w-3 h-3 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                 HIGH PERFORMANCE MODE ACTIVE
+                             </div>
+                        )}
                         {consecutiveFailures > 0 && (
                             <div className="text-[10px] text-red-500 font-bold text-center animate-pulse">
                                 Warning: {consecutiveFailures}/3 Failures Detected
@@ -511,23 +561,12 @@ function App() {
                 {/* Cloud Sync */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="font-bold mb-2">Cloud Integrations</h3>
-                    
-                    {/* Webhook */}
-                    <div className="mb-4">
-                        <label className="text-xs font-bold text-slate-500 block mb-1">Webhook URL (Zapier/n8n)</label>
-                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm mb-1" value={integrationConfig.webhookUrl || ''} onChange={e => setIntegrationConfig({...integrationConfig, webhookUrl: e.target.value})} placeholder="https://hooks.zapier.com/..." />
-                        <label className="flex items-center gap-2">
-                            <input type="checkbox" checked={integrationConfig.autoSync || false} onChange={e => setIntegrationConfig({...integrationConfig, autoSync: e.target.checked})} />
-                            <span className="text-xs">Auto-Sync Qualified Leads</span>
-                        </label>
-                        <button onClick={() => { saveIntegrationConfig(integrationConfig); addLog("Webhook Saved", 'success'); }} className="mt-2 text-xs font-bold text-blue-500 hover:underline">Save Webhook</button>
-                    </div>
-
                     <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
                          <label className="text-xs font-bold text-slate-500 block mb-1">Google Sheets Script URL</label>
                          <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm mb-2" value={sheetsConfig.scriptUrl} onChange={e => setSheetsConfig({scriptUrl: e.target.value})} placeholder="https://script.google.com/..." />
                          <div className="flex gap-2">
                             <button onClick={() => { saveSheetsConfig(sheetsConfig); addLog("Sheets Config Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold">Save</button>
+                            <button onClick={handleTestSheets} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-xs font-bold border border-blue-200">Test Connection</button>
                             <button onClick={handleCloudSync} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold">Sync to Cloud</button>
                             <button onClick={handleCloudLoad} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-bold">Load from Cloud</button>
                          </div>
@@ -549,7 +588,7 @@ function App() {
                         <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="https://your-site.com" value={smtpConfig.publicUrl || ''} onChange={e => setSmtpConfig({...smtpConfig, publicUrl: e.target.value})} />
                      </div>
                      <div className="flex gap-2">
-                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
+                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); alert("✅ Settings Saved"); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
                          <button onClick={handleTestEmail} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
                      </div>
                 </div>
@@ -568,7 +607,10 @@ function App() {
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                      <h3 className="font-bold mb-2">OpenRouter API Key</h3>
                      <input type="password" value={customApiKey} onChange={e => setCustomApiKey(e.target.value)} className="w-full border dark:border-slate-700 bg-transparent p-2 rounded mb-2 text-sm" placeholder="sk-or-..." />
-                     <button onClick={() => { saveOpenRouterKey(customApiKey); addLog("Key Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save Key</button>
+                     <div className="flex gap-2">
+                        <button onClick={() => { saveOpenRouterKey(customApiKey); addLog("Key Saved", 'success'); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save Key</button>
+                        <button onClick={handleTestOpenRouter} className="bg-purple-50 text-purple-600 px-4 py-2 rounded text-sm font-bold border border-purple-200">Test Key</button>
+                     </div>
                 </div>
 
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">

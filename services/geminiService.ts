@@ -61,7 +61,14 @@ function extractJson(text: string): any {
             try {
                 return JSON.parse(cleanText);
             } catch (e2) {
-                console.warn("JSON Parse Failed even after cleanup:", cleanText);
+                // 4. Aggressive Cleanup for "Laziness" (e.g. "type": "hiring"|"news")
+                // This regex removes the |"news" part if the AI blindly copied the prompt structure
+                const aggressiveClean = cleanText.replace(/"hiring"\|"news"/g, '"hiring"'); 
+                try {
+                     return JSON.parse(aggressiveClean);
+                } catch (e3) {
+                     console.warn("JSON Parse Failed even after cleanup:", cleanText);
+                }
             }
         }
         
@@ -153,6 +160,16 @@ async function callOpenRouter(model: string, messages: { role: string, content: 
         throw e;
     }
 }
+
+export const testOpenRouterConnection = async (): Promise<boolean> => {
+    try {
+        const result = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: "ping" }], false);
+        return !!result;
+    } catch (e) {
+        console.error("OpenRouter Test Failed", e);
+        throw e;
+    }
+};
 
 // --- SERVICES ---
 
@@ -270,7 +287,7 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
 };
 
 export const findDecisionMaker = async (companyName: string, website: string): Promise<DecisionMaker | null> => {
-    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL" }. If not found, guess based on 'About Us' page or return null.`;
+    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL", "email": "guess@company.com" }. If not found, guess based on 'About Us' page or return null.`;
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");
@@ -286,7 +303,7 @@ export const findDecisionMaker = async (companyName: string, website: string): P
 };
 
 export const findTriggers = async (companyName: string, website: string): Promise<TriggerEvent[]> => {
-    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). Return JSON Array: [{ "type": "hiring"|"news", "description": "Hiring 3 admins", "sourceUrl": "url" }]`;
+    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). Return JSON Array: [{ "type": "hiring", "description": "Hiring 3 admins", "sourceUrl": "url" }]. If no hiring, look for "news". Choose ONE type.`;
     return withHybridEngine(
         async () => {
              if (!apiKey) throw new Error("API Key missing");

@@ -29,6 +29,7 @@ export const sendViaServer = async (
     const targetEmail = recipientEmail || "hello@smoothaiconsultancy.com"; 
 
     try {
+        console.log(`Sending email via server to ${targetEmail}...`);
         const response = await fetch('/api/send-email', {
             method: 'POST',
             headers: {
@@ -51,6 +52,7 @@ export const sendViaServer = async (
 
         if (response.ok && data.success) {
             lastSentTimestamp = Date.now(); // Update timestamp on success
+            console.log("Email sent successfully", data);
             return true;
         } else {
             console.error("SMTP Send Failed:", data.error);
