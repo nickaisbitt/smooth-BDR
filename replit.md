@@ -100,6 +100,31 @@ This is an AI-powered Business Development Representative (BDR) application that
     - `/api/automation/process-replies` - Analyze replies
     - And more...
 
+### Research-First Email Pipeline (NEW)
+33. Created `services/researchService.js` - Real web scraping to extract ACTUAL company data
+    - Uses axios + cheerio for website scraping
+    - Extracts: title, meta description, headings, main content, about pages
+    - Searches Google News RSS for recent company news
+    - AI analyzes scraped data to generate insights and personalized hooks
+34. Added research quality scoring (1-10 scale):
+    - Score >= 5: Email generation allowed
+    - Score < 5: Email blocked until more research available
+35. Server-side quality gate in `queueEmailForLead()` prevents low-quality emails
+36. Research API endpoints:
+    - `/api/research/conduct` - Full research pipeline (scrape + news + AI analysis)
+    - `/api/research/scrape` - Quick website scrape
+    - `/api/research/generate-email` - Generate email using research data
+37. Updated Growth Engine (`handleAnalyze` in App.tsx):
+    - Runs real research before qualifying leads
+    - Stores research data on Lead objects
+    - Only queues emails if research quality >= 5/10
+38. Added Email Review Queue in System Status:
+    - Click pending emails to preview and edit subject/body
+    - Approve & Send or Remove from Queue
+    - Shows research quality score for each email
+39. Added ResearchData interface to types.ts
+40. Database migrations: Added `research_quality`, `approved_by`, `approved_at` columns to email_queue
+
 ## Configuration
 
 ### Development Environment

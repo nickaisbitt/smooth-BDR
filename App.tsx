@@ -435,15 +435,80 @@ function App() {
     if (!isBackground) setAnalyzingIds(prev => new Set(prev).add(lead.id));
 
     try {
+      addLog(`🔍 Researching ${lead.companyName}...`, 'action');
+      
+      let research: any = null;
+      let researchQuality = 0;
+      
+      try {
+        const researchRes = await fetch('/api/research/conduct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyName: lead.companyName,
+            websiteUrl: lead.website,
+            serviceProfile
+          })
+        });
+        
+        if (researchRes.ok) {
+          const researchData = await researchRes.json();
+          research = researchData.research;
+          researchQuality = researchData.quality || 0;
+          addLog(`📊 Research complete for ${lead.companyName}: Quality ${researchQuality}/10`, researchQuality >= 5 ? 'success' : 'warning');
+        } else {
+          addLog(`⚠️ Research failed for ${lead.companyName}, proceeding with basic analysis`, 'warning');
+        }
+      } catch (researchErr) {
+        console.error("Research error:", researchErr);
+        addLog(`⚠️ Research unavailable for ${lead.companyName}`, 'warning');
+      }
+
       const { analysis, techStack } = await analyzeLeadFitness(lead, serviceProfile);
       
       let dm: any = null, triggers: any[] = [], emailSequence: any[] = [];
 
       if (analysis.score > 60) {
-          addLog(`Qualified ${lead.companyName} (${analysis.score}). Deep diving...`, 'success');
+          addLog(`✅ Qualified ${lead.companyName} (${analysis.score}). Deep diving...`, 'success');
           dm = await findDecisionMaker(lead.companyName, lead.website);
           triggers = await findTriggers(lead.companyName, lead.website);
-          emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
+          
+          if (researchQuality >= 5 && research) {
+            addLog(`📝 Generating research-backed email for ${lead.companyName}...`, 'action');
+            try {
+              const emailRes = await fetch('/api/research/generate-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  lead: { ...lead, decisionMaker: dm, techStack },
+                  research,
+                  serviceProfile
+                })
+              });
+              
+              if (emailRes.ok) {
+                const emailData = await emailRes.json();
+                emailSequence = [{
+                  subject: emailData.email.subject,
+                  body: emailData.email.body,
+                  delayDays: 0,
+                  context: 'Research-Backed Initial Outreach',
+                  usedFacts: emailData.email.usedFacts,
+                  angle: emailData.email.angle
+                }];
+                addLog(`✉️ Research-backed email generated using ${emailData.email.usedFacts?.length || 0} real facts`, 'success');
+              } else {
+                const errData = await emailRes.json();
+                addLog(`⚠️ Email gen failed: ${errData.error}. Using fallback.`, 'warning');
+                emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
+              }
+            } catch (emailErr) {
+              console.error("Research email generation error:", emailErr);
+              emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
+            }
+          } else {
+            addLog(`⚠️ Research quality too low (${researchQuality}/10) - NOT queueing email for ${lead.companyName}`, 'warning');
+          }
           
           const variant = Math.random() > 0.5 ? 'B' : 'A';
           if (emailSequence.length > 0 && emailSequence[0].alternativeSubject) {
@@ -456,29 +521,32 @@ function App() {
           }
           lead.activeVariant = variant;
           
-          if (dm?.email && emailSequence.length > 0) {
+          if (dm?.email && emailSequence.length > 0 && researchQuality >= 5) {
             try {
               await fetch('/api/automation/queue-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  lead: { ...lead, decisionMaker: dm, emailSequence },
+                  lead: { ...lead, decisionMaker: dm, emailSequence, research, researchQuality },
                   emailDraft: emailSequence[0],
                   sequenceStep: 0,
                   delayMinutes: 0
                 })
               });
-              addLog(`📧 Auto-queued email for ${lead.companyName}`, 'success');
+              addLog(`📧 Auto-queued research-backed email for ${lead.companyName}`, 'success');
             } catch (e) {
               console.error("Failed to auto-queue email:", e);
             }
+          } else if (dm?.email && researchQuality < 5) {
+            addLog(`🚫 Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below threshold`, 'warning');
           }
       } else {
-          addLog(`Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
+          addLog(`❌ Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
       }
 
       setLeads(prev => prev.map(l => l.id === lead.id ? {
         ...l, analysis, decisionMaker: dm, techStack, triggers, emailSequence,
+        research, researchQuality,
         status: analysis.score > 60 ? LeadStatus.QUALIFIED : LeadStatus.UNQUALIFIED,
         lastUpdated: Date.now(),
         activeVariant: lead.activeVariant 

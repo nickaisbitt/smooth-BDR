@@ -49,7 +49,10 @@ export async function initAutomationTables(db) {
       attempts INTEGER DEFAULT 0,
       last_error TEXT,
       created_at INTEGER,
-      sent_at INTEGER
+      sent_at INTEGER,
+      research_quality INTEGER DEFAULT 0,
+      approved_by TEXT,
+      approved_at INTEGER
     );
     
     CREATE TABLE IF NOT EXISTS reply_analysis (
@@ -231,15 +234,23 @@ export async function checkDailyLimitReset(db) {
 }
 
 export async function queueEmailForLead(db, lead, emailDraft, sequenceStep = 0, delayMinutes = 0) {
+  const researchQuality = lead.researchQuality || 0;
+  
+  if (researchQuality < 5) {
+    await logAutomation(db, 'QUEUE_BLOCKED', `Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below minimum threshold`, { leadId: lead.id, researchQuality });
+    return { success: false, reason: 'Research quality too low', researchQuality };
+  }
+  
   const scheduledFor = Date.now() + (delayMinutes * 60 * 1000);
   
   await db.run(
-    `INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, sequence_step, scheduled_for, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-    [lead.id, lead.companyName, lead.decisionMaker?.email || '', emailDraft.subject, emailDraft.body, sequenceStep, scheduledFor, Date.now()]
+    `INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, sequence_step, scheduled_for, status, created_at, research_quality)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    [lead.id, lead.companyName, lead.decisionMaker?.email || '', emailDraft.subject, emailDraft.body, sequenceStep, scheduledFor, Date.now(), researchQuality]
   );
   
-  await logAutomation(db, 'EMAIL_QUEUED', `Queued email for ${lead.companyName}`, { leadId: lead.id, step: sequenceStep });
+  await logAutomation(db, 'EMAIL_QUEUED', `Queued email for ${lead.companyName} (research quality: ${researchQuality}/10)`, { leadId: lead.id, step: sequenceStep, researchQuality });
+  return { success: true };
 }
 
 export async function processPendingEmails(db, smtpConfig, nodemailer) {

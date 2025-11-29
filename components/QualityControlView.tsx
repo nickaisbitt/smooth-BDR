@@ -54,19 +54,30 @@ export const QualityControlView: React.FC<Props> = ({ leads, onApprove, onReject
                                     "{lead.analysis?.reasoning}"
                                 </div>
                                 
-                                {lead.decisionMaker ? (
+                                {lead.decisionMaker?.name ? (
                                     <div className="flex items-center gap-3 bg-purple-50 p-2 rounded-lg border border-purple-100">
                                         <div className="w-8 h-8 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-bold">
-                                            {lead.decisionMaker.name[0]}
+                                            {lead.decisionMaker.name.charAt(0) || '?'}
                                         </div>
                                         <div className="text-xs">
                                             <span className="font-bold text-slate-700 block">{lead.decisionMaker.name}</span>
-                                            <span className="text-slate-500">{lead.decisionMaker.role}</span>
+                                            <span className="text-slate-500">{lead.decisionMaker.role || 'Unknown Role'}</span>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="text-xs text-orange-500 font-bold bg-orange-50 p-2 rounded border border-orange-100">
-                                        ⚠️ No Decision Maker Found
+                                        No Decision Maker Found
+                                    </div>
+                                )}
+                                
+                                {lead.researchQuality !== undefined && (
+                                    <div className={`text-xs font-bold p-2 rounded border ${
+                                        (lead.researchQuality || 0) >= 5 
+                                            ? 'text-green-600 bg-green-50 border-green-100'
+                                            : 'text-orange-500 bg-orange-50 border-orange-100'
+                                    }`}>
+                                        Research Quality: {lead.researchQuality}/10
+                                        {(lead.researchQuality || 0) < 5 && ' (Email blocked)'}
                                     </div>
                                 )}
 

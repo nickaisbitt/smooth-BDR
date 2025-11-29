@@ -112,6 +112,23 @@ export interface TriggerEvent {
     sourceUrl?: string;
 }
 
+export interface ResearchData {
+    companyOverview: string;
+    industryVertical: string;
+    keyServices: string[];
+    potentialPainPoints: string[];
+    recentTriggers: string[];
+    personalizedHooks: string[];
+    keyPeople: string[];
+    competitiveAdvantage: string;
+    outreachAngle: string;
+    researchQuality: number;
+    websiteScrapedAt?: number;
+    newsFoundAt?: number;
+    rawWebsiteContent?: string;
+    newsArticles?: { title: string; link: string; pubDate: string }[];
+}
+
 export interface EmailDraft {
     subject: string;
     body: string;
@@ -142,6 +159,10 @@ export interface Lead {
   // Enrichment Data
   decisionMaker?: DecisionMaker;
   techStack?: string[];
+  
+  // Research Data (from real web scraping)
+  research?: ResearchData;
+  researchQuality?: number;
   
   // A/B Test Tracking
   activeVariant?: 'A' | 'B'; 

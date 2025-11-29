@@ -30,11 +30,13 @@ interface QueueEmail {
   lead_name: string;
   to_email: string;
   subject: string;
+  body?: string;
   sequence_step: number;
   scheduled_for: number;
   status: string;
   sent_at?: number;
   last_error?: string;
+  research_quality?: number;
 }
 
 interface Props {
@@ -49,6 +51,8 @@ export const SystemStatusView: React.FC<Props> = ({ smtpConfig, leads }) => {
   const [error, setError] = useState('');
   const [dailyLimit, setDailyLimit] = useState(50);
   const [activeTab, setActiveTab] = useState<'overview' | 'queue' | 'replies' | 'logs'>('overview');
+  const [selectedEmail, setSelectedEmail] = useState<QueueEmail | null>(null);
+  const [editingEmail, setEditingEmail] = useState<{ subject: string; body: string } | null>(null);
 
   const fetchStats = async () => {
     try {
@@ -173,6 +177,46 @@ export const SystemStatusView: React.FC<Props> = ({ smtpConfig, leads }) => {
     } catch (e) {
       setError('Failed to retry');
     }
+  };
+
+  const approveEmail = async (emailId: number) => {
+    setLoading(true);
+    try {
+      const updates = editingEmail || {};
+      const res = await fetch(`/api/automation/approve-email/${emailId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        await fetchQueue();
+        setSelectedEmail(null);
+        setEditingEmail(null);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to approve');
+      }
+    } catch (e) {
+      setError('Failed to approve email');
+    }
+    setLoading(false);
+  };
+
+  const rejectEmail = async (emailId: number) => {
+    if (!confirm('Remove this email from the queue?')) return;
+    try {
+      await fetch(`/api/automation/queue/${emailId}`, { method: 'DELETE' });
+      await fetchQueue();
+      setSelectedEmail(null);
+      setEditingEmail(null);
+    } catch (e) {
+      setError('Failed to remove email');
+    }
+  };
+
+  const openEmailPreview = (email: QueueEmail) => {
+    setSelectedEmail(email);
+    setEditingEmail({ subject: email.subject, body: email.body || '' });
   };
 
   const formatTime = (ts: number) => {
@@ -394,17 +438,86 @@ export const SystemStatusView: React.FC<Props> = ({ smtpConfig, leads }) => {
 
       {activeTab === 'queue' && (
         <div className="space-y-6">
+          {selectedEmail && editingEmail && (
+            <div className="bg-white rounded-xl p-5 border-2 border-blue-200 shadow-lg">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg">Review Email</h3>
+                  <p className="text-sm text-slate-500">To: {selectedEmail.to_email} ({selectedEmail.lead_name})</p>
+                </div>
+                <button 
+                  onClick={() => { setSelectedEmail(null); setEditingEmail(null); }}
+                  className="text-slate-400 hover:text-slate-600 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {selectedEmail.research_quality !== undefined && (
+                <div className={`mb-4 p-2 rounded text-sm font-medium ${
+                  (selectedEmail.research_quality || 0) >= 5 
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-orange-50 text-orange-700 border border-orange-200'
+                }`}>
+                  Research Quality: {selectedEmail.research_quality}/10
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={editingEmail.subject}
+                    onChange={(e) => setEditingEmail({ ...editingEmail, subject: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Body</label>
+                  <textarea
+                    value={editingEmail.body}
+                    onChange={(e) => setEditingEmail({ ...editingEmail, body: e.target.value })}
+                    rows={10}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => rejectEmail(selectedEmail.id)}
+                  className="flex-1 py-2.5 border border-red-200 text-red-600 bg-red-50 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors"
+                >
+                  Remove from Queue
+                </button>
+                <button
+                  onClick={() => approveEmail(selectedEmail.id)}
+                  disabled={loading}
+                  className="flex-1 py-2.5 bg-green-500 text-white rounded-lg text-sm font-bold hover:bg-green-600 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Sending...' : 'Approve & Send Now'}
+                </button>
+              </div>
+            </div>
+          )}
+          
           <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
               <Clock className="w-5 h-5 text-yellow-500" />
               Pending Emails ({queue.pending.length})
+              <span className="ml-auto text-xs text-slate-400">Click to review</span>
             </h3>
             {queue.pending.length === 0 ? (
               <p className="text-slate-400 text-sm italic text-center py-8">No emails in queue</p>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {queue.pending.map(email => (
-                  <div key={email.id} className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
+                  <div 
+                    key={email.id} 
+                    onClick={() => openEmailPreview(email)}
+                    className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg cursor-pointer hover:bg-yellow-100 transition-colors"
+                  >
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-800 truncate">{email.lead_name}</p>
                       <p className="text-sm text-slate-500 truncate">{email.subject}</p>
@@ -413,6 +526,9 @@ export const SystemStatusView: React.FC<Props> = ({ smtpConfig, leads }) => {
                       <p className="text-xs text-slate-400">Step {email.sequence_step + 1}</p>
                       <p className="text-xs text-yellow-600">Scheduled: {formatTime(email.scheduled_for)}</p>
                     </div>
+                    <button className="shrink-0 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                      Review
+                    </button>
                   </div>
                 ))}
               </div>

@@ -23,6 +23,11 @@ import {
   categorizeReply,
   generateAutoResponse
 } from './services/automationService.js';
+import {
+  conductFullResearch,
+  formatResearchForEmail,
+  scrapeWebsite
+} from './services/researchService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -102,6 +107,21 @@ let db;
             CREATE INDEX IF NOT EXISTS idx_email_messages_from_email ON email_messages(from_email);
         `);
         console.log("✅ SQLite Database Initialized");
+        
+        // Migration: Add research_quality column to email_queue if it doesn't exist
+        try {
+            await db.run('ALTER TABLE email_queue ADD COLUMN research_quality INTEGER DEFAULT 0');
+            console.log("✅ Added research_quality column to email_queue");
+        } catch (e) {
+            // Column likely already exists
+        }
+        try {
+            await db.run('ALTER TABLE email_queue ADD COLUMN approved_by TEXT');
+            await db.run('ALTER TABLE email_queue ADD COLUMN approved_at INTEGER');
+            console.log("✅ Added approval columns to email_queue");
+        } catch (e) {
+            // Columns likely already exist
+        }
         
         // Auto-configure Hostinger email from environment variables
         const hostingerUser = process.env.HOSTINGER_EMAIL_USERNAME;
@@ -643,7 +663,7 @@ app.post('/api/automation/daily-limit', async (req, res) => {
     }
 });
 
-// POST /api/automation/queue-email - Queue an email for sending
+// POST /api/automation/queue-email - Queue an email for sending (with server-side quality gate)
 app.post('/api/automation/queue-email', async (req, res) => {
     const { lead, emailDraft, sequenceStep, delayMinutes } = req.body;
     
@@ -652,7 +672,16 @@ app.post('/api/automation/queue-email', async (req, res) => {
     }
     
     try {
-        await queueEmailForLead(db, lead, emailDraft, sequenceStep || 0, delayMinutes || 0);
+        const result = await queueEmailForLead(db, lead, emailDraft, sequenceStep || 0, delayMinutes || 0);
+        
+        if (!result.success) {
+            return res.status(400).json({ 
+                error: result.reason, 
+                researchQuality: result.researchQuality,
+                message: `Email blocked: research quality ${result.researchQuality}/10 is below the required minimum of 5/10`
+            });
+        }
+        
         res.json({ success: true, message: "Email queued successfully" });
     } catch (error) {
         console.error("Queue Email Error:", error);
@@ -764,6 +793,80 @@ app.get('/api/automation/logs', async (req, res) => {
     }
 });
 
+// POST /api/automation/approve-email/:id - Approve and send a specific email immediately
+app.post('/api/automation/approve-email/:id', async (req, res) => {
+    const { id } = req.params;
+    const { subject, body } = req.body;
+    
+    if (!cachedSmtpConfig || !cachedSmtpConfig.host) {
+        return res.status(400).json({ error: "SMTP not configured. Go to Settings > Email Configuration." });
+    }
+    
+    try {
+        const email = await db.get('SELECT * FROM email_queue WHERE id = ? AND status = ?', [id, 'pending']);
+        if (!email) {
+            return res.status(404).json({ error: "Email not found or already processed" });
+        }
+        
+        if (subject || body) {
+            await db.run(
+                'UPDATE email_queue SET subject = COALESCE(?, subject), body = COALESCE(?, body), approved_by = ?, approved_at = ? WHERE id = ?',
+                [subject || null, body || null, 'manual_review', Date.now(), id]
+            );
+        } else {
+            await db.run(
+                'UPDATE email_queue SET approved_by = ?, approved_at = ? WHERE id = ?',
+                ['manual_review', Date.now(), id]
+            );
+        }
+        
+        const updatedEmail = await db.get('SELECT * FROM email_queue WHERE id = ?', [id]);
+        
+        const transporter = nodemailer.createTransport({
+            host: cachedSmtpConfig.host,
+            port: parseInt(cachedSmtpConfig.port) || 465,
+            secure: true,
+            auth: {
+                user: cachedSmtpConfig.user,
+                pass: cachedSmtpConfig.pass
+            }
+        });
+        
+        let htmlBody = updatedEmail.body?.replace(/\n/g, '<br>') || '';
+        if (cachedSmtpConfig.publicUrl) {
+            htmlBody += `<img src="${cachedSmtpConfig.publicUrl}/api/track/open/${updatedEmail.lead_id}" width="1" height="1" style="display:none" />`;
+        }
+        
+        await transporter.sendMail({
+            from: cachedSmtpConfig.user,
+            to: updatedEmail.to_email,
+            subject: updatedEmail.subject,
+            text: updatedEmail.body,
+            html: htmlBody
+        });
+        
+        await db.run(
+            'UPDATE email_queue SET status = ?, sent_at = ? WHERE id = ?',
+            ['sent', Date.now(), id]
+        );
+        
+        await logAutomation(db, 'EMAIL_APPROVED_SENT', `Manually reviewed & sent: ${updatedEmail.subject} to ${updatedEmail.to_email}`, { leadName: updatedEmail.lead_name, approvedBy: 'manual_review' });
+        
+        res.json({ success: true, message: 'Email approved and sent successfully' });
+    } catch (error) {
+        console.error("Approve Email Error:", error);
+        
+        await db.run(
+            'UPDATE email_queue SET status = ?, last_error = ?, attempts = attempts + 1 WHERE id = ?',
+            ['failed', error.message, id]
+        );
+        
+        await logAutomation(db, 'EMAIL_SEND_FAILED', `Failed to send approved email: ${error.message}`, { emailId: id, error: error.message });
+        
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // DELETE /api/automation/queue/:id - Remove email from queue
 app.delete('/api/automation/queue/:id', async (req, res) => {
     const { id } = req.params;
@@ -787,6 +890,141 @@ app.post('/api/automation/retry-failed', async (req, res) => {
         res.json({ success: true, retriedCount: count?.count || 0 });
     } catch (error) {
         console.error("Retry Failed Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ RESEARCH API ENDPOINTS ============
+
+// POST /api/research/conduct - Conduct full research on a company
+app.post('/api/research/conduct', async (req, res) => {
+    const { companyName, websiteUrl, serviceProfile } = req.body;
+    
+    if (!companyName || !websiteUrl) {
+        return res.status(400).json({ error: "Company name and website URL are required" });
+    }
+    
+    try {
+        console.log(`🔍 API: Starting research for ${companyName}`);
+        const research = await conductFullResearch(companyName, websiteUrl, serviceProfile);
+        
+        const formatted = formatResearchForEmail(research);
+        
+        res.json({
+            success: research.researchQuality >= 5,
+            research,
+            formatted,
+            quality: research.researchQuality,
+            message: research.researchQuality >= 5 
+                ? `Research complete with quality score ${research.researchQuality}/10`
+                : `Research quality too low (${research.researchQuality}/10). Need more data before emailing.`
+        });
+    } catch (error) {
+        console.error("Research Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/research/scrape - Quick scrape of a single URL
+app.post('/api/research/scrape', async (req, res) => {
+    const { url } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: "URL is required" });
+    }
+    
+    try {
+        const result = await scrapeWebsite(url);
+        res.json(result);
+    } catch (error) {
+        console.error("Scrape Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/research/generate-email - Generate email with research data
+app.post('/api/research/generate-email', async (req, res) => {
+    const { lead, research, serviceProfile } = req.body;
+    
+    if (!lead || !research) {
+        return res.status(400).json({ error: "Lead and research data are required" });
+    }
+    
+    if (research.researchQuality < 5) {
+        return res.status(400).json({ 
+            error: "Research quality too low. Must be at least 5/10 to generate email.",
+            quality: research.researchQuality
+        });
+    }
+    
+    try {
+        const prompt = `You are an expert B2B cold email copywriter. Write a highly personalized email based on REAL research data.
+
+CRITICAL RULES:
+1. ONLY reference facts from the research data below - never make things up
+2. The email must mention at least 2 specific facts about the company
+3. Keep it under 100 words
+4. Be conversational, not salesy
+5. End with a soft call-to-action (question, not demand)
+
+RECIPIENT COMPANY:
+Name: ${lead.companyName}
+Website: ${lead.website}
+
+RESEARCH DATA (USE THIS - IT'S REAL):
+Company Overview: ${research.companyOverview || research.aiAnalysis?.companyOverview}
+Industry: ${research.industryVertical || research.aiAnalysis?.industryVertical}
+Their Services: ${JSON.stringify(research.keyServices || research.aiAnalysis?.keyServices)}
+Pain Points Identified: ${JSON.stringify(research.potentialPainPoints || research.aiAnalysis?.potentialPainPoints)}
+Recent Triggers/News: ${JSON.stringify(research.recentTriggers || research.aiAnalysis?.recentTriggers)}
+Best Outreach Angle: ${research.outreachAngle || research.aiAnalysis?.outreachAngle}
+Personalized Hooks: ${JSON.stringify(research.personalizedHooks || research.aiAnalysis?.personalizedHooks)}
+Key People: ${JSON.stringify(research.keyPeople || research.aiAnalysis?.keyPeople)}
+
+CONTACT:
+Name: ${lead.decisionMaker?.name || 'there'}
+Role: ${lead.decisionMaker?.role || 'Decision Maker'}
+
+OUR SERVICE:
+${serviceProfile?.description || 'AI-powered automation solutions that help businesses streamline operations'}
+
+Value Proposition: ${serviceProfile?.valueProposition || 'Reduce manual work by 70% and free up time for strategic initiatives'}
+
+Sender Name: ${serviceProfile?.senderName || 'Nick'}
+
+Return a JSON object:
+{
+  "subject": "Short, personalized subject referencing something specific about them",
+  "body": "The email body with specific references to their company/situation",
+  "usedFacts": ["list", "of", "specific", "facts", "from", "research", "used", "in", "email"],
+  "angle": "The approach taken"
+}
+
+Return ONLY valid JSON.`;
+
+        const response = await openrouter.chat.completions.create({
+            model: "meta-llama/llama-3.3-70b-instruct",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 800
+        });
+
+        const content = response.choices[0]?.message?.content || '';
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            throw new Error('Failed to generate valid email');
+        }
+        
+        const emailDraft = JSON.parse(jsonMatch[0]);
+        
+        res.json({
+            success: true,
+            email: emailDraft,
+            researchQuality: research.researchQuality
+        });
+    } catch (error) {
+        console.error("Email Generation Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
