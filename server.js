@@ -469,41 +469,93 @@ app.get('/api/inbox', async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
     const filter = req.query.filter;
+    const type = req.query.type || 'received';  // 'received' or 'sent'
     
     try {
         let whereClause = '';
         const params = [];
         
-        if (filter === 'unread') {
-            whereClause = 'WHERE is_read = 0';
-        } else if (filter === 'linked') {
-            whereClause = 'WHERE lead_id IS NOT NULL';
-        } else if (filter === 'unlinked') {
-            whereClause = 'WHERE lead_id IS NULL';
-        }
-        
-        const countRow = await db.get(`SELECT COUNT(*) as total FROM email_messages ${whereClause}`, params);
-        const total = countRow?.total || 0;
-        
-        const emails = await db.all(
-            `SELECT id, external_id, lead_id, 
-                    from_email as 'from', to_email as 'to', subject, 
-                    SUBSTR(body_text, 1, 200) as preview, received_at as date, is_read as isRead, thread_id, created_at
-             FROM email_messages ${whereClause}
-             ORDER BY received_at DESC
-             LIMIT ? OFFSET ?`,
-            [...params, limit, offset]
-        );
-        
-        res.json({
-            emails,
-            pagination: {
-                page,
-                limit,
-                total,
-                pages: Math.ceil(total / limit)
+        if (type === 'sent') {
+            // Fetch sent emails from email_queue
+            whereClause = 'WHERE status = ?';
+            params.push('sent');
+            
+            const countRow = await db.get(`SELECT COUNT(*) as total FROM email_queue ${whereClause}`, params);
+            const total = countRow?.total || 0;
+            
+            const emails = await db.all(
+                `SELECT id, 'sent' as type, lead_id, 
+                        user as 'from', to_email as 'to', subject, 
+                        SUBSTR(body, 1, 200) as preview, sent_at as date, 0 as isRead
+                 FROM email_queue ${whereClause}
+                 ORDER BY sent_at DESC
+                 LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+            
+            return res.json({
+                emails: emails.map(e => ({
+                    id: `sent_${e.id}`,
+                    type: 'sent',
+                    lead_id: e.lead_id,
+                    from: e.from || 'Smooth AI',
+                    to: e.to,
+                    subject: e.subject,
+                    preview: e.preview,
+                    date: new Date(e.date).toISOString(),
+                    isRead: true,
+                    leadName: e.leadName
+                })),
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } else {
+            // Fetch received emails from email_messages (original behavior)
+            if (filter === 'unread') {
+                whereClause = 'WHERE is_read = 0';
+            } else if (filter === 'linked') {
+                whereClause = 'WHERE lead_id IS NOT NULL';
+            } else if (filter === 'unlinked') {
+                whereClause = 'WHERE lead_id IS NULL';
             }
-        });
+            
+            const countRow = await db.get(`SELECT COUNT(*) as total FROM email_messages ${whereClause}`, params);
+            const total = countRow?.total || 0;
+            
+            const emails = await db.all(
+                `SELECT id, 'received' as type, external_id, lead_id, 
+                        from_email as 'from', to_email as 'to', subject, 
+                        SUBSTR(body_text, 1, 200) as preview, received_at as date, is_read as isRead, thread_id, created_at
+                 FROM email_messages ${whereClause}
+                 ORDER BY received_at DESC
+                 LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+            
+            res.json({
+                emails: emails.map(e => ({
+                    id: e.id,
+                    type: 'received',
+                    lead_id: e.lead_id,
+                    from: e.from,
+                    to: e.to,
+                    subject: e.subject,
+                    preview: e.preview,
+                    date: new Date(e.date).toISOString(),
+                    isRead: e.isRead
+                })),
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        }
     } catch (error) {
         console.error("Inbox Fetch Error:", error);
         res.status(500).json({ error: error.message });

@@ -7,6 +7,7 @@ interface Props {
 }
 
 type FilterType = 'all' | 'unread' | 'linked' | 'unlinked';
+type EmailType = 'received' | 'sent';
 
 export const InboxView: React.FC<Props> = ({ leads }) => {
   const [emails, setEmails] = useState<InboxEmail[]>([]);
@@ -14,6 +15,7 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
   const [syncing, setSyncing] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [emailType, setEmailType] = useState<EmailType>('received');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [linkingEmailId, setLinkingEmailId] = useState<number | null>(null);
