@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, Shortcut } from './types';

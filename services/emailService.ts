@@ -1,4 +1,3 @@
-
 import { SMTPConfig } from '../types';
 
 // Rate Limiting Configuration

@@ -1,8 +1,7 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { ServiceProfile, Lead, LeadStatus, AnalysisResult, StrategyNode, DecisionMaker, TriggerEvent, EmailDraft } from "../types";
 import { v4 as uuidv4 } from 'uuid';
-import { loadOpenRouterKey } from './storageService';
+import { loadOpenRouterKey, loadBlacklist } from './storageService';
 
 // Initialize Gemini client (Primary)
 const apiKey = process.env.API_KEY || '';
@@ -101,18 +100,18 @@ export async function withHybridEngine<T>(
         const isServerError = error?.status === 500 || error?.code === 500 || error?.error?.code === 500 || error?.message?.includes('Internal error') || error?.status === 503;
 
         if (isQuotaError || isServerError) {
-            console.warn(`⚠️ Engine Warning: ${isQuotaError ? 'Quota Limit' : 'Server Error'}. Retrying in ${backoff}ms...`);
-            if (retries > 0) {
-                await delay(backoff);
-                return withHybridEngine(primaryOperation, fallbackOperation, retries - 1, backoff * 1.5);
+            console.warn(`⚠️ Engine Warning: ${isQuotaError ? 'Quota Limit' : 'Server Error'}. Switching to Fallback immediately...`);
+            // ABBY MODE: Failover instantly on Quota error, do not wait.
+            const openRouterKey = loadOpenRouterKey();
+            if (openRouterKey) {
+                console.log("🔄 Switching to OpenRouter Fallback Engine...");
+                return await fallbackOperation();
             } else {
-                const openRouterKey = loadOpenRouterKey();
-                if (openRouterKey) {
-                    console.log("🔄 Switching to OpenRouter Fallback Engine...");
-                    return await fallbackOperation();
-                } else {
-                    throw new Error(isQuotaError ? "QUOTA_EXHAUSTED" : "SERVER_ERROR");
-                }
+                 if (retries > 0) {
+                    await delay(backoff);
+                    return withHybridEngine(primaryOperation, fallbackOperation, retries - 1, backoff * 1.5);
+                 }
+                 throw new Error(isQuotaError ? "QUOTA_EXHAUSTED" : "SERVER_ERROR");
             }
         }
         throw error;
@@ -188,22 +187,39 @@ export const generateMasterPlan = async (pastStrategies: string[]): Promise<Stra
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: systemPrompt + userPrompt,
-                config: { tools: [{ googleSearch: {} }] }
-            });
-            const text = response.text || "[]";
-            const extracted = extractJson(text);
-            let plans: any[] = [];
-            if (Array.isArray(extracted)) plans = extracted;
-            else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
-            else if (extracted && Array.isArray(extracted.strategies)) plans = extracted.strategies;
-            else throw new Error("AI generated invalid plan format");
-
-            return plans.map((p: any) => ({ 
-                id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
-            }));
+            try {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: systemPrompt + userPrompt,
+                    config: { tools: [{ googleSearch: {} }] }
+                });
+                const text = response.text || "[]";
+                const extracted = extractJson(text);
+                let plans: any[] = [];
+                if (Array.isArray(extracted)) plans = extracted;
+                else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
+                else if (extracted && Array.isArray(extracted.strategies)) plans = extracted.strategies;
+                else throw new Error("AI generated invalid plan format");
+    
+                return plans.map((p: any) => ({ 
+                    id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
+                }));
+            } catch (err: any) {
+                // FALLBACK: If Google Search tool fails (common), fallback to pure logic generation
+                console.warn("Master Plan Search Failed, falling back to logic-only generation.", err);
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: systemPrompt + userPrompt + " (Do not use search tools, just generate based on knowledge).",
+                });
+                const extracted = extractJson(response.text || "[]");
+                let plans: any[] = [];
+                if (Array.isArray(extracted)) plans = extracted;
+                else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
+                else return []; // Fail gracefully
+                return plans.map((p: any) => ({ 
+                    id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
+                }));
+            }
         },
         async () => {
             const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "system", content: systemPrompt + " Return JSON array." }, { role: "user", content: userPrompt }], true);
@@ -227,6 +243,9 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
     2. EXCLUDE domains containing: [${blacklist.join(', ')}].
     3. EXCLUDE Government (.gov) or Education (.edu).
     4. MUST be a private business website.
+    
+    B2B FILTER:
+    - REJECT if URL contains: gmail, yahoo, hotmail, outlook, facebook, instagram, twitter.
     
     OUTPUT FORMAT (Pipe Delimited):
     || Company Name || Website URL || 1-sentence description ||
@@ -252,7 +271,7 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
                   const isBlocked = blacklist.some(term => url.toLowerCase().includes(term.toLowerCase()) || name.toLowerCase().includes(term.toLowerCase()));
                   
                   // B2B FILTER: Reject personal emails or bad domains
-                  const isPersonal = /gmail\.com|yahoo\.com|hotmail\.com|outlook\.com|aol\.com/i.test(url);
+                  const isPersonal = /gmail\.com|yahoo\.com|hotmail\.com|outlook\.com|aol\.com|protonmail/i.test(url);
                   
                   if (!isBlocked && !isDirectory && !isPersonal && name.length > 2 && desc.length > 5) {
                       leads.push({ companyName: name, website: url, description: desc, status: LeadStatus.NEW });
@@ -308,7 +327,12 @@ export const findDecisionMaker = async (companyName: string, website: string): P
 };
 
 export const findTriggers = async (companyName: string, website: string): Promise<TriggerEvent[]> => {
-    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). Return JSON Array: [{ "type": "hiring", "description": "Hiring 3 admins", "sourceUrl": "url" }]. If no hiring, look for "news". Choose ONE type.`;
+    // UPDATED PROMPT: Strict selection for JSON field
+    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). 
+    Return JSON Array: [{ "type": "hiring", "description": "Hiring 3 admins", "sourceUrl": "url" }]. 
+    If no hiring, look for "news". 
+    CRITICAL: The "type" field must be one of: "hiring", "news", "growth", "other". Do not output "hiring|news". Pick one.`;
+    
     return withHybridEngine(
         async () => {
              if (!apiKey) throw new Error("API Key missing");
@@ -334,11 +358,14 @@ export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): P
     3. Analyze Sentiment (Glassdoor/Reviews for manual work complaints).
 
     SCORING RULES:
-    - If they look like a SaaS/Tech/Agency -> SCORE < 20 (Unqualified).
-    - If they look like a manual business (Construction, Logistics, Law, Medical) -> SCORE > 70.
-    - If they mention "Fax", "Paper", "Call to book" -> SCORE > 90.
+    - DISQUALIFY (< 20): "Tech-Native" companies (e.g. DoorDash, Uber, SaaS products). They don't need basic automation.
+    - DISQUALIFY (< 20): "Global Enterprise" / "Fortune 500" (e.g. FedEx, Amazon, Walmart). They are too big for our boutique model.
+    - DISQUALIFY (< 20): "Agencies" or "Consultancies" (Competitors).
+    
+    - QUALIFY (> 70): "Old World" Mid-Market (Regional Trucking, Local Law Firm, Mid-sized Manufacturer, HVAC Distributor).
+    - JACKPOT (> 90): Website mentions "Fax", "Download PDF Form", "Call to book", or looks outdated.
 
-    OUTPUT JSON: { "score": number, "reasoning": "Be harsh and specific.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."], "budgetEstimate": "e.g. $5k/mo", "competitors": ["..."], "employeeSentiment": "Negative/Positive" }
+    OUTPUT JSON: { "score": number, "reasoning": "Be harsh. Explain why they are a fit or NOT.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."], "budgetEstimate": "e.g. $5k/mo", "competitors": ["..."], "employeeSentiment": "Negative/Positive" }
   `;
 
   return withHybridEngine(
@@ -398,6 +425,7 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
     return withHybridEngine(
         async () => {
             if (!apiKey) throw new Error("API Key missing");
+            // Note: responseMimeType is strict here, but we use extractJson anyway
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: "application/json" } });
             return extractJson(response.text || "[]");
         },
