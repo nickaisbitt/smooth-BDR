@@ -145,6 +145,19 @@ Email sending and receiving uses a single unified configuration in Settings:
 - **Calendar View**: Schedule and track activities
 - **LinkedIn Integration**: Link and track LinkedIn profiles
 
+### CRM Features (New)
+- **Deals Pipeline**: Full sales pipeline with drag-and-drop Kanban board
+  - Stages: Qualified → Contacted → Meeting Scheduled → Proposal Sent → Negotiation → Won/Lost
+  - Revenue forecasting with weighted pipeline value
+  - Monthly won/lost tracking
+- **Deal Management**: Track deal value, probability, expected close date
+- **Lead Detail View**: Slide-out panel for viewing/editing leads with:
+  - Deal information (value, probability, close date, industry, company size)
+  - Multiple contacts with roles (add/edit/delete contacts)
+  - Activity timeline (calls, meetings, emails, notes, tasks)
+  - Notes history
+- **Revenue Tracking**: Won/Lost status with actual revenue and reason tracking
+
 ## Development
 
 ### Running Locally
