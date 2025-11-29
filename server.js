@@ -103,6 +103,33 @@ let db;
         `);
         console.log("✅ SQLite Database Initialized");
         
+        // Auto-configure Hostinger email from environment variables
+        const hostingerUser = process.env.HOSTINGER_EMAIL_USERNAME;
+        const hostingerPass = process.env.HOSTINGER_EMAIL_PASSWORD;
+        if (hostingerUser && hostingerPass) {
+            const domain = hostingerUser.split('@')[1] || 'hostinger.com';
+            const imapHost = `imap.${domain}`;
+            
+            // Check if settings already exist
+            const existing = await db.get('SELECT * FROM imap_settings WHERE id = 1');
+            if (!existing) {
+                await db.run(
+                    `INSERT INTO imap_settings (id, host, port, username, password, use_tls) VALUES (1, ?, 993, ?, ?, 1)`,
+                    [imapHost, hostingerUser, hostingerPass]
+                );
+                console.log(`✅ Email configured: ${hostingerUser}`);
+            } else if (existing.username !== hostingerUser || existing.password !== hostingerPass) {
+                // Update if credentials changed
+                await db.run(
+                    `UPDATE imap_settings SET host = ?, username = ?, password = ? WHERE id = 1`,
+                    [imapHost, hostingerUser, hostingerPass]
+                );
+                console.log(`✅ Email credentials updated: ${hostingerUser}`);
+            } else {
+                console.log(`✅ Email already configured: ${hostingerUser}`);
+            }
+        }
+        
         await initAutomationTables(db);
         startAutomationScheduler();
     } catch (e) {
