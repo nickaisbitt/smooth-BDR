@@ -10,6 +10,19 @@ import { open } from 'sqlite';
 import rateLimit from 'express-rate-limit';
 import OpenAI from 'openai';
 import { ImapService, syncEmails } from './services/imapService.js';
+import {
+  initAutomationTables,
+  getAutomationStats,
+  toggleAutomation,
+  updateDailyLimit,
+  processPendingEmails,
+  processUnanalyzedReplies,
+  scheduleFollowups,
+  queueEmailForLead,
+  logAutomation,
+  categorizeReply,
+  generateAutoResponse
+} from './services/automationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -89,10 +102,103 @@ let db;
             CREATE INDEX IF NOT EXISTS idx_email_messages_from_email ON email_messages(from_email);
         `);
         console.log("✅ SQLite Database Initialized");
+        
+        await initAutomationTables(db);
+        startAutomationScheduler();
     } catch (e) {
         console.error("❌ Database Init Failed:", e);
     }
 })();
+
+let automationIntervals = {};
+let cachedSmtpConfig = null;
+let cachedLeads = [];
+
+async function loadSmtpConfigFromDb() {
+  try {
+    const settings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
+    if (settings && settings.host) {
+      let smtpHost = settings.host;
+      if (smtpHost.startsWith('imap.')) {
+        smtpHost = smtpHost.replace('imap.', 'smtp.');
+      } else if (!smtpHost.startsWith('smtp.')) {
+        smtpHost = 'smtp.' + smtpHost;
+      }
+      return {
+        host: smtpHost,
+        port: '465',
+        user: settings.username,
+        pass: settings.password,
+        secure: settings.use_tls === 1,
+        fromName: 'Smooth AI'
+      };
+    }
+  } catch (error) {
+    console.error("Failed to load SMTP config from DB:", error.message);
+  }
+  return null;
+}
+
+function startAutomationScheduler() {
+  console.log("🤖 Automation Scheduler Started");
+  
+  automationIntervals.inboxSync = setInterval(async () => {
+    try {
+      const state = await db.get('SELECT is_running FROM automation_state WHERE id = 1');
+      if (!state || !state.is_running) return;
+      
+      const imapSettings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
+      if (!imapSettings || !imapSettings.host) return;
+      
+      const leadEmails = cachedLeads.map(l => ({
+        id: l.id,
+        email: l.decisionMaker?.email
+      })).filter(l => l.email);
+      
+      const result = await syncEmails(db, imapSettings, leadEmails);
+      if (result.newEmails > 0) {
+        await logAutomation(db, 'INBOX_SYNC', `Auto-synced ${result.newEmails} new emails`);
+      }
+    } catch (error) {
+      console.error("Auto inbox sync error:", error.message);
+    }
+  }, 5 * 60 * 1000);
+  
+  automationIntervals.replyProcess = setInterval(async () => {
+    try {
+      const state = await db.get('SELECT is_running FROM automation_state WHERE id = 1');
+      if (!state || !state.is_running) return;
+      
+      const processed = await processUnanalyzedReplies(db, null);
+      if (processed > 0) {
+        console.log(`Processed ${processed} replies`);
+      }
+    } catch (error) {
+      console.error("Reply processing error:", error.message);
+    }
+  }, 2 * 60 * 1000);
+  
+  automationIntervals.emailQueue = setInterval(async () => {
+    try {
+      const state = await db.get('SELECT is_running FROM automation_state WHERE id = 1');
+      if (!state || !state.is_running) return;
+      
+      let smtpConfig = cachedSmtpConfig;
+      if (!smtpConfig || !smtpConfig.host) {
+        smtpConfig = await loadSmtpConfigFromDb();
+      }
+      if (!smtpConfig || !smtpConfig.host) return;
+      
+      const result = await processPendingEmails(db, smtpConfig, nodemailer);
+      if (result.sent > 0) {
+        console.log(`Sent ${result.sent} queued emails`);
+        await logAutomation(db, 'EMAIL_BATCH_SENT', `Sent ${result.sent} queued emails`);
+      }
+    } catch (error) {
+      console.error("Email queue processing error:", error.message);
+    }
+  }, 60 * 1000);
+}
 
 // API Route: Send Email
 app.post('/api/send-email', async (req, res) => {
@@ -463,6 +569,197 @@ app.delete('/api/inbox/:id', async (req, res) => {
         res.json({ success: true, message: `Email ${id} deleted` });
     } catch (error) {
         console.error("Delete Email Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ AUTOMATION API ENDPOINTS ============
+
+// GET /api/automation/status - Get automation status and stats
+app.get('/api/automation/status', async (req, res) => {
+    try {
+        const stats = await getAutomationStats(db);
+        res.json(stats);
+    } catch (error) {
+        console.error("Automation Status Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/toggle - Enable/disable automation
+app.post('/api/automation/toggle', async (req, res) => {
+    const { enabled } = req.body;
+    
+    try {
+        const result = await toggleAutomation(db, enabled);
+        res.json({ success: true, isRunning: result });
+    } catch (error) {
+        console.error("Automation Toggle Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/daily-limit - Update daily email limit
+app.post('/api/automation/daily-limit', async (req, res) => {
+    const { limit } = req.body;
+    
+    if (!limit || limit < 1 || limit > 200) {
+        return res.status(400).json({ error: "Limit must be between 1 and 200" });
+    }
+    
+    try {
+        const result = await updateDailyLimit(db, limit);
+        res.json({ success: true, dailyLimit: result });
+    } catch (error) {
+        console.error("Daily Limit Update Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/queue-email - Queue an email for sending
+app.post('/api/automation/queue-email', async (req, res) => {
+    const { lead, emailDraft, sequenceStep, delayMinutes } = req.body;
+    
+    if (!lead || !emailDraft) {
+        return res.status(400).json({ error: "Missing lead or email draft" });
+    }
+    
+    try {
+        await queueEmailForLead(db, lead, emailDraft, sequenceStep || 0, delayMinutes || 0);
+        res.json({ success: true, message: "Email queued successfully" });
+    } catch (error) {
+        console.error("Queue Email Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/sync-leads - Update cached leads for automation
+app.post('/api/automation/sync-leads', async (req, res) => {
+    const { leads } = req.body;
+    
+    try {
+        cachedLeads = leads || [];
+        res.json({ success: true, count: cachedLeads.length });
+    } catch (error) {
+        console.error("Sync Leads Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/sync-smtp - Update cached SMTP config for automation
+app.post('/api/automation/sync-smtp', async (req, res) => {
+    const { smtpConfig } = req.body;
+    
+    try {
+        cachedSmtpConfig = smtpConfig;
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Sync SMTP Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/automation/queue - Get email queue status
+app.get('/api/automation/queue', async (req, res) => {
+    try {
+        const pending = await db.all(
+            `SELECT * FROM email_queue WHERE status = 'pending' ORDER BY scheduled_for ASC LIMIT 20`
+        );
+        const sent = await db.all(
+            `SELECT * FROM email_queue WHERE status = 'sent' ORDER BY sent_at DESC LIMIT 20`
+        );
+        const failed = await db.all(
+            `SELECT * FROM email_queue WHERE status = 'failed' ORDER BY created_at DESC LIMIT 10`
+        );
+        res.json({ pending, sent, failed });
+    } catch (error) {
+        console.error("Queue Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/automation/replies - Get analyzed replies
+app.get('/api/automation/replies', async (req, res) => {
+    try {
+        const replies = await db.all(`
+            SELECT ra.*, em.from_email, em.subject as email_subject
+            FROM reply_analysis ra
+            JOIN email_messages em ON ra.email_id = em.id
+            ORDER BY ra.processed_at DESC
+            LIMIT 50
+        `);
+        res.json({ replies });
+    } catch (error) {
+        console.error("Replies Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/process-replies - Manually trigger reply processing
+app.post('/api/automation/process-replies', async (req, res) => {
+    try {
+        const processed = await processUnanalyzedReplies(db, null);
+        res.json({ success: true, processed });
+    } catch (error) {
+        console.error("Process Replies Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/send-queued - Manually trigger sending queued emails
+app.post('/api/automation/send-queued', async (req, res) => {
+    if (!cachedSmtpConfig || !cachedSmtpConfig.host) {
+        return res.status(400).json({ error: "SMTP not configured" });
+    }
+    
+    try {
+        const result = await processPendingEmails(db, cachedSmtpConfig, nodemailer);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error("Send Queued Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/automation/logs - Get automation activity logs
+app.get('/api/automation/logs', async (req, res) => {
+    const limit = parseInt(req.query.limit) || 50;
+    
+    try {
+        const logs = await db.all(
+            `SELECT * FROM automation_logs ORDER BY created_at DESC LIMIT ?`,
+            [limit]
+        );
+        res.json({ logs });
+    } catch (error) {
+        console.error("Logs Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/automation/queue/:id - Remove email from queue
+app.delete('/api/automation/queue/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        await db.run('DELETE FROM email_queue WHERE id = ? AND status = ?', [id, 'pending']);
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Queue Delete Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/retry-failed - Retry failed emails
+app.post('/api/automation/retry-failed', async (req, res) => {
+    try {
+        await db.run(
+            `UPDATE email_queue SET status = 'pending', attempts = 0, last_error = NULL WHERE status = 'failed'`
+        );
+        const count = await db.get('SELECT changes() as count');
+        res.json({ success: true, retriedCount: count?.count || 0 });
+    } catch (error) {
+        console.error("Retry Failed Error:", error);
         res.status(500).json({ error: error.message });
     }
 });

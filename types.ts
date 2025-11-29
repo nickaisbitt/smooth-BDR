@@ -148,4 +148,4 @@ export interface IntegrationConfig {
     autoSync: boolean;
 }
 
-export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin' | 'inbox';
+export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin' | 'inbox' | 'system_status';

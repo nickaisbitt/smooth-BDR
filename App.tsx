@@ -13,6 +13,7 @@ import { DebugView } from './components/DebugView';
 import { CalendarView } from './components/CalendarView';
 import { LinkedInView } from './components/LinkedInView';
 import { InboxView } from './components/InboxView';
+import { SystemStatusView } from './components/SystemStatusView';
 import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, testOpenRouterConnection } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
@@ -451,6 +452,24 @@ function App() {
               }
           }
           lead.activeVariant = variant;
+          
+          if (dm?.email && emailSequence.length > 0) {
+            try {
+              await fetch('/api/automation/queue-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  lead: { ...lead, decisionMaker: dm, emailSequence },
+                  emailDraft: emailSequence[0],
+                  sequenceStep: 0,
+                  delayMinutes: 0
+                })
+              });
+              addLog(`📧 Auto-queued email for ${lead.companyName}`, 'success');
+            } catch (e) {
+              console.error("Failed to auto-queue email:", e);
+            }
+          }
       } else {
           addLog(`Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
       }
@@ -655,6 +674,7 @@ function App() {
         {currentView === 'calendar' && <CalendarView leads={leads} />}
         {currentView === 'linkedin' && <LinkedInView />}
         {currentView === 'inbox' && <InboxView leads={leads} />}
+        {currentView === 'system_status' && <SystemStatusView smtpConfig={emailConfig} leads={leads} />}
         {currentView === 'quality_control' && <QualityControlView leads={leads} onApprove={()=>{}} onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))} />}
         {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={emailConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
         {currentView === 'analytics' && <AnalyticsView leads={leads} />}
