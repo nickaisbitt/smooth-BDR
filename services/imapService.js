@@ -64,6 +64,12 @@ export class ImapService {
             const lock = await this.client.getMailboxLock('INBOX');
             
             try {
+                const mailboxStatus = this.client.mailbox;
+                if (!mailboxStatus || mailboxStatus.exists === 0) {
+                    console.log('📭 IMAP: Mailbox is empty, no emails to fetch');
+                    return emails;
+                }
+
                 const searchCriteria = lastSyncUid > 0 
                     ? { uid: `${lastSyncUid + 1}:*` }
                     : { all: true };
@@ -102,6 +108,10 @@ export class ImapService {
 
             return emails;
         } catch (error) {
+            if (error.message?.includes('Nothing to fetch') || error.message?.includes('Command failed')) {
+                console.log('📭 IMAP: No new emails to fetch');
+                return emails;
+            }
             console.error('❌ IMAP Fetch Error:', error.message);
             throw new Error(`Failed to fetch emails: ${error.message}`);
         }

@@ -72,6 +72,8 @@ This is an AI-powered Business Development Representative (BDR) application that
 22. Fixed InboxView crash when emails have missing from/to fields (null safety checks added)
 23. Fixed email field mapping in API - properly returns `from`, `to`, `date` instead of raw database field names
 24. Added IMAP connection timeout handling (15s timeout) for more reliable connections
+25. Fixed automation toggle endpoint to accept both 'enabled' and 'enable' request body keys
+26. Improved IMAP fetchNewEmails to gracefully handle empty mailboxes without throwing errors
 
 ### Autonomous BDR System (Full Automation)
 25. Created `automationService.js` - Server-side automation scheduler with background jobs

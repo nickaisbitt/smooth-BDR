@@ -5,6 +5,7 @@ integrations = ["javascript_openrouter_ai_integrations:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["sqlite"]
 
 [workflows]
 runButton = "Project"
@@ -39,12 +40,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 37685
-externalPort = 3002
+localPort = 36189
+externalPort = 3003
 
 [[ports]]
-localPort = 38661
-externalPort = 3003
+localPort = 37685
+externalPort = 3002
 
 [[ports]]
 localPort = 46159

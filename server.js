@@ -615,7 +615,7 @@ app.get('/api/automation/status', async (req, res) => {
 
 // POST /api/automation/toggle - Enable/disable automation
 app.post('/api/automation/toggle', async (req, res) => {
-    const { enabled } = req.body;
+    const enabled = req.body.enabled ?? req.body.enable ?? false;
     
     try {
         const result = await toggleAutomation(db, enabled);
