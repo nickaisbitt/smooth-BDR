@@ -41,7 +41,7 @@ This is an AI-powered Business Development Representative (BDR) application that
 ## Recent Changes (Nov 29, 2025)
 ### Replit Environment Setup
 1. Installed Node.js 20 and all npm dependencies
-2. Configured Vite to run on port 5000 with host 0.0.0.0 for Replit proxy compatibility
+2. Configured Vite to run on port 5000 with host 0.0.0.0 and `allowedHosts: true` for Replit proxy compatibility
 3. Added API proxy in Vite config to forward `/api/*` requests to backend (port 3000)
 4. Updated backend server to explicitly bind to 0.0.0.0:3000 for production deployment compatibility
 5. Enhanced .gitignore with database and environment variable patterns
