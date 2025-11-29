@@ -8,22 +8,18 @@ export interface ServiceProfile {
   theme?: 'light' | 'dark';
 }
 
-export interface SMTPConfig {
+export interface EmailConfig {
     host: string;
     port: string;
     user: string;
     pass: string;
     secure: boolean;
-    publicUrl?: string; // For Tracking Pixel
+    publicUrl?: string; // For Tracking Pixel (SMTP)
 }
 
-export interface IMAPConfig {
-    host: string;
-    port: string;
-    user: string;
-    pass: string;
-    secure: boolean;
-}
+// Backwards compatibility
+export type SMTPConfig = EmailConfig;
+export type IMAPConfig = EmailConfig;
 
 export interface InboxEmail {
     id: number;

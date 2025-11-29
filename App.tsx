@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, Shortcut, IMAPConfig } from './types';
+import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, EmailConfig, GoogleSheetsConfig, GlobalStats, Shortcut } from './types';
 import { PipelineTable } from './components/PipelineTable';
 import { PipelineBoard } from './components/PipelineBoard';
 import { StatCard } from './components/StatCard';
@@ -43,15 +43,13 @@ function App() {
   const [logs, setLogs] = useState<AgentLog[]>(() => loadLogs());
   const [serviceProfile, setServiceProfile] = useState<ServiceProfile>(() => loadProfile() || DEFAULT_PROFILE);
   const [customApiKey, setCustomApiKey] = useState(() => loadOpenRouterKey());
-  const [smtpConfig, setSmtpConfig] = useState<SMTPConfig>(() => loadSMTPConfig());
-  const [imapConfig, setImapConfig] = useState<IMAPConfig>(() => loadIMAPConfig());
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(() => loadSMTPConfig());
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => loadSheetsConfig());
   const [blacklist, setBlacklist] = useState<string[]>(() => loadBlacklist());
   const [stats, setStats] = useState<GlobalStats>(() => loadStats());
   
   // UI STATUS STATE
-  const [smtpStatus, setSmtpStatus] = useState<string>('');
-  const [imapStatus, setImapStatus] = useState<string>('');
+  const [emailStatus, setEmailStatus] = useState<string>('');
   const [sheetsStatus, setSheetsStatus] = useState<string>('');
   const [routerStatus, setRouterStatus] = useState<string>('');
   
@@ -303,89 +301,97 @@ function App() {
   };
 
   const handleTestEmail = async () => {
-      setSmtpStatus("Sending...");
+      setEmailStatus("Sending test...");
       try {
         const result = await sendViaServer(
-            smtpConfig,
+            emailConfig,
             'test_id',
             serviceProfile.contactEmail || "nick@smoothaiconsultancy.com",
             serviceProfile.senderName || "Nick",
             "Smooth AI Test",
-            "This confirms your SMTP relay is working.",
+            "This confirms your email relay is working.",
             serviceProfile.senderName || "System",
             serviceProfile.contactEmail
         );
-        if (result) setSmtpStatus("✅ Sent");
-        else setSmtpStatus("❌ Failed");
+        if (result) setEmailStatus("✅ Test email sent");
+        else setEmailStatus("❌ Failed to send");
       } catch (e: any) {
-          setSmtpStatus(`❌ ${e.message}`);
+          setEmailStatus(`❌ ${e.message}`);
       }
-      setTimeout(() => setSmtpStatus(''), 3000);
+      setTimeout(() => setEmailStatus(''), 3000);
   };
 
-  const handleSaveImapConfig = async () => {
-      if (!imapConfig.host || !imapConfig.port || !imapConfig.user || !imapConfig.pass) {
-          setImapStatus("❌ Please fill all fields");
-          setTimeout(() => setImapStatus(''), 3000);
+  const handleTestInbox = async () => {
+      if (!emailConfig.host || !emailConfig.port || !emailConfig.user || !emailConfig.pass) {
+          setEmailStatus("❌ Please fill all fields");
+          setTimeout(() => setEmailStatus(''), 3000);
           return;
       }
-      setImapStatus("Saving...");
-      try {
-        const res = await fetch('/api/imap/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                host: imapConfig.host,
-                port: parseInt(String(imapConfig.port)),
-                username: imapConfig.user,
-                password: imapConfig.pass,
-                use_tls: imapConfig.secure
-            })
-        });
-        if (res.ok) {
-            saveIMAPConfig(imapConfig);
-            setImapStatus("✅ Saved");
-            addLog("IMAP Config Saved", 'success');
-        } else {
-            const data = await res.json();
-            setImapStatus(`❌ ${data.error || 'Failed'}`);
-        }
-      } catch (e: any) {
-          setImapStatus(`❌ ${e.message}`);
-      }
-      setTimeout(() => setImapStatus(''), 3000);
-  };
-
-  const handleTestImap = async () => {
-      if (!imapConfig.host || !imapConfig.port || !imapConfig.user || !imapConfig.pass) {
-          setImapStatus("❌ Please fill all fields");
-          setTimeout(() => setImapStatus(''), 3000);
-          return;
-      }
-      setImapStatus("Testing...");
+      setEmailStatus("Testing inbox...");
       try {
         const res = await fetch('/api/imap/test', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                host: imapConfig.host,
-                port: parseInt(String(imapConfig.port)),
-                username: imapConfig.user,
-                password: imapConfig.pass,
-                use_tls: imapConfig.secure
+                host: emailConfig.host,
+                port: parseInt(String(emailConfig.port)),
+                username: emailConfig.user,
+                password: emailConfig.pass,
+                use_tls: emailConfig.secure
             })
         });
         const data = await res.json();
         if (res.ok && data.success) {
-            setImapStatus(`✅ Connected (${data.messageCount} emails)`);
-            addLog("IMAP connection successful", 'success');
+            setEmailStatus(`✅ Inbox connected (${data.messageCount} emails)`);
+            addLog("Inbox connection successful", 'success');
         } else {
-            setImapStatus(`❌ ${data.error || data.message || 'Failed'}`);
+            setEmailStatus(`❌ ${data.error || data.message || 'Failed'}`);
         }
       } catch (e: any) {
-          setImapStatus(`❌ ${e.message}`);
+          setEmailStatus(`❌ ${e.message}`);
       }
-      setTimeout(() => setImapStatus(''), 5000);
+      setTimeout(() => setEmailStatus(''), 5000);
+  };
+
+  const handleSaveEmailConfig = async () => {
+      if (!emailConfig.host || !emailConfig.port || !emailConfig.user || !emailConfig.pass) {
+          setEmailStatus("❌ Please fill all fields");
+          setTimeout(() => setEmailStatus(''), 3000);
+          return;
+      }
+      setEmailStatus("Saving...");
+      try {
+        // Save SMTP config
+        await fetch('/api/smtp/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(emailConfig)
+        });
+        
+        // Save IMAP config
+        const res = await fetch('/api/imap/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host: emailConfig.host,
+                port: parseInt(String(emailConfig.port)),
+                username: emailConfig.user,
+                password: emailConfig.pass,
+                use_tls: emailConfig.secure
+            })
+        });
+        if (res.ok) {
+            saveSMTPConfig(emailConfig);
+            setEmailStatus("✅ Email config saved");
+            addLog("Email settings saved (SMTP & IMAP)", 'success');
+        } else {
+            const data = await res.json();
+            setEmailStatus(`❌ ${data.error || 'Failed'}`);
+        }
+      } catch (e: any) {
+          setEmailStatus(`❌ ${e.message}`);
+      }
+      setTimeout(() => setEmailStatus(''), 3000);
   };
 
   const handleDeleteLead = (leadId: string) => {
