@@ -324,19 +324,31 @@ function App() {
   };
 
   const handleSaveImapConfig = async () => {
+      if (!imapConfig.host || !imapConfig.port || !imapConfig.user || !imapConfig.pass) {
+          setImapStatus("❌ Please fill all fields");
+          setTimeout(() => setImapStatus(''), 3000);
+          return;
+      }
       setImapStatus("Saving...");
       try {
         const res = await fetch('/api/imap/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(imapConfig)
+            body: JSON.stringify({
+                host: imapConfig.host,
+                port: parseInt(String(imapConfig.port)),
+                username: imapConfig.user,
+                password: imapConfig.pass,
+                use_tls: imapConfig.secure
+            })
         });
         if (res.ok) {
             saveIMAPConfig(imapConfig);
             setImapStatus("✅ Saved");
             addLog("IMAP Config Saved", 'success');
         } else {
-            setImapStatus("❌ Failed");
+            const data = await res.json();
+            setImapStatus(`❌ ${data.error || 'Failed'}`);
         }
       } catch (e: any) {
           setImapStatus(`❌ ${e.message}`);
@@ -345,15 +357,30 @@ function App() {
   };
 
   const handleTestImap = async () => {
+      if (!imapConfig.host || !imapConfig.port || !imapConfig.user || !imapConfig.pass) {
+          setImapStatus("❌ Please fill all fields");
+          setTimeout(() => setImapStatus(''), 3000);
+          return;
+      }
       setImapStatus("Testing...");
       try {
-        const res = await fetch('/api/imap/test', { method: 'POST' });
+        const res = await fetch('/api/imap/test', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host: imapConfig.host,
+                port: parseInt(String(imapConfig.port)),
+                username: imapConfig.user,
+                password: imapConfig.pass,
+                use_tls: imapConfig.secure
+            })
+        });
         const data = await res.json();
         if (res.ok && data.success) {
-            setImapStatus("✅ Connected");
+            setImapStatus(`✅ Connected (${data.messageCount} emails)`);
             addLog("IMAP connection successful", 'success');
         } else {
-            setImapStatus(`❌ ${data.error || 'Failed'}`);
+            setImapStatus(`❌ ${data.error || data.message || 'Failed'}`);
         }
       } catch (e: any) {
           setImapStatus(`❌ ${e.message}`);
