@@ -154,13 +154,18 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
   };
 
   const getStatusBadge = (status: LeadStatus) => {
-    const styles = {
+    const styles: Record<LeadStatus, string> = {
         [LeadStatus.NEW]: "bg-slate-100 text-slate-600 border-slate-200",
         [LeadStatus.ANALYZING]: "bg-yellow-100 text-yellow-700 border-yellow-200 animate-pulse",
         [LeadStatus.QUALIFIED]: "bg-green-100 text-green-700 border-green-200",
         [LeadStatus.CONTACTED]: "bg-blue-100 text-blue-700 border-blue-200",
         [LeadStatus.UNQUALIFIED]: "bg-red-50 text-red-400 border-red-100",
         [LeadStatus.OPENED]: "bg-purple-100 text-purple-700 border-purple-200 shadow-sm",
+        [LeadStatus.MEETING_SCHEDULED]: "bg-purple-100 text-purple-700 border-purple-200",
+        [LeadStatus.PROPOSAL_SENT]: "bg-indigo-100 text-indigo-700 border-indigo-200",
+        [LeadStatus.NEGOTIATION]: "bg-orange-100 text-orange-700 border-orange-200",
+        [LeadStatus.WON]: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        [LeadStatus.LOST]: "bg-red-100 text-red-700 border-red-200",
         [LeadStatus.ARCHIVED]: "bg-slate-200 text-slate-500 border-slate-300"
     };
     return <span className={`px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wide ${styles[status]}`}>{status}</span>;
@@ -262,9 +267,6 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
             ) : (
                 displayedLeads.map((lead) => (
                 <tr key={lead.id} className="flex flex-col md:table-row border-b md:border-none p-4 md:p-0 relative hover:bg-slate-50/50 transition-colors group">
-                    
-                    {/* Mobile: Status Badge */}
-                    <div className="md:hidden absolute top-4 right-4">{getStatusBadge(lead.status)}</div>
 
                     {/* Column 1: Company Info */}
                     <td className="md:px-6 md:py-4 align-top w-full md:w-[30%]">
