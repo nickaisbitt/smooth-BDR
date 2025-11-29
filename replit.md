@@ -68,6 +68,11 @@ This is an AI-powered Business Development Representative (BDR) application that
 20. Single "Save Config" button saves both SMTP and IMAP settings
 21. Separate "Test Send" and "Test Inbox" buttons to verify both directions work
 
+### Bug Fixes
+22. Fixed InboxView crash when emails have missing from/to fields (null safety checks added)
+23. Fixed email field mapping in API - properly returns `from`, `to`, `date` instead of raw database field names
+24. Added IMAP connection timeout handling (15s timeout) for more reliable connections
+
 ## Configuration
 
 ### Development Environment
