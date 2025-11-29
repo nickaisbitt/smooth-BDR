@@ -300,11 +300,32 @@ function App() {
       setTimeout(() => setRouterStatus(''), 3000);
   };
 
+  const deriveSmtpHost = (host: string) => {
+      if (host.startsWith('smtp.')) return host;
+      if (host.startsWith('imap.')) return host.replace('imap.', 'smtp.');
+      if (host.startsWith('mail.')) return host.replace('mail.', 'smtp.');
+      return 'smtp.' + host;
+  };
+  
+  const deriveImapHost = (host: string) => {
+      if (host.startsWith('imap.')) return host;
+      if (host.startsWith('smtp.')) return host.replace('smtp.', 'imap.');
+      if (host.startsWith('mail.')) return host.replace('mail.', 'imap.');
+      return 'imap.' + host;
+  };
+
   const handleTestEmail = async () => {
+      if (!emailConfig.host || !emailConfig.port || !emailConfig.user || !emailConfig.pass) {
+          setEmailStatus("❌ Please fill all fields");
+          setTimeout(() => setEmailStatus(''), 3000);
+          return;
+      }
       setEmailStatus("Sending test...");
       try {
+        const smtpHost = deriveSmtpHost(emailConfig.host);
+        const smtpConfig = { ...emailConfig, host: smtpHost, port: '465' };
         const result = await sendViaServer(
-            emailConfig,
+            smtpConfig,
             'test_id',
             serviceProfile.contactEmail || "nick@smoothaiconsultancy.com",
             serviceProfile.senderName || "Nick",
@@ -329,15 +350,16 @@ function App() {
       }
       setEmailStatus("Testing inbox...");
       try {
+        const imapHost = deriveImapHost(emailConfig.host);
         const res = await fetch('/api/imap/test', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                host: emailConfig.host,
-                port: parseInt(String(emailConfig.port)),
+                host: imapHost,
+                port: 993,
                 username: emailConfig.user,
                 password: emailConfig.pass,
-                use_tls: emailConfig.secure
+                use_tls: true
             })
         });
         const data = await res.json();
@@ -361,27 +383,26 @@ function App() {
       }
       setEmailStatus("Saving...");
       try {
-        // Save SMTP config
-        await fetch('/api/smtp/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(emailConfig)
-        });
+        const smtpHost = deriveSmtpHost(emailConfig.host);
+        const imapHost = deriveImapHost(emailConfig.host);
         
-        // Save IMAP config
+        // Save SMTP config locally
+        const smtpConfigToSave = { ...emailConfig, host: smtpHost, port: '465' };
+        saveSMTPConfig(smtpConfigToSave);
+        
+        // Save IMAP config to backend
         const res = await fetch('/api/imap/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                host: emailConfig.host,
-                port: parseInt(String(emailConfig.port)),
+                host: imapHost,
+                port: 993,
                 username: emailConfig.user,
                 password: emailConfig.pass,
-                use_tls: emailConfig.secure
+                use_tls: true
             })
         });
         if (res.ok) {
-            saveSMTPConfig(emailConfig);
             setEmailStatus("✅ Email config saved");
             addLog("Email settings saved (SMTP & IMAP)", 'success');
         } else {
@@ -635,7 +656,7 @@ function App() {
         {currentView === 'linkedin' && <LinkedInView />}
         {currentView === 'inbox' && <InboxView leads={leads} />}
         {currentView === 'quality_control' && <QualityControlView leads={leads} onApprove={()=>{}} onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))} />}
-        {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={smtpConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
+        {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={emailConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
         {currentView === 'analytics' && <AnalyticsView leads={leads} />}
 
         {currentView === 'settings' && (
@@ -664,43 +685,28 @@ function App() {
                     </div>
                 </div>
 
-                {/* Email Server */}
+                {/* Unified Email Configuration */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                     <h3 className="font-bold mb-2">Email Relay (Hostinger/SMTP)</h3>
+                     <h3 className="font-bold mb-2">Email Configuration</h3>
+                     <p className="text-xs text-slate-500 mb-3">One config for both sending (SMTP) and receiving (IMAP). Uses same credentials for Hostinger.</p>
                      <div className="grid grid-cols-2 gap-2 mb-2">
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host" value={smtpConfig.host} onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port" value={smtpConfig.port} onChange={e => setSmtpConfig({...smtpConfig, port: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="User" value={smtpConfig.user} onChange={e => setSmtpConfig({...smtpConfig, user: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Pass" type="password" value={smtpConfig.pass} onChange={e => setSmtpConfig({...smtpConfig, pass: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host (e.g. mail.hostinger.com)" value={emailConfig.host} onChange={e => setEmailConfig({...emailConfig, host: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port (465 or 993)" value={emailConfig.port} onChange={e => setEmailConfig({...emailConfig, port: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Username (email)" value={emailConfig.user} onChange={e => setEmailConfig({...emailConfig, user: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Password" type="password" value={emailConfig.pass} onChange={e => setEmailConfig({...emailConfig, pass: e.target.value})} />
                      </div>
                      <div className="mb-2">
-                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Public URL (for Tracking Pixel)" value={smtpConfig.publicUrl || ''} onChange={e => setSmtpConfig({...smtpConfig, publicUrl: e.target.value})} />
-                     </div>
-                     <div className="flex gap-2 items-center">
-                         <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); setSmtpStatus('✅ Saved'); setTimeout(()=>setSmtpStatus(''), 2000); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
-                         <button onClick={handleTestEmail} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
-                         {smtpStatus && <span className="text-xs font-bold animate-fadeIn">{smtpStatus}</span>}
-                     </div>
-                </div>
-
-                {/* IMAP Inbox Settings */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                     <h3 className="font-bold mb-2">Email Inbox (IMAP)</h3>
-                     <p className="text-xs text-slate-500 mb-3">Configure IMAP to sync incoming emails and link them to leads.</p>
-                     <div className="grid grid-cols-2 gap-2 mb-2">
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host" value={imapConfig.host} onChange={e => setImapConfig({...imapConfig, host: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port" value={imapConfig.port} onChange={e => setImapConfig({...imapConfig, port: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Username" value={imapConfig.user} onChange={e => setImapConfig({...imapConfig, user: e.target.value})} />
-                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Password" type="password" value={imapConfig.pass} onChange={e => setImapConfig({...imapConfig, pass: e.target.value})} />
+                        <input className="w-full border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Public URL (for Tracking Pixel)" value={emailConfig.publicUrl || ''} onChange={e => setEmailConfig({...emailConfig, publicUrl: e.target.value})} />
                      </div>
                      <div className="flex items-center gap-2 mb-3">
-                        <input type="checkbox" id="imapSecure" checked={imapConfig.secure} onChange={e => setImapConfig({...imapConfig, secure: e.target.checked})} className="rounded" />
-                        <label htmlFor="imapSecure" className="text-sm text-slate-600 dark:text-slate-400">Use TLS/SSL</label>
+                        <input type="checkbox" id="emailSecure" checked={emailConfig.secure} onChange={e => setEmailConfig({...emailConfig, secure: e.target.checked})} className="rounded" />
+                        <label htmlFor="emailSecure" className="text-sm text-slate-600 dark:text-slate-400">Use TLS/SSL (required for port 465/993)</label>
                      </div>
-                     <div className="flex gap-2 items-center">
-                         <button onClick={handleSaveImapConfig} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save IMAP</button>
-                         <button onClick={handleTestImap} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
-                         {imapStatus && <span className="text-xs font-bold animate-fadeIn">{imapStatus}</span>}
+                     <div className="flex flex-wrap gap-2 items-center">
+                         <button onClick={handleSaveEmailConfig} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save Config</button>
+                         <button onClick={handleTestEmail} className="bg-green-50 text-green-600 px-4 py-2 rounded text-sm font-bold border border-green-200">Test Send</button>
+                         <button onClick={handleTestInbox} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Inbox</button>
+                         {emailStatus && <span className="text-xs font-bold animate-fadeIn">{emailStatus}</span>}
                      </div>
                 </div>
 

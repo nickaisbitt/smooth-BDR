@@ -56,10 +56,17 @@ This is an AI-powered Business Development Representative (BDR) application that
 ### IMAP Inbox Feature (Email Reading)
 11. Added IMAP email reading capability to receive and view incoming emails
 12. Created `imapService.js` backend service using imapflow and mailparser libraries
-13. Added IMAP settings configuration in Settings page (host, port, username, password, TLS)
-14. Built Inbox view with email list, filters (All/Unread/Linked/Unlinked), and email detail pane
-15. Auto-links incoming emails to existing leads by matching sender email addresses
-16. Added database tables: `email_messages` and `imap_settings`
+13. Built Inbox view with email list, filters (All/Unread/Linked/Unlinked), and email detail pane
+14. Auto-links incoming emails to existing leads by matching sender email addresses
+15. Added database tables: `email_messages` and `imap_settings`
+
+### Unified Email Configuration
+16. Merged SMTP and IMAP settings into single "Email Configuration" section in Settings
+17. Same credentials (username/password) work for both sending and receiving
+18. Smart host derivation: enters `hostinger.com` or `smtp.hostinger.com` -> auto-derives `imap.hostinger.com` for inbox
+19. Created unified `EmailConfig` type in types.ts with backwards-compatible aliases
+20. Single "Save Config" button saves both SMTP and IMAP settings
+21. Separate "Test Send" and "Test Inbox" buttons to verify both directions work
 
 ## Configuration
 
@@ -88,10 +95,14 @@ The following environment variables are automatically set by Replit:
 - `AI_INTEGRATIONS_OPENROUTER_BASE_URL`: API endpoint
 - `AI_INTEGRATIONS_OPENROUTER_API_KEY`: Authentication token
 
-### SMTP Configuration
-Email sending requires SMTP configuration provided through the UI:
-- Host, Port, Username, Password
-- Supports secure and non-secure connections
+### Email Configuration (Unified SMTP + IMAP)
+Email sending and receiving uses a single unified configuration in Settings:
+- **Host**: Enter any variant (smtp.hostinger.com, imap.hostinger.com, or just hostinger.com) - automatically derives correct hosts for each protocol
+- **Username/Password**: Same credentials for both sending (SMTP) and receiving (IMAP)
+- **SMTP**: Uses port 465 with TLS for sending
+- **IMAP**: Uses port 993 with TLS for receiving
+- **Test Send**: Sends a test email to verify outgoing works
+- **Test Inbox**: Connects to IMAP to verify incoming works
 - Includes rate limiting (60 requests per minute per IP)
 
 ## Features
