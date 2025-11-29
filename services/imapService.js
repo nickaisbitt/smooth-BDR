@@ -31,8 +31,13 @@ export class ImapService {
 
     async disconnect() {
         if (this.client) {
-            await this.client.logout();
-            this.client = null;
+            try {
+                await this.client.logout();
+            } catch (error) {
+                console.warn('Logout warning:', error.message);
+            } finally {
+                this.client = null;
+            }
         }
     }
 
