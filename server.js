@@ -20,8 +20,8 @@ app.use(express.json());
 
 // RATE LIMITER: Protect SMTP Reputation
 const limiter = rateLimit({
-	windowMs: 1 * 60 * 1000, // 1 minute
-	limit: 60, // Limit each IP to 60 requests per windowMs
+        windowMs: 1 * 60 * 1000, // 1 minute
+        limit: 60, // Limit each IP to 60 requests per windowMs
     message: "Too many requests, please try again later."
 });
 app.use('/api/', limiter);
@@ -149,6 +149,6 @@ if (fs.existsSync(distPath)) {
     console.log("Dev Mode: API Server running.");
 }
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on 0.0.0.0:${PORT}`);
 });

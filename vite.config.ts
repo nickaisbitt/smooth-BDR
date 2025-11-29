@@ -8,6 +8,21 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      host: '0.0.0.0',
+      port: 5000,
+      strictPort: true,
+      hmr: {
+        clientPort: 5000
+      },
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false
+        }
+      }
+    },
     define: {
       // Polyfill process.env for client-side usage
       'process.env': {
