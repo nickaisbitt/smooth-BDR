@@ -16,7 +16,7 @@ let automationState = {
   lastInboxSync: null,
   lastFollowupCheck: null,
   emailsSentToday: 0,
-  dailyLimit: 50,
+  dailyLimit: 200,
   intervals: {}
 };
 
@@ -29,7 +29,7 @@ export async function initAutomationTables(db) {
     CREATE TABLE IF NOT EXISTS automation_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       is_running INTEGER DEFAULT 0,
-      daily_limit INTEGER DEFAULT 50,
+      daily_limit INTEGER DEFAULT 200,
       emails_sent_today INTEGER DEFAULT 0,
       last_reset_date TEXT,
       created_at INTEGER,
@@ -84,7 +84,7 @@ export async function initAutomationTables(db) {
   const state = await db.get('SELECT * FROM automation_state WHERE id = 1');
   if (!state) {
     await db.run(
-      'INSERT INTO automation_state (id, is_running, daily_limit, emails_sent_today, last_reset_date, created_at, updated_at) VALUES (1, 0, 50, 0, ?, ?, ?)',
+      'INSERT INTO automation_state (id, is_running, daily_limit, emails_sent_today, last_reset_date, created_at, updated_at) VALUES (1, 0, 200, 0, ?, ?, ?)',
       [new Date().toDateString(), Date.now(), Date.now()]
     );
   }
