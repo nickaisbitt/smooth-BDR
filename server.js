@@ -8,9 +8,17 @@ import fs from 'fs';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import rateLimit from 'express-rate-limit';
+import OpenAI from 'openai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Initialize OpenRouter client using Replit AI Integrations
+// This uses Replit's AI Integrations service - no API key needed, charges billed to credits
+const openrouter = new OpenAI({
+  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL,
+  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -135,6 +143,33 @@ app.get('/api/track/status', async (req, res) => {
         res.json(map);
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// API Route: AI Chat Completion (using Replit AI Integrations)
+app.post('/api/ai/chat', async (req, res) => {
+    const { systemPrompt, userPrompt, model } = req.body;
+    
+    if (!systemPrompt || !userPrompt) {
+        return res.status(400).json({ error: "Missing systemPrompt or userPrompt" });
+    }
+    
+    try {
+        const response = await openrouter.chat.completions.create({
+            model: model || "meta-llama/llama-3.3-70b-instruct",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            max_tokens: 8192,
+            temperature: 0.7
+        });
+        
+        const content = response.choices[0]?.message?.content || "";
+        res.json({ success: true, content });
+    } catch (error) {
+        console.error("AI Error:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 

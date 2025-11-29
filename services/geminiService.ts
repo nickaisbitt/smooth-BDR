@@ -1,11 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 import { ServiceProfile, Lead, LeadStatus, AnalysisResult, StrategyNode, DecisionMaker, TriggerEvent, EmailDraft } from "../types";
 import { v4 as uuidv4 } from 'uuid';
-import { loadOpenRouterKey, loadBlacklist } from './storageService';
-
-// Initialize Gemini client (Primary)
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 // --- SMOOTH AI KNOWLEDGE BASE ---
 const SMOOTH_AI_CONTEXT = `
@@ -45,13 +39,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function extractJson(text: string): any {
     if (!text) return {};
     try {
-        // 1. Try direct parse
         return JSON.parse(text);
     } catch (e) {
-        // 2. Remove Markdown code blocks if present
         let cleanText = text.replace(/```json/g, '').replace(/```/g, '');
         
-        // 3. Find the first '{' or '[' and the last '}' or ']'
         const firstOpen = cleanText.search(/(\{|\[)/);
         const lastClose = cleanText.search(/(\}|\])(?=[^}\]]*$)/);
         
@@ -60,8 +51,6 @@ function extractJson(text: string): any {
             try {
                 return JSON.parse(cleanText);
             } catch (e2) {
-                // 4. Aggressive Cleanup for "Laziness" (e.g. "type": "hiring"|"news")
-                // This regex removes the |"news" part if the AI blindly copied the prompt structure
                 const aggressiveClean = cleanText.replace(/"hiring"\|"news"/g, '"hiring"'); 
                 try {
                      return JSON.parse(aggressiveClean);
@@ -71,7 +60,6 @@ function extractJson(text: string): any {
             }
         }
         
-        // 4. Fallback for array literals in text
         if (text.trim().startsWith('[')) return [];
         return {};
     }
@@ -82,87 +70,43 @@ export let onCostIncrement: ((cents: number) => void) | null = null;
 export const setCostCallback = (cb: (cents: number) => void) => { onCostIncrement = cb; };
 
 /**
- * Executes an API call with exponential backoff for 429/500 errors.
+ * Make a chat completion call via the backend API
  */
-export async function withHybridEngine<T>(
-    primaryOperation: () => Promise<T>, 
-    fallbackOperation: () => Promise<T>,
-    retries = 5, 
-    backoff = 5000 
-): Promise<T> {
-    // Increment Operation Count (free tier default)
-    if (onCostIncrement) onCostIncrement(0); 
-
+async function chatCompletion(
+    systemPrompt: string,
+    userPrompt: string,
+    model: string = "meta-llama/llama-3.3-70b-instruct",
+    retries: number = 3
+): Promise<string> {
+    if (onCostIncrement) onCostIncrement(0.01);
+    
     try {
-        return await primaryOperation();
+        const response = await fetch('/api/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ systemPrompt, userPrompt, model })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'AI request failed');
+        }
+        
+        const data = await response.json();
+        return data.content || "";
     } catch (error: any) {
-        const isQuotaError = error?.status === 429 || error?.code === 429 || error?.error?.code === 429 || error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('RESOURCE_EXHAUSTED');
-        const isServerError = error?.status === 500 || error?.code === 500 || error?.error?.code === 500 || error?.message?.includes('Internal error') || error?.status === 503;
-
-        if (isQuotaError || isServerError) {
-            console.warn(`⚠️ Engine Warning: ${isQuotaError ? 'Quota Limit' : 'Server Error'}. Switching to Fallback immediately...`);
-            // ABBY MODE: Failover instantly on Quota error, do not wait.
-            const openRouterKey = loadOpenRouterKey();
-            if (openRouterKey) {
-                console.log("🔄 Switching to OpenRouter Fallback Engine...");
-                return await fallbackOperation();
-            } else {
-                 if (retries > 0) {
-                    await delay(backoff);
-                    return withHybridEngine(primaryOperation, fallbackOperation, retries - 1, backoff * 1.5);
-                 }
-                 throw new Error(isQuotaError ? "QUOTA_EXHAUSTED" : "SERVER_ERROR");
-            }
+        if (retries > 0 && (error.message?.includes('429') || error.message?.includes('rate'))) {
+            console.warn(`Rate limit hit. Retrying in 2s...`);
+            await delay(2000);
+            return chatCompletion(systemPrompt, userPrompt, model, retries - 1);
         }
         throw error;
     }
 }
 
-async function callOpenRouter(model: string, messages: { role: string, content: string }[], responseSchema?: any): Promise<string> {
-    const key = loadOpenRouterKey();
-    if (!key) throw new Error("No OpenRouter Key available for fallback");
-
-    // Estimate Cost (Rough approximation: $0.0001 per call for flash models)
-    if (onCostIncrement) onCostIncrement(0.01);
-
-    const payload: any = {
-        model: model,
-        messages: messages,
-        temperature: 0.7,
-    };
-    
-    if (responseSchema && !model.includes('sonar')) {
-         payload.response_format = { type: "json_object" };
-    }
-
-    try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${key}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://smoothai.com",
-                "X-Title": "Smooth AI AutoBDR"
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`OpenRouter Error: ${err}`);
-        }
-
-        const data = await response.json();
-        let content = data.choices?.[0]?.message?.content || "";
-        return content;
-    } catch (e) {
-        throw e;
-    }
-}
-
 export const testOpenRouterConnection = async (): Promise<boolean> => {
     try {
-        const result = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: "ping" }], false);
+        const result = await chatCompletion("You are a helpful assistant.", "Say hello in one word.");
         return !!result;
     } catch (e) {
         console.error("OpenRouter Test Failed", e);
@@ -174,68 +118,36 @@ export const testOpenRouterConnection = async (): Promise<boolean> => {
 
 export const generateMasterPlan = async (pastStrategies: string[]): Promise<StrategyNode[]> => {
     const historyContext = pastStrategies.slice(-15).join("; ");
-    const systemPrompt = `Role: Head of Growth for Smooth AI. Context: Systematic attack plan. Avoid: [${historyContext}]`;
+    const systemPrompt = `Role: Head of Growth for Smooth AI. You are creating a systematic attack plan for outbound prospecting. Avoid these previously used strategies: [${historyContext}]`;
     const userPrompt = `
       TASK:
-      1. Use Google Search to identify 6 'Old World' industries facing operational headwinds right now.
+      1. Identify 6 'Old World' industries facing operational headwinds right now.
       2. Focus on: Logistics, HVAC, Manufacturing, Legal, Dentistry, Wholesale.
-      3. Generate 6 distinct "Search Strategies".
-      4. Return ONLY a JSON array. 
-      Example: [{"sector": "HVAC Supply (Midwest)", "query": "HVAC wholesale distributors in Ohio", "rationale": "Paper invoices."}]
+      3. Generate 6 distinct "Search Strategies" for finding leads.
+      4. Return ONLY a JSON array. No other text.
+      Example format: [{"sector": "HVAC Supply (Midwest)", "query": "HVAC wholesale distributors in Ohio", "rationale": "Paper invoices."}]
     `;
 
-    return withHybridEngine(
-        async () => {
-            if (!apiKey) throw new Error("API Key missing");
-            try {
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: systemPrompt + userPrompt,
-                    config: { tools: [{ googleSearch: {} }] }
-                });
-                const text = response.text || "[]";
-                const extracted = extractJson(text);
-                let plans: any[] = [];
-                if (Array.isArray(extracted)) plans = extracted;
-                else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
-                else if (extracted && Array.isArray(extracted.strategies)) plans = extracted.strategies;
-                else throw new Error("AI generated invalid plan format");
-    
-                return plans.map((p: any) => ({ 
-                    id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
-                }));
-            } catch (err: any) {
-                // FALLBACK: If Google Search tool fails (common), fallback to pure logic generation
-                console.warn("Master Plan Search Failed, falling back to logic-only generation.", err);
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: systemPrompt + userPrompt + " (Do not use search tools, just generate based on knowledge).",
-                });
-                const extracted = extractJson(response.text || "[]");
-                let plans: any[] = [];
-                if (Array.isArray(extracted)) plans = extracted;
-                else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
-                else return []; // Fail gracefully
-                return plans.map((p: any) => ({ 
-                    id: uuidv4(), sector: p.sector || "Unknown", query: p.query || "Strategy", rationale: p.rationale || "Automated", status: 'pending' 
-                }));
-            }
-        },
-        async () => {
-            const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "system", content: systemPrompt + " Return JSON array." }, { role: "user", content: userPrompt }], true);
-            const extracted = extractJson(jsonStr || "[]");
-            let plans: any[] = [];
-             if (Array.isArray(extracted)) plans = extracted;
-            else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
-            else return [];
-            return plans.map((p: any) => ({ id: uuidv4(), sector: p.sector, query: p.query, rationale: p.rationale, status: 'pending' }));
-        }
-    );
+    const text = await chatCompletion(systemPrompt, userPrompt);
+    const extracted = extractJson(text);
+    let plans: any[] = [];
+    if (Array.isArray(extracted)) plans = extracted;
+    else if (extracted && Array.isArray(extracted.plans)) plans = extracted.plans;
+    else if (extracted && Array.isArray(extracted.strategies)) plans = extracted.strategies;
+    else return [];
+
+    return plans.map((p: any) => ({ 
+        id: uuidv4(), 
+        sector: p.sector || "Unknown", 
+        query: p.query || "Strategy", 
+        rationale: p.rationale || "Automated", 
+        status: 'pending' 
+    }));
 };
 
 export const findLeads = async (query: string, blacklist: string[] = []): Promise<{ leads: Partial<Lead>[], urls: string[] }> => {
-  const promptText = `
-    Role: Expert BDR.
+  const systemPrompt = "You are an expert BDR (Business Development Representative) helping find qualified B2B leads.";
+  const userPrompt = `
     Task: Find 5-8 ACTUAL operating companies matching: "${query}".
     
     CRITICAL FILTERS (Do Not Fail These):
@@ -262,15 +174,11 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
                   let url = parts[1];
                   const desc = parts[2];
                   
-                  // Clean URL
-                  url = url.replace(/\/$/, ''); // Remove trailing slash
+                  url = url.replace(/\/$/, '');
                   if (!url.startsWith('http')) url = `https://${url}`;
                   
-                  // Logic Check: Is it a directory?
                   const isDirectory = /yelp|linkedin|clutch|yellowpages|bbb|facebook|instagram/i.test(url);
                   const isBlocked = blacklist.some(term => url.toLowerCase().includes(term.toLowerCase()) || name.toLowerCase().includes(term.toLowerCase()));
-                  
-                  // B2B FILTER: Reject personal emails or bad domains
                   const isPersonal = /gmail\.com|yahoo\.com|hotmail\.com|outlook\.com|aol\.com|protonmail/i.test(url);
                   
                   if (!isBlocked && !isDirectory && !isPersonal && name.length > 2 && desc.length > 5) {
@@ -282,73 +190,35 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
       return leads;
   };
 
-  return withHybridEngine(
-      async () => {
-          if (!apiKey) throw new Error("API Key missing");
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: promptText,
-              config: { tools: [{ googleSearch: {} }], temperature: 0.7 },
-          });
-          
-          const text = response.text || "";
-          const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-          const validGroundingUrls = groundingChunks.map(c => c.web?.uri).filter(u => u && !u.includes('yelp') && !u.includes('linkedin')) as string[];
-          
-          return { leads: processLeads(text), urls: validGroundingUrls };
-      },
-      async () => {
-          // Use valid Perplexity model ID
-          const text = await callOpenRouter("perplexity/sonar", [{ role: "user", content: promptText }]);
-          return { leads: processLeads(text), urls: [] };
-      }
-  );
+  const text = await chatCompletion(systemPrompt, userPrompt);
+  return { leads: processLeads(text), urls: [] };
 };
 
 export const findDecisionMaker = async (companyName: string, website: string): Promise<DecisionMaker | null> => {
-    // UPDATED PROMPT: Aggressively hunt for email addresses
-    const prompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). 
-    CRITICAL: HUNT FOR EMAIL ADDRESSES. Try to find direct email (e.g. first@company.com) or generic (hello@company.com).
-    Return JSON: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL", "email": "found_or_guessed_email" }. 
-    If not found, guess based on common patterns.`;
+    const systemPrompt = "You are a research assistant helping find decision makers at companies.";
+    const userPrompt = `Task: Find CEO/Owner/Founder of "${companyName}" (${website}). 
+    Try to find direct email (e.g. first@company.com) or generic (hello@company.com).
+    Return JSON only: { "name": "Full Name", "role": "Title", "linkedinUrl": "URL", "email": "found_or_guessed_email" }. 
+    If not found, guess based on common email patterns for the company domain.`;
     
-    return withHybridEngine(
-        async () => {
-            if (!apiKey) throw new Error("API Key missing");
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
-            return extractJson(response.text || "");
-        },
-        async () => {
-            // Use valid Perplexity model ID
-            const jsonStr = await callOpenRouter("perplexity/sonar", [{ role: "user", content: prompt }]);
-            return extractJson(jsonStr) || null;
-        }
-    );
+    const text = await chatCompletion(systemPrompt, userPrompt);
+    return extractJson(text) || null;
 };
 
 export const findTriggers = async (companyName: string, website: string): Promise<TriggerEvent[]> => {
-    // UPDATED PROMPT: Strict selection for JSON field
-    const prompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). 
-    Return JSON Array: [{ "type": "hiring", "description": "Hiring 3 admins", "sourceUrl": "url" }]. 
+    const systemPrompt = "You are a research assistant finding business signals and triggers.";
+    const userPrompt = `Task: Find active hiring (e.g. "Admin", "Dispatcher"), news, or expansion signals for "${companyName}" (${website}). 
+    Return JSON Array only: [{ "type": "hiring", "description": "Hiring 3 admins", "sourceUrl": "url" }]. 
     If no hiring, look for "news". 
-    CRITICAL: The "type" field must be one of: "hiring", "news", "growth", "other". Do not output "hiring|news". Pick one.`;
+    The "type" field must be one of: "hiring", "news", "growth", "other". Pick one.`;
     
-    return withHybridEngine(
-        async () => {
-             if (!apiKey) throw new Error("API Key missing");
-             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
-            return extractJson(response.text || "") || [];
-        },
-        async () => {
-            // Use valid Perplexity model ID
-            const jsonStr = await callOpenRouter("perplexity/sonar", [{ role: "user", content: prompt }]);
-            return extractJson(jsonStr) || [];
-        }
-    );
+    const text = await chatCompletion(systemPrompt, userPrompt);
+    return extractJson(text) || [];
 }
 
 export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): Promise<{analysis: AnalysisResult, techStack: string[]}> => {
-  const prompt = `
+  const systemPrompt = "You are an expert B2B sales analyst evaluating lead fitness for an AI consulting firm.";
+  const userPrompt = `
     Analyze lead: ${lead.companyName} (${lead.website}) for Smooth AI (Operational Automation).
     ${SMOOTH_AI_CONTEXT}
     
@@ -365,22 +235,23 @@ export const analyzeLeadFitness = async (lead: Lead, profile: ServiceProfile): P
     - QUALIFY (> 70): "Old World" Mid-Market (Regional Trucking, Local Law Firm, Mid-sized Manufacturer, HVAC Distributor).
     - JACKPOT (> 90): Website mentions "Fax", "Download PDF Form", "Call to book", or looks outdated.
 
-    OUTPUT JSON: { "score": number, "reasoning": "Be harsh. Explain why they are a fit or NOT.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."], "budgetEstimate": "e.g. $5k/mo", "competitors": ["..."], "employeeSentiment": "Negative/Positive" }
+    OUTPUT JSON only: { "score": number, "reasoning": "Be harsh. Explain why they are a fit or NOT.", "suggestedAngle": "Automation hook", "painPoints": ["..."], "techStack": ["..."], "budgetEstimate": "e.g. $5k/mo", "competitors": ["..."], "employeeSentiment": "Negative/Positive" }
   `;
 
-  return withHybridEngine(
-      async () => {
-        if (!apiKey) throw new Error("API Key missing");
-        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
-        const res = extractJson(response.text || "{}");
-        return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [], budgetEstimate: res.budgetEstimate, competitors: res.competitors, employeeSentiment: res.employeeSentiment }, techStack: res.techStack || [] };
-      },
-      async () => {
-          const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: prompt + " Return JSON." }], true);
-          const res = extractJson(jsonStr || "{}");
-           return { analysis: { score: res.score || 0, reasoning: res.reasoning || "No analysis", suggestedAngle: res.suggestedAngle || "General", painPoints: res.painPoints || [], budgetEstimate: res.budgetEstimate, competitors: res.competitors, employeeSentiment: res.employeeSentiment }, techStack: res.techStack || [] };
-      }
-  );
+  const text = await chatCompletion(systemPrompt, userPrompt);
+  const res = extractJson(text);
+  return { 
+      analysis: { 
+          score: res.score || 0, 
+          reasoning: res.reasoning || "No analysis", 
+          suggestedAngle: res.suggestedAngle || "General", 
+          painPoints: res.painPoints || [], 
+          budgetEstimate: res.budgetEstimate, 
+          competitors: res.competitors, 
+          employeeSentiment: res.employeeSentiment 
+      }, 
+      techStack: res.techStack || [] 
+  };
 };
 
 export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile, analysis: AnalysisResult, triggers: TriggerEvent[]): Promise<EmailDraft[]> => {
@@ -389,7 +260,8 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
 
     const triggerContext = triggers.length > 0 ? `Trigger: ${triggers[0].description}` : `Hook: ${analysis.suggestedAngle}`;
 
-    const prompt = `
+    const systemPrompt = "You are an expert cold email copywriter for B2B sales.";
+    const userPrompt = `
       You are the Head of Growth for Smooth AI.
       Write a 3-Email Cold Sequence from ${senderInfo} to ${contactName} at ${lead.companyName}.
       
@@ -406,7 +278,7 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
       - Subject A: A direct question about operations.
       - Subject B: A value-first statement about ${analysis.suggestedAngle}.
       
-      OUTPUT JSON Array:
+      OUTPUT JSON Array only:
       [
         { 
             "subject": "Subject A", 
@@ -422,16 +294,6 @@ export const generateEmailSequence = async (lead: Lead, profile: ServiceProfile,
       ]
     `;
 
-    return withHybridEngine(
-        async () => {
-            if (!apiKey) throw new Error("API Key missing");
-            // Note: responseMimeType is strict here, but we use extractJson anyway
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: "application/json" } });
-            return extractJson(response.text || "[]");
-        },
-        async () => {
-            const jsonStr = await callOpenRouter("google/gemini-2.0-flash-001", [{ role: "user", content: prompt + " Return JSON array." }], true);
-            return extractJson(jsonStr || "[]");
-        }
-    );
+    const text = await chatCompletion(systemPrompt, userPrompt);
+    return extractJson(text) || [];
 };

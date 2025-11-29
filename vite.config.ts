@@ -22,11 +22,8 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
-      // Polyfill process.env for client-side usage
-      'process.env': {
-        API_KEY: env.API_KEY || process.env.API_KEY,
-        // Add other environment variables here if needed
-      }
+      // Polyfill process.env for client-side usage (legacy, kept for compatibility)
+      'process.env': {}
     }
   };
 });

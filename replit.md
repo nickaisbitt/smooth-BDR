@@ -48,6 +48,11 @@ This is an AI-powered Business Development Representative (BDR) application that
 6. Created workflow to run both backend and frontend concurrently
 7. Configured deployment for production (autoscale mode with npm build and node server.js)
 
+### AI Integration Migration
+8. Installed Replit AI Integrations (OpenRouter) - no personal API key needed, usage billed to Replit credits
+9. Refactored AI service architecture: moved AI calls from client-side to server-side by creating `/api/ai/chat` endpoint for security
+10. Updated `geminiService.ts` to call backend API instead of using OpenAI SDK directly in browser
+
 ## Configuration
 
 ### Development Environment
@@ -65,13 +70,15 @@ This is an AI-powered Business Development Representative (BDR) application that
 - **Static Files**: Serves built React app from `./dist/` directory
 - **External Port**: Port 80 (Replit automatically maps to internal port 5000 in dev, port 3000 in production)
 
-### Required Environment Variables
-The application requires the following environment variables:
-- `GEMINI_API_KEY` or `API_KEY`: Google Gemini API key for AI-powered email generation
+### AI Integration (Replit AI Integrations)
+The application uses **Replit AI Integrations** for AI-powered features:
+- **No API key needed** - Uses Replit's built-in OpenRouter integration
+- **Billed to Replit credits** - Usage charges go to your Replit account
+- **Model**: meta-llama/llama-3.3-70b-instruct (via OpenRouter)
 
-To set up:
-1. Get your Gemini API key from [Google AI Studio](https://ai.google.dev/)
-2. Add it as a secret in Replit or set as environment variable
+The following environment variables are automatically set by Replit:
+- `AI_INTEGRATIONS_OPENROUTER_BASE_URL`: API endpoint
+- `AI_INTEGRATIONS_OPENROUTER_API_KEY`: Authentication token
 
 ### SMTP Configuration
 Email sending requires SMTP configuration provided through the UI:
@@ -119,6 +126,7 @@ In production, the Express server serves the built React app from the `dist/` di
 - `POST /api/send-email`: Send email via SMTP with tracking
 - `GET /api/track/open/:leadId`: Tracking pixel endpoint (returns 1x1 GIF)
 - `GET /api/track/status`: Poll for email open events
+- `POST /api/ai/chat`: AI chat completion (uses Replit AI Integrations/OpenRouter)
 
 ## Database Schema
 SQLite tables:
