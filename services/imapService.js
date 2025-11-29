@@ -17,14 +17,26 @@ export class ImapService {
                     user: this.config.username,
                     pass: this.config.password
                 },
-                logger: false
+                logger: false,
+                connectionTimeout: 10000,
+                socketTimeout: 30000,
+                maxRedirects: 0
             });
 
-            await this.client.connect();
+            // Set timeout for connection
+            const connectionPromise = this.client.connect();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Connection timeout')), 15000)
+            );
+
+            await Promise.race([connectionPromise, timeoutPromise]);
             console.log('✅ IMAP Connected to', this.config.host);
             return true;
         } catch (error) {
             console.error('❌ IMAP Connection Failed:', error.message);
+            if (this.client) {
+                this.client = null;
+            }
             throw new Error(`IMAP connection failed: ${error.message}`);
         }
     }

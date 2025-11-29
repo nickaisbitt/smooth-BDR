@@ -1,0 +1,33 @@
+2025-11-29 00:14:50.86
+cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+2025-11-29 00:14:51.03
+cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+2025-11-29 00:14:51.20
+cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+2025-11-29 00:14:51.35
+[vite] connecting...
+2025-11-29 00:14:51.56
+Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons: 1. You might have mismatching versions of React and the renderer (such as React DOM) 2. You might be breaking the Rules of Hooks 3. You might have more than one copy of React in the same app See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.%s
+at div at tr at tbody at table at div at div at div at div at main at div
+2025-11-29 00:14:51.56
+Warning: validateDOMNesting(...): %s cannot appear as a child of <%s>.%s%s%s
+<div>
+tr
+at div at tr at tbody at table at div at div at PipelineTable (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/PipelineTable.tsx:224:33) at div at div at main at div at App (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/App.tsx:68:41) at ErrorBoundary (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/ErrorBoundary.tsx:7:5)
+2025-11-29 00:14:51.56
+Warning: validateDOMNesting(...): %s cannot appear as a child of <%s>.%s%s%s
+<div>
+tr
+at div at tr at tbody at table at div at div at PipelineTable (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/PipelineTable.tsx:224:33) at div at div at main at div at App (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/App.tsx:68:41) at ErrorBoundary (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/ErrorBoundary.tsx:7:5)
+2025-11-29 00:14:51.56
+Warning: validateDOMNesting(...): %s cannot appear as a child of <%s>.%s%s%s
+<div>
+tr
+at div at tr at tbody at table at div at div at PipelineTable (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/PipelineTable.tsx:224:33) at div at div at main at div at App (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/App.tsx:68:41) at ErrorBoundary (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/ErrorBoundary.tsx:7:5)
+2025-11-29 00:14:51.56
+Warning: validateDOMNesting(...): %s cannot appear as a child of <%s>.%s%s%s
+<div>
+tr
+at div at tr at tbody at table at div at div at PipelineTable (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/PipelineTable.tsx:224:33) at div at div at main at div at App (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/App.tsx:68:41) at ErrorBoundary (https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev/components/ErrorBoundary.tsx:7:5)
+2025-11-29 00:14:51.56
+[vite] connected.
