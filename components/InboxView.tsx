@@ -28,15 +28,16 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '20',
+        type: emailType,
       });
-      if (filter !== 'all') {
+      if (filter !== 'all' && emailType === 'received') {
         params.append('filter', filter);
       }
       const res = await fetch(`/api/inbox?${params}`);
       if (res.ok) {
         const data = await res.json();
         setEmails(data.emails || []);
-        setTotalPages(data.totalPages || 1);
+        setTotalPages(data.pagination?.pages || 1);
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to fetch emails');
@@ -96,8 +97,13 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
   };
 
   useEffect(() => {
+    setPage(1);
+    setSelectedEmail(null);
+  }, [emailType]);
+
+  useEffect(() => {
     fetchEmails();
-  }, [page, filter]);
+  }, [page, filter, emailType]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
