@@ -114,10 +114,11 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
     }
   };
 
-  const extractName = (from: string) => {
+  const extractName = (from?: string) => {
+    if (!from) return 'Unknown';
     const match = from.match(/^"?([^"<]+)"?\s*</);
     if (match) return match[1].trim();
-    return from.split('@')[0];
+    return from.split('@')[0] || 'Unknown';
   };
 
   return (
@@ -260,11 +261,11 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 w-12">From:</span>
-                <span className="text-sm text-slate-700 dark:text-slate-300">{selectedEmail.from}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300">{selectedEmail.from || 'Unknown'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 w-12">To:</span>
-                <span className="text-sm text-slate-700 dark:text-slate-300">{selectedEmail.to}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300">{selectedEmail.to || 'Unknown'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 w-12">Date:</span>

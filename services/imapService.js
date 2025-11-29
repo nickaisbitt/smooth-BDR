@@ -156,7 +156,9 @@ export async function syncEmails(db, imapSettings, leadEmails = []) {
     const service = new ImapService(imapSettings);
     
     try {
-        await service.connect();
+        await service.connect().catch(err => {
+            throw new Error(`Failed to connect to IMAP: ${err.message}`);
+        });
         
         const lastSyncRow = await db.get('SELECT MAX(uid) as lastUid FROM (SELECT CAST(external_id AS INTEGER) as uid FROM email_messages WHERE external_id GLOB \'[0-9]*\')');
         const lastSyncUid = lastSyncRow?.lastUid || 0;
