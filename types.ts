@@ -17,6 +17,28 @@ export interface SMTPConfig {
     publicUrl?: string; // For Tracking Pixel
 }
 
+export interface IMAPConfig {
+    host: string;
+    port: string;
+    user: string;
+    pass: string;
+    secure: boolean;
+}
+
+export interface InboxEmail {
+    id: number;
+    messageId: string;
+    from: string;
+    to: string;
+    subject: string;
+    body: string;
+    date: string;
+    isRead: boolean;
+    leadId?: number;
+    leadName?: string;
+    createdAt: string;
+}
+
 export interface GoogleSheetsConfig {
     scriptUrl: string;
 }
@@ -130,4 +152,4 @@ export interface IntegrationConfig {
     autoSync: boolean;
 }
 
-export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin';
+export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin' | 'inbox';

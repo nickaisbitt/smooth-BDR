@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, Shortcut } from './types';
+import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, SMTPConfig, GoogleSheetsConfig, GlobalStats, Shortcut, IMAPConfig } from './types';
 import { PipelineTable } from './components/PipelineTable';
 import { PipelineBoard } from './components/PipelineBoard';
 import { StatCard } from './components/StatCard';
@@ -12,18 +12,18 @@ import { QualityControlView } from './components/QualityControlView';
 import { DebugView } from './components/DebugView';
 import { CalendarView } from './components/CalendarView';
 import { LinkedInView } from './components/LinkedInView';
-import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, withHybridEngine, testOpenRouterConnection } from './services/geminiService';
+import { InboxView } from './components/InboxView';
+import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, testOpenRouterConnection } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
     saveLogs, loadLogs, saveProfile, loadProfile, saveSMTPConfig, loadSMTPConfig,
     saveSheetsConfig, loadSheetsConfig, clearStorage, saveOpenRouterKey, loadOpenRouterKey,
     exportDatabase, importDatabase, saveBlacklist, loadBlacklist, saveStats, loadStats,
-    manageStorageQuota
+    manageStorageQuota, saveIMAPConfig, loadIMAPConfig
 } from './services/storageService';
 import { fetchLeadsFromSheet, saveLeadsToSheet } from './services/googleSheetsService';
 import { sendViaServer } from './services/emailService';
 import { MOCK_LEADS } from './services/mockData';
-import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_PROFILE: ServiceProfile = {
   companyName: "Smooth AI Consulting",
@@ -44,12 +44,14 @@ function App() {
   const [serviceProfile, setServiceProfile] = useState<ServiceProfile>(() => loadProfile() || DEFAULT_PROFILE);
   const [customApiKey, setCustomApiKey] = useState(() => loadOpenRouterKey());
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig>(() => loadSMTPConfig());
+  const [imapConfig, setImapConfig] = useState<IMAPConfig>(() => loadIMAPConfig());
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => loadSheetsConfig());
   const [blacklist, setBlacklist] = useState<string[]>(() => loadBlacklist());
   const [stats, setStats] = useState<GlobalStats>(() => loadStats());
   
   // UI STATUS STATE
   const [smtpStatus, setSmtpStatus] = useState<string>('');
+  const [imapStatus, setImapStatus] = useState<string>('');
   const [sheetsStatus, setSheetsStatus] = useState<string>('');
   const [routerStatus, setRouterStatus] = useState<string>('');
   
@@ -280,11 +282,12 @@ function App() {
   };
 
   const handleTestAI = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-      await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: 'Test connection',
-      });
+      try {
+          const success = await testOpenRouterConnection();
+          addLog(success ? "AI Connection OK" : "AI Connection Failed", success ? 'success' : 'error');
+      } catch (e: any) {
+          addLog(`AI Error: ${e.message}`, 'error');
+      }
   };
 
   const handleTestOpenRouter = async () => {
@@ -318,6 +321,44 @@ function App() {
           setSmtpStatus(`❌ ${e.message}`);
       }
       setTimeout(() => setSmtpStatus(''), 3000);
+  };
+
+  const handleSaveImapConfig = async () => {
+      setImapStatus("Saving...");
+      try {
+        const res = await fetch('/api/imap/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(imapConfig)
+        });
+        if (res.ok) {
+            saveIMAPConfig(imapConfig);
+            setImapStatus("✅ Saved");
+            addLog("IMAP Config Saved", 'success');
+        } else {
+            setImapStatus("❌ Failed");
+        }
+      } catch (e: any) {
+          setImapStatus(`❌ ${e.message}`);
+      }
+      setTimeout(() => setImapStatus(''), 3000);
+  };
+
+  const handleTestImap = async () => {
+      setImapStatus("Testing...");
+      try {
+        const res = await fetch('/api/imap/test', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            setImapStatus("✅ Connected");
+            addLog("IMAP connection successful", 'success');
+        } else {
+            setImapStatus(`❌ ${data.error || 'Failed'}`);
+        }
+      } catch (e: any) {
+          setImapStatus(`❌ ${e.message}`);
+      }
+      setTimeout(() => setImapStatus(''), 5000);
   };
 
   const handleDeleteLead = (leadId: string) => {
@@ -559,6 +600,7 @@ function App() {
         
         {currentView === 'calendar' && <CalendarView leads={leads} />}
         {currentView === 'linkedin' && <LinkedInView />}
+        {currentView === 'inbox' && <InboxView leads={leads} />}
         {currentView === 'quality_control' && <QualityControlView leads={leads} onApprove={()=>{}} onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))} />}
         {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={smtpConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
         {currentView === 'analytics' && <AnalyticsView leads={leads} />}
@@ -605,6 +647,27 @@ function App() {
                          <button onClick={() => { saveSMTPConfig(smtpConfig); addLog("SMTP Config Saved", 'success'); setSmtpStatus('✅ Saved'); setTimeout(()=>setSmtpStatus(''), 2000); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save SMTP</button>
                          <button onClick={handleTestEmail} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
                          {smtpStatus && <span className="text-xs font-bold animate-fadeIn">{smtpStatus}</span>}
+                     </div>
+                </div>
+
+                {/* IMAP Inbox Settings */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                     <h3 className="font-bold mb-2">Email Inbox (IMAP)</h3>
+                     <p className="text-xs text-slate-500 mb-3">Configure IMAP to sync incoming emails and link them to leads.</p>
+                     <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Host" value={imapConfig.host} onChange={e => setImapConfig({...imapConfig, host: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Port" value={imapConfig.port} onChange={e => setImapConfig({...imapConfig, port: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Username" value={imapConfig.user} onChange={e => setImapConfig({...imapConfig, user: e.target.value})} />
+                        <input className="border dark:border-slate-700 bg-transparent p-2 rounded text-sm" placeholder="Password" type="password" value={imapConfig.pass} onChange={e => setImapConfig({...imapConfig, pass: e.target.value})} />
+                     </div>
+                     <div className="flex items-center gap-2 mb-3">
+                        <input type="checkbox" id="imapSecure" checked={imapConfig.secure} onChange={e => setImapConfig({...imapConfig, secure: e.target.checked})} className="rounded" />
+                        <label htmlFor="imapSecure" className="text-sm text-slate-600 dark:text-slate-400">Use TLS/SSL</label>
+                     </div>
+                     <div className="flex gap-2 items-center">
+                         <button onClick={handleSaveImapConfig} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">Save IMAP</button>
+                         <button onClick={handleTestImap} className="bg-blue-50 text-blue-600 px-4 py-2 rounded text-sm font-bold border border-blue-200">Test Connection</button>
+                         {imapStatus && <span className="text-xs font-bold animate-fadeIn">{imapStatus}</span>}
                      </div>
                 </div>
 

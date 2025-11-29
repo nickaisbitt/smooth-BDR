@@ -1,5 +1,5 @@
 
-import { Lead, StrategyNode, AgentLog, ServiceProfile, SMTPConfig, LeadStatus, GoogleSheetsConfig, GlobalStats, IntegrationConfig } from '../types';
+import { Lead, StrategyNode, AgentLog, ServiceProfile, SMTPConfig, LeadStatus, GoogleSheetsConfig, GlobalStats, IntegrationConfig, IMAPConfig } from '../types';
 
 // --- STORAGE KEYS MAP ---
 export const STORAGE_KEY = 'smooth_ai_crm_db_v1';           // Main Database
@@ -13,6 +13,7 @@ export const SHEETS_CONFIG_KEY = 'smooth_ai_sheets_config'; // Google Sheets Scr
 export const BLACKLIST_KEY = 'smooth_ai_blacklist_v1';      // Negative Filters
 export const STATS_KEY = 'smooth_ai_global_stats_v1';       // Cost Tracking
 export const INTEGRATION_CONFIG_KEY = 'smooth_ai_integration_config_v1'; // Webhooks
+export const IMAP_CONFIG_KEY = 'smooth_ai_imap_config'; // IMAP Settings
 
 // --- GENERIC LOADERS ---
 
@@ -98,6 +99,13 @@ export const loadIntegrationConfig = (): IntegrationConfig => {
     } catch (e) { return { webhookUrl: '', autoSync: false }; }
 };
 
+export const loadIMAPConfig = (): IMAPConfig => {
+    try {
+        const data = localStorage.getItem(IMAP_CONFIG_KEY);
+        return data ? JSON.parse(data) : { host: 'imap.hostinger.com', port: '993', user: '', pass: '', secure: true };
+    } catch (e) { return { host: 'imap.hostinger.com', port: '993', user: '', pass: '', secure: true }; }
+};
+
 // --- GENERIC SAVERS ---
 
 export const saveLeadsToStorage = (leads: Lead[]) => {
@@ -147,6 +155,10 @@ export const saveStats = (stats: GlobalStats) => {
 
 export const saveIntegrationConfig = (config: IntegrationConfig) => {
     localStorage.setItem(INTEGRATION_CONFIG_KEY, JSON.stringify(config));
+};
+
+export const saveIMAPConfig = (config: IMAPConfig) => {
+    localStorage.setItem(IMAP_CONFIG_KEY, JSON.stringify(config));
 };
 
 // --- GARBAGE COLLECTOR ---
