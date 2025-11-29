@@ -22,13 +22,13 @@ args = "Start Application"
 name = "Start Application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node server.js & npm run dev"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[ports]]
 localPort = 3000
@@ -39,7 +39,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 36885
+localPort = 37497
 externalPort = 3001
 
 [deployment]
