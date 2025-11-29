@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ViewType } from '../types';
-import { LayoutDashboard, Users, BarChart3, Settings, ShieldCheck, Activity, Calendar, Linkedin, Mail, Zap } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Settings, ShieldCheck, Activity, Calendar, Linkedin, Mail, Zap, DollarSign } from 'lucide-react';
 
 interface Props {
   currentView: ViewType;
@@ -33,6 +33,12 @@ export const Sidebar: React.FC<Props> = ({ currentView, onViewChange }) => {
             label="Prospects" 
             active={currentView === 'prospects'} 
             onClick={() => onViewChange('prospects')} 
+        />
+        <SidebarItem 
+            icon={<DollarSign size={20} />} 
+            label="Deals" 
+            active={currentView === 'deals'} 
+            onClick={() => onViewChange('deals')} 
         />
         <SidebarItem 
             icon={<Calendar size={20} />} 

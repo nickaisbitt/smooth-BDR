@@ -14,6 +14,8 @@ import { CalendarView } from './components/CalendarView';
 import { LinkedInView } from './components/LinkedInView';
 import { InboxView } from './components/InboxView';
 import { SystemStatusView } from './components/SystemStatusView';
+import { DealsView } from './components/DealsView';
+import { LeadDetailView } from './components/LeadDetailView';
 import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, testOpenRouterConnection } from './services/geminiService';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
@@ -56,6 +58,7 @@ function App() {
   
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
   // CIRCUIT BREAKER STATE
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
@@ -675,6 +678,13 @@ function App() {
         {currentView === 'linkedin' && <LinkedInView />}
         {currentView === 'inbox' && <InboxView leads={leads} />}
         {currentView === 'system_status' && <SystemStatusView smtpConfig={emailConfig} leads={leads} />}
+        {currentView === 'deals' && (
+          <DealsView 
+            leads={leads} 
+            onUpdateLead={handleUpdateLead}
+            onSelectLead={(lead) => setSelectedLead(lead)}
+          />
+        )}
         {currentView === 'quality_control' && <QualityControlView leads={leads} onApprove={()=>{}} onReject={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.UNQUALIFIED} : p))} />}
         {currentView === 'debug' && <DebugView logs={logs} stats={stats} smtpConfig={emailConfig} sheetsConfig={sheetsConfig} onClearLogs={() => setLogs([])} onTestAI={handleTestAI} onTestEmail={handleTestEmail} />}
         {currentView === 'analytics' && <AnalyticsView leads={leads} />}
@@ -749,6 +759,17 @@ function App() {
             </div>
         )}
       </main>
+
+      {selectedLead && (
+        <LeadDetailView
+          lead={selectedLead}
+          onUpdate={(updatedLead) => {
+            handleUpdateLead(updatedLead);
+            setSelectedLead(updatedLead);
+          }}
+          onClose={() => setSelectedLead(null)}
+        />
+      )}
     </div>
   );
 }

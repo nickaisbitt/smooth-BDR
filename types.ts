@@ -46,8 +46,48 @@ export enum LeadStatus {
   UNQUALIFIED = 'UNQUALIFIED',
   CONTACTED = 'CONTACTED',
   OPENED = 'OPENED',
+  MEETING_SCHEDULED = 'MEETING_SCHEDULED',
+  PROPOSAL_SENT = 'PROPOSAL_SENT',
+  NEGOTIATION = 'NEGOTIATION',
+  WON = 'WON',
+  LOST = 'LOST',
   ARCHIVED = 'ARCHIVED',
 }
+
+export type ActivityType = 'call' | 'meeting' | 'email' | 'note' | 'task';
+
+export interface Activity {
+  id: string;
+  leadId: string;
+  type: ActivityType;
+  title: string;
+  description: string;
+  date: number;
+  duration?: number;
+  outcome?: string;
+  createdAt: number;
+}
+
+export interface Note {
+  id: string;
+  leadId: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  role: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+  isPrimary: boolean;
+}
+
+export type CompanySize = '1-10' | '11-50' | '51-200' | '201-500' | '501-1000' | '1000+';
+export type Industry = 'Technology' | 'Healthcare' | 'Finance' | 'Retail' | 'Manufacturing' | 'Education' | 'Real Estate' | 'Consulting' | 'Marketing' | 'Legal' | 'Other';
 
 export interface AnalysisResult {
   score: number; // 0-100
@@ -106,6 +146,27 @@ export interface Lead {
   // A/B Test Tracking
   activeVariant?: 'A' | 'B'; 
 
+  // CRM Fields
+  dealValue?: number;
+  probability?: number;
+  expectedCloseDate?: number;
+  industry?: Industry;
+  companySize?: CompanySize;
+  location?: string;
+  phone?: string;
+  
+  // Multiple Contacts
+  contacts?: Contact[];
+  
+  // Activities & Notes
+  activities?: Activity[];
+  notes?: Note[];
+  
+  // Won/Lost tracking
+  wonLostReason?: string;
+  wonLostDate?: number;
+  actualRevenue?: number;
+
   createdAt: number;
   lastUpdated: number;
   lastContactedAt?: number;
@@ -148,4 +209,4 @@ export interface IntegrationConfig {
     autoSync: boolean;
 }
 
-export type ViewType = 'dashboard' | 'prospects' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin' | 'inbox' | 'system_status';
+export type ViewType = 'dashboard' | 'prospects' | 'deals' | 'analytics' | 'settings' | 'quality_control' | 'debug' | 'calendar' | 'linkedin' | 'inbox' | 'system_status';

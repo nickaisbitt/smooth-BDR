@@ -11,22 +11,40 @@ interface Props {
   analyzingIds: Set<string>;
 }
 
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
 export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds }) => {
   const columns = [
     { id: LeadStatus.NEW, label: 'Identified', color: 'bg-slate-100', text: 'text-slate-600' },
     { id: LeadStatus.ANALYZING, label: 'Processing', color: 'bg-yellow-50', text: 'text-yellow-700' },
     { id: LeadStatus.QUALIFIED, label: 'Qualified', color: 'bg-green-50', text: 'text-green-700' },
     { id: LeadStatus.CONTACTED, label: 'Contacted', color: 'bg-blue-50', text: 'text-blue-700' },
-    { id: LeadStatus.UNQUALIFIED, label: 'Disqualified', color: 'bg-red-50', text: 'text-red-700' },
+    { id: LeadStatus.MEETING_SCHEDULED, label: 'Meeting Set', color: 'bg-purple-50', text: 'text-purple-700' },
+    { id: LeadStatus.PROPOSAL_SENT, label: 'Proposal', color: 'bg-indigo-50', text: 'text-indigo-700' },
+    { id: LeadStatus.NEGOTIATION, label: 'Negotiating', color: 'bg-orange-50', text: 'text-orange-700' },
+    { id: LeadStatus.WON, label: 'Won', color: 'bg-emerald-100', text: 'text-emerald-700' },
+    { id: LeadStatus.LOST, label: 'Lost', color: 'bg-red-50', text: 'text-red-700' },
+    { id: LeadStatus.UNQUALIFIED, label: 'Disqualified', color: 'bg-gray-100', text: 'text-gray-600' },
   ];
+
+  const isHighValueDeal = (lead: Lead): boolean => {
+    return lead.dealValue !== undefined && lead.dealValue > 10000;
+  };
 
   return (
     <div className="h-full overflow-x-auto pb-4 scrollbar-hide">
-        <div className="flex gap-4 min-w-[1200px] h-full">
+        <div className="flex gap-3 min-w-[2600px] h-full">
             {columns.map(col => {
                 const colLeads = leads.filter(l => l.status === col.id);
                 return (
-                    <div key={col.id} className="w-72 flex flex-col h-full bg-slate-50/50 rounded-xl border border-slate-200/60 shrink-0">
+                    <div key={col.id} className="w-64 flex flex-col h-full bg-slate-50/50 rounded-xl border border-slate-200/60 shrink-0">
                          {/* Header */}
                         <div className={`p-3 border-b border-slate-100 flex justify-between items-center rounded-t-xl ${col.color}`}>
                             <h3 className={`text-xs font-bold uppercase tracking-wider ${col.text}`}>{col.label}</h3>
@@ -41,7 +59,21 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                 </div>
                             )}
                             {colLeads.map(lead => (
-                                <div key={lead.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2 relative">
+                                <div 
+                                    key={lead.id} 
+                                    className={`bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2 relative ${
+                                        isHighValueDeal(lead) 
+                                            ? 'border-amber-300 ring-2 ring-amber-100' 
+                                            : 'border-slate-200'
+                                    }`}
+                                >
+                                    {/* High Value Indicator */}
+                                    {isHighValueDeal(lead) && (
+                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
+                                            <span className="text-[10px]">💎</span>
+                                        </div>
+                                    )}
+                                    
                                     <div className="flex justify-between items-start">
                                         <div className="w-6 h-6 rounded bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-[10px] shrink-0 uppercase">
                                             {lead.companyName.substring(0,1)}
@@ -57,6 +89,22 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                         <h4 className="font-bold text-slate-800 text-sm leading-tight truncate pr-4" title={lead.companyName}>{lead.companyName}</h4>
                                         <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">{lead.description}</p>
                                     </div>
+
+                                    {/* Deal Value */}
+                                    {lead.dealValue !== undefined && (
+                                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded ${
+                                            isHighValueDeal(lead) 
+                                                ? 'bg-amber-50 border border-amber-200' 
+                                                : 'bg-slate-50 border border-slate-100'
+                                        }`}>
+                                            <span className="text-[10px]">💰</span>
+                                            <span className={`text-[11px] font-bold ${
+                                                isHighValueDeal(lead) ? 'text-amber-700' : 'text-slate-600'
+                                            }`}>
+                                                {formatCurrency(lead.dealValue)}
+                                            </span>
+                                        </div>
+                                    )}
                                     
                                     {/* Trigger Badge */}
                                     {lead.triggers && lead.triggers.length > 0 && (
