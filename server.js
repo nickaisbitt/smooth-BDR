@@ -9,6 +9,7 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import rateLimit from 'express-rate-limit';
 import OpenAI from 'openai';
+import { ImapService, syncEmails } from './services/imapService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,6 +61,32 @@ let db;
                 type TEXT,
                 timestamp INTEGER
             );
+            CREATE TABLE IF NOT EXISTS email_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                external_id TEXT UNIQUE,
+                lead_id TEXT,
+                from_email TEXT,
+                to_email TEXT,
+                subject TEXT,
+                body_text TEXT,
+                body_html TEXT,
+                received_at INTEGER,
+                is_read INTEGER DEFAULT 0,
+                thread_id TEXT,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS imap_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                host TEXT,
+                port INTEGER,
+                username TEXT,
+                password TEXT,
+                use_tls INTEGER DEFAULT 1,
+                last_sync INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_email_messages_external_id ON email_messages(external_id);
+            CREATE INDEX IF NOT EXISTS idx_email_messages_lead_id ON email_messages(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_email_messages_from_email ON email_messages(from_email);
         `);
         console.log("✅ SQLite Database Initialized");
     } catch (e) {
@@ -172,6 +199,263 @@ app.post('/api/ai/chat', async (req, res) => {
         res.json({ success: true, content });
     } catch (error) {
         console.error("AI Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ======== IMAP SETTINGS API ========
+
+// POST /api/imap/settings - Save IMAP configuration
+app.post('/api/imap/settings', async (req, res) => {
+    const { host, port, username, password, use_tls } = req.body;
+    
+    if (!host || !port || !username || !password) {
+        return res.status(400).json({ error: "Missing required IMAP settings" });
+    }
+    
+    try {
+        const existing = await db.get('SELECT id FROM imap_settings WHERE id = 1');
+        
+        if (existing) {
+            await db.run(
+                'UPDATE imap_settings SET host = ?, port = ?, username = ?, password = ?, use_tls = ? WHERE id = 1',
+                [host, parseInt(port), username, password, use_tls ? 1 : 0]
+            );
+        } else {
+            await db.run(
+                'INSERT INTO imap_settings (id, host, port, username, password, use_tls) VALUES (1, ?, ?, ?, ?, ?)',
+                [host, parseInt(port), username, password, use_tls ? 1 : 0]
+            );
+        }
+        
+        res.json({ success: true, message: "IMAP settings saved" });
+    } catch (error) {
+        console.error("IMAP Settings Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/imap/settings - Get IMAP settings (password masked)
+app.get('/api/imap/settings', async (req, res) => {
+    try {
+        const settings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
+        
+        if (!settings) {
+            return res.json({ 
+                configured: false,
+                host: 'imap.hostinger.com',
+                port: 993,
+                use_tls: true
+            });
+        }
+        
+        res.json({
+            configured: true,
+            host: settings.host,
+            port: settings.port,
+            username: settings.username,
+            password: settings.password ? '********' : '',
+            use_tls: settings.use_tls === 1,
+            last_sync: settings.last_sync
+        });
+    } catch (error) {
+        console.error("IMAP Settings Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/imap/test - Test IMAP connection
+app.post('/api/imap/test', async (req, res) => {
+    const { host, port, username, password, use_tls } = req.body;
+    
+    if (!host || !port || !username || !password) {
+        return res.status(400).json({ error: "Missing required IMAP settings" });
+    }
+    
+    try {
+        const service = new ImapService({ host, port, username, password, use_tls });
+        const result = await service.testConnection();
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/imap/sync - Trigger email sync from mailbox
+app.post('/api/imap/sync', async (req, res) => {
+    const { leadEmails } = req.body;
+    
+    try {
+        const settings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
+        
+        if (!settings) {
+            return res.status(400).json({ error: "IMAP settings not configured" });
+        }
+        
+        const result = await syncEmails(db, {
+            host: settings.host,
+            port: settings.port,
+            username: settings.username,
+            password: settings.password,
+            use_tls: settings.use_tls === 1
+        }, leadEmails || []);
+        
+        console.log(`📬 Email Sync Complete: ${result.newEmails} new, ${result.linkedEmails} linked`);
+        res.json(result);
+    } catch (error) {
+        console.error("IMAP Sync Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ======== INBOX API ========
+
+// GET /api/inbox - List emails with pagination
+app.get('/api/inbox', async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const filter = req.query.filter;
+    
+    try {
+        let whereClause = '';
+        const params = [];
+        
+        if (filter === 'unread') {
+            whereClause = 'WHERE is_read = 0';
+        } else if (filter === 'linked') {
+            whereClause = 'WHERE lead_id IS NOT NULL';
+        } else if (filter === 'unlinked') {
+            whereClause = 'WHERE lead_id IS NULL';
+        }
+        
+        const countRow = await db.get(`SELECT COUNT(*) as total FROM email_messages ${whereClause}`, params);
+        const total = countRow?.total || 0;
+        
+        const emails = await db.all(
+            `SELECT id, external_id, lead_id, from_email, to_email, subject, 
+                    SUBSTR(body_text, 1, 200) as preview, received_at, is_read, thread_id, created_at
+             FROM email_messages ${whereClause}
+             ORDER BY received_at DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
+        );
+        
+        res.json({
+            emails,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error("Inbox Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/inbox/:id - Get single email details
+app.get('/api/inbox/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const email = await db.get('SELECT * FROM email_messages WHERE id = ?', [id]);
+        
+        if (!email) {
+            return res.status(404).json({ error: "Email not found" });
+        }
+        
+        if (!email.is_read) {
+            await db.run('UPDATE email_messages SET is_read = 1 WHERE id = ?', [id]);
+            email.is_read = 1;
+        }
+        
+        res.json(email);
+    } catch (error) {
+        console.error("Email Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/inbox/:id/link/:leadId - Link email to a lead
+app.post('/api/inbox/:id/link/:leadId', async (req, res) => {
+    const { id, leadId } = req.params;
+    
+    try {
+        const email = await db.get('SELECT id FROM email_messages WHERE id = ?', [id]);
+        
+        if (!email) {
+            return res.status(404).json({ error: "Email not found" });
+        }
+        
+        await db.run('UPDATE email_messages SET lead_id = ? WHERE id = ?', [leadId, id]);
+        
+        res.json({ success: true, message: `Email ${id} linked to lead ${leadId}` });
+    } catch (error) {
+        console.error("Link Email Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/inbox/:id/unlink - Unlink email from lead
+app.post('/api/inbox/:id/unlink', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const email = await db.get('SELECT id FROM email_messages WHERE id = ?', [id]);
+        
+        if (!email) {
+            return res.status(404).json({ error: "Email not found" });
+        }
+        
+        await db.run('UPDATE email_messages SET lead_id = NULL WHERE id = ?', [id]);
+        
+        res.json({ success: true, message: `Email ${id} unlinked from lead` });
+    } catch (error) {
+        console.error("Unlink Email Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/inbox/lead/:leadId - Get emails for a specific lead
+app.get('/api/inbox/lead/:leadId', async (req, res) => {
+    const { leadId } = req.params;
+    
+    try {
+        const emails = await db.all(
+            `SELECT id, external_id, from_email, to_email, subject, 
+                    SUBSTR(body_text, 1, 200) as preview, received_at, is_read, thread_id
+             FROM email_messages 
+             WHERE lead_id = ?
+             ORDER BY received_at DESC`,
+            [leadId]
+        );
+        
+        res.json({ emails });
+    } catch (error) {
+        console.error("Lead Emails Fetch Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/inbox/:id - Delete an email
+app.delete('/api/inbox/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const email = await db.get('SELECT id FROM email_messages WHERE id = ?', [id]);
+        
+        if (!email) {
+            return res.status(404).json({ error: "Email not found" });
+        }
+        
+        await db.run('DELETE FROM email_messages WHERE id = ?', [id]);
+        
+        res.json({ success: true, message: `Email ${id} deleted` });
+    } catch (error) {
+        console.error("Delete Email Error:", error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -1,4 +1,4 @@
-modules = ["web", "nodejs-20"]
+modules = ["web", "nodejs-20", "postgresql-16"]
 [agent]
 expertMode = true
 integrations = ["javascript_openrouter_ai_integrations:1.0.0"]
@@ -39,7 +39,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 37497
+localPort = 36579
 externalPort = 3001
 
 [deployment]
