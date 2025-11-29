@@ -333,8 +333,9 @@ app.get('/api/inbox', async (req, res) => {
         const total = countRow?.total || 0;
         
         const emails = await db.all(
-            `SELECT id, external_id, lead_id, from_email, to_email, subject, 
-                    SUBSTR(body_text, 1, 200) as preview, received_at, is_read, thread_id, created_at
+            `SELECT id, external_id, lead_id, 
+                    from_email as 'from', to_email as 'to', subject, 
+                    SUBSTR(body_text, 1, 200) as preview, received_at as date, is_read as isRead, thread_id, created_at
              FROM email_messages ${whereClause}
              ORDER BY received_at DESC
              LIMIT ? OFFSET ?`,
@@ -361,15 +362,21 @@ app.get('/api/inbox/:id', async (req, res) => {
     const { id } = req.params;
     
     try {
-        const email = await db.get('SELECT * FROM email_messages WHERE id = ?', [id]);
+        const email = await db.get(
+            `SELECT id, external_id, lead_id, 
+                    from_email as 'from', to_email as 'to', subject, 
+                    body_text as body, body_html, received_at as date, is_read as isRead, thread_id, created_at
+             FROM email_messages WHERE id = ?`, 
+            [id]
+        );
         
         if (!email) {
             return res.status(404).json({ error: "Email not found" });
         }
         
-        if (!email.is_read) {
+        if (!email.isRead) {
             await db.run('UPDATE email_messages SET is_read = 1 WHERE id = ?', [id]);
-            email.is_read = 1;
+            email.isRead = 1;
         }
         
         res.json(email);
