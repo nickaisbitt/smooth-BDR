@@ -53,6 +53,14 @@ This is an AI-powered Business Development Representative (BDR) application that
 9. Refactored AI service architecture: moved AI calls from client-side to server-side by creating `/api/ai/chat` endpoint for security
 10. Updated `geminiService.ts` to call backend API instead of using OpenAI SDK directly in browser
 
+### IMAP Inbox Feature (Email Reading)
+11. Added IMAP email reading capability to receive and view incoming emails
+12. Created `imapService.js` backend service using imapflow and mailparser libraries
+13. Added IMAP settings configuration in Settings page (host, port, username, password, TLS)
+14. Built Inbox view with email list, filters (All/Unread/Linked/Unlinked), and email detail pane
+15. Auto-links incoming emails to existing leads by matching sender email addresses
+16. Added database tables: `email_messages` and `imap_settings`
+
 ## Configuration
 
 ### Development Environment
