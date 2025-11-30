@@ -115,6 +115,18 @@ export async function initAgentTables(db) {
       enabled INTEGER DEFAULT 1,
       updated_at INTEGER
     );
+    
+    CREATE TABLE IF NOT EXISTS agent_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT NOT NULL,
+      message_type TEXT NOT NULL,
+      payload TEXT,
+      created_at INTEGER NOT NULL,
+      read_at INTEGER
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_agent_messages_to ON agent_messages(to_agent, read_at);
   `);
   
   const agents = ['prospect-finder', 'research', 'email-generator', 'email-sender', 'inbox'];

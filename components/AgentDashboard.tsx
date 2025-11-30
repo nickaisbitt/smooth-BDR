@@ -17,7 +17,8 @@ import {
   ToggleLeft,
   ToggleRight,
   X,
-  Loader
+  Loader,
+  Download
 } from 'lucide-react';
 
 interface AgentStatus {
@@ -51,9 +52,10 @@ interface QueueStats {
 
 interface AgentDashboardProps {
   apiBase?: string;
+  leads?: any[];
 }
 
-export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps) {
+export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDashboardProps) {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [queues, setQueues] = useState<Record<string, QueueStats>>({});
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,8 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
   const [selectedAgent, setSelectedAgent] = useState<AgentStatus | null>(null);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ total: number; message: string } | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -116,6 +120,45 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
       console.error('Failed to toggle master:', error);
     } finally {
       setToggling(null);
+    }
+  };
+
+  const syncLeadsToAgents = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      // Get leads from localStorage if not passed as prop
+      let leadsToSync = leads;
+      if (!leadsToSync || leadsToSync.length === 0) {
+        const storedData = localStorage.getItem('smooth_ai_crm_db_v1');
+        if (storedData) {
+          leadsToSync = JSON.parse(storedData);
+        }
+      }
+      
+      if (!leadsToSync || leadsToSync.length === 0) {
+        setSyncResult({ total: 0, message: 'No leads found to sync' });
+        return;
+      }
+      
+      const res = await fetch(`${apiBase}/agents/sync-leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads: leadsToSync })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        setSyncResult({ total: data.total, message: data.message });
+        fetchStatus();
+      } else {
+        setSyncResult({ total: 0, message: data.error || 'Sync failed' });
+      }
+    } catch (error) {
+      console.error('Failed to sync leads:', error);
+      setSyncResult({ total: 0, message: 'Failed to sync leads' });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -244,6 +287,14 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
             {masterEnabled ? 'Engine Running' : 'Engine Stopped'}
           </button>
           <button
+            onClick={syncLeadsToAgents}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Download className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync Leads to Agents'}
+          </button>
+          <button
             onClick={() => setShowAddProspect(true)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
           >
@@ -259,6 +310,29 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
           </button>
         </div>
       </div>
+
+      {syncResult && (
+        <div className={`p-4 rounded-lg ${syncResult.total > 0 ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {syncResult.total > 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-yellow-600" />
+              )}
+              <span className={syncResult.total > 0 ? 'text-green-800' : 'text-yellow-800'}>
+                {syncResult.message}
+              </span>
+            </div>
+            <button 
+              onClick={() => setSyncResult(null)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">

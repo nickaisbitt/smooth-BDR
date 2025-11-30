@@ -1243,6 +1243,154 @@ app.get('/api/agents/logs', async (req, res) => {
     }
 });
 
+// POST /api/agents/sync-leads - Sync leads from browser localStorage to agent queues
+app.post('/api/agents/sync-leads', async (req, res) => {
+    const { leads } = req.body;
+    
+    if (!Array.isArray(leads)) {
+        return res.status(400).json({ error: "Leads array is required" });
+    }
+    
+    try {
+        let synced = { prospects: 0, research: 0, drafts: 0 };
+        
+        for (const lead of leads) {
+            // Check if already in any queue by company name
+            const existingProspect = await db.get(
+                'SELECT id FROM prospect_queue WHERE company_name = ?',
+                [lead.companyName]
+            );
+            const existingResearch = await db.get(
+                'SELECT id FROM research_queue WHERE company_name = ?',
+                [lead.companyName]
+            );
+            const existingDraft = await db.get(
+                'SELECT id FROM draft_queue WHERE company_name = ?',
+                [lead.companyName]
+            );
+            
+            if (existingProspect || existingResearch || existingDraft) {
+                continue; // Skip duplicates
+            }
+            
+            const contactEmail = lead.decisionMaker?.email || lead.email || null;
+            const contactName = lead.decisionMaker?.name || null;
+            const now = Date.now();
+            
+            // Determine which queue based on lead status
+            if (lead.status === 'NEW' || lead.status === 'ANALYZING' || !lead.status) {
+                // Add to prospect queue for research
+                await db.run(`
+                    INSERT INTO prospect_queue (company_name, website_url, contact_email, contact_name, source, priority, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                `, [lead.companyName, lead.website || lead.websiteUrl, contactEmail, contactName, 'sync', lead.fitScore || 5, now]);
+                synced.prospects++;
+            } else if (lead.status === 'QUALIFIED' && lead.researchData) {
+                // Has research data, add to draft queue
+                const researchQuality = lead.researchData?.researchQuality || lead.fitScore || 0;
+                
+                if (researchQuality >= 9) {
+                    await db.run(`
+                        INSERT INTO draft_queue (company_name, contact_email, contact_name, research_quality, research_data, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                    `, [lead.companyName, contactEmail, contactName, researchQuality, JSON.stringify(lead.researchData), now]);
+                    synced.drafts++;
+                } else {
+                    // Research quality too low, add to research queue for more research
+                    await db.run(`
+                        INSERT INTO research_queue (company_name, website_url, contact_email, contact_name, current_quality, research_data, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                    `, [lead.companyName, lead.website, contactEmail, contactName, researchQuality, JSON.stringify(lead.researchData || {}), now]);
+                    synced.research++;
+                }
+            } else {
+                // Default: add to prospect queue
+                await db.run(`
+                    INSERT INTO prospect_queue (company_name, website_url, contact_email, contact_name, source, priority, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                `, [lead.companyName, lead.website || lead.websiteUrl, contactEmail, contactName, 'sync', lead.fitScore || 5, now]);
+                synced.prospects++;
+            }
+        }
+        
+        // Log the sync
+        await db.run(`
+            INSERT INTO agent_logs (agent_name, level, message, details, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `, ['supervisor', 'info', `Synced ${synced.prospects + synced.research + synced.drafts} leads to agent queues`, JSON.stringify(synced), Date.now()]);
+        
+        // Notify agents there's new work (broadcast message)
+        await db.run(`
+            INSERT INTO agent_messages (from_agent, to_agent, message_type, payload, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `, ['supervisor', 'all', 'NEW_WORK_AVAILABLE', JSON.stringify({ queues: synced }), Date.now()]);
+        
+        res.json({ 
+            success: true, 
+            synced,
+            total: synced.prospects + synced.research + synced.drafts,
+            message: `Synced ${synced.prospects} to prospect queue, ${synced.research} to research queue, ${synced.drafts} to draft queue`
+        });
+    } catch (error) {
+        console.error('Sync error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/agents/request-work - Agent requests work from supervisor
+app.post('/api/agents/request-work', async (req, res) => {
+    const { agentName, canHelp } = req.body;
+    
+    try {
+        // Check if there's work available in any queue
+        const queues = {
+            prospect: await db.get('SELECT COUNT(*) as count FROM prospect_queue WHERE status = ?', ['pending']),
+            research: await db.get('SELECT COUNT(*) as count FROM research_queue WHERE status = ?', ['pending']),
+            draft: await db.get('SELECT COUNT(*) as count FROM draft_queue WHERE status = ?', ['pending'])
+        };
+        
+        // Log the work request
+        await db.run(`
+            INSERT INTO agent_logs (agent_name, level, message, details, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `, [agentName, 'info', 'Requested work from supervisor', JSON.stringify({ queues, canHelp }), Date.now()]);
+        
+        res.json({
+            success: true,
+            workAvailable: {
+                prospects: queues.prospect?.count || 0,
+                research: queues.research?.count || 0,
+                drafts: queues.draft?.count || 0
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/agents/messages - Get messages for an agent
+app.get('/api/agents/messages/:agentName', async (req, res) => {
+    const { agentName } = req.params;
+    
+    try {
+        const messages = await db.all(`
+            SELECT * FROM agent_messages 
+            WHERE (to_agent = ? OR to_agent = 'all') AND read_at IS NULL
+            ORDER BY created_at DESC LIMIT 10
+        `, [agentName]);
+        
+        // Mark as read
+        if (messages.length > 0) {
+            const ids = messages.map(m => m.id).join(',');
+            await db.run(`UPDATE agent_messages SET read_at = ? WHERE id IN (${ids})`, [Date.now()]);
+        }
+        
+        res.json({ success: true, messages });
+    } catch (error) {
+        res.json({ success: true, messages: [] });
+    }
+});
+
 // GET /api/agents/pipeline - Get full pipeline view
 app.get('/api/agents/pipeline', async (req, res) => {
     try {
