@@ -472,11 +472,30 @@ Return ONLY valid JSON, no markdown.`;
       throw new Error('No valid JSON in AI response');
     }
     
-    const analysis = JSON.parse(jsonMatch[0]);
-    return {
-      success: true,
-      analysis
-    };
+    // Clean up common JSON issues from AI responses
+    let jsonStr = jsonMatch[0];
+    jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas
+    jsonStr = jsonStr.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+    jsonStr = jsonStr.replace(/:\s*,/g, ': null,'); // Fix empty values
+    jsonStr = jsonStr.replace(/:\s*}/g, ': null}'); // Fix empty values at end
+    jsonStr = jsonStr.replace(/\n/g, ' '); // Remove newlines
+    jsonStr = jsonStr.replace(/\r/g, ''); // Remove carriage returns
+    
+    try {
+      const analysis = JSON.parse(jsonStr);
+      return {
+        success: true,
+        analysis
+      };
+    } catch (parseError) {
+      // Try one more cleanup - remove control characters
+      jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, '');
+      const analysis = JSON.parse(jsonStr);
+      return {
+        success: true,
+        analysis
+      };
+    }
   } catch (error) {
     console.error('Enhanced AI analysis failed:', error.message);
     return {
