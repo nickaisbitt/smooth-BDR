@@ -1,0 +1,203 @@
+
+NEURAL_ENGINE :: STANDBY
+v2.5.0
+21:03:00
+✅ Qualified Performance Food Group (80). Deep diving...
+21:03:10
+🚫 Research quality too low (8/10) - email NOT generated for Performance Food Group (requires 9+)
+21:03:10
+🚫 Email NOT queued for Performance Food Group - research quality 8/10 below threshold (requires 9+)
+21:03:36
+> Executing: Logistics companies with high fuel consumption rates
+21:03:53
+Found 7 new candidates. Starting Deep Analysis...
+21:03:53
+> 🔍 Researching J.B. Hunt Transport Services...
+21:04:54
+📊 Research complete for J.B. Hunt Transport Services: Quality 9/10
+21:05:04
+✅ Qualified J.B. Hunt Transport Services (85). Deep diving...
+21:05:11
+> 📝 Generating research-backed email for J.B. Hunt Transport Services...
+21:05:16
+✉️ Research-backed email generated using 2 real facts
+21:05:16
+📧 Auto-queued research-backed email for J.B. Hunt Transport Services
+21:05:36
+> 🔍 Researching Estes Express Lines...
+21:05:59
+📊 Research complete for Estes Express Lines: Quality 9/10
+21:06:09
+✅ Qualified Estes Express Lines (85). Deep diving...
+21:06:18
+> 📝 Generating research-backed email for Estes Express Lines...
+21:06:21
+✉️ Research-backed email generated using 2 real facts
+21:06:21
+📧 Auto-queued research-backed email for Estes Express Lines
+21:06:41
+> 🔍 Researching ABF Freight...
+21:08:09
+📊 Research complete for ABF Freight: Quality 8/10
+21:08:19
+✅ Qualified ABF Freight (85). Deep diving...
+21:08:23
+🚫 Research quality too low (8/10) - email NOT generated for ABF Freight (requires 9+)
+21:08:23
+🚫 Email NOT queued for ABF Freight - research quality 8/10 below threshold (requires 9+)
+21:08:43
+> 🔍 Researching ArcBest...
+21:10:35
+📊 Research complete for ArcBest: Quality 8/10
+21:10:45
+✅ Qualified ArcBest (85). Deep diving...
+21:10:50
+🚫 Research quality too low (8/10) - email NOT generated for ArcBest (requires 9+)
+21:10:50
+🚫 Email NOT queued for ArcBest - research quality 8/10 below threshold (requires 9+)
+21:11:10
+> 🔍 Researching Holland Regional Trucking...
+21:12:32
+📊 Research complete for Holland Regional Trucking: Quality 6/10
+21:12:43
+✅ Qualified Holland Regional Trucking (85). Deep diving...
+21:12:47
+🚫 Research quality too low (6/10) - email NOT generated for Holland Regional Trucking (requires 9+)
+21:12:47
+🚫 Email NOT queued for Holland Regional Trucking - research quality 6/10 below threshold (requires 9+)
+21:13:07
+> 🔍 Researching Reddaway...
+21:14:28
+📊 Research complete for Reddaway: Quality 6/10
+21:14:32
+✅ Qualified Reddaway (85). Deep diving...
+21:14:36
+🚫 Research quality too low (6/10) - email NOT generated for Reddaway (requires 9+)
+21:14:36
+🚫 Email NOT queued for Reddaway - research quality 6/10 below threshold (requires 9+)
+21:14:56
+> 🔍 Researching Saia Inc....
+21:15:23
+📊 Research complete for Saia Inc.: Quality 7/10
+21:15:26
+✅ Qualified Saia Inc. (85). Deep diving...
+21:15:32
+🚫 Research quality too low (7/10) - email NOT generated for Saia Inc. (requires 9+)
+21:15:32
+🚫 Email NOT queued for Saia Inc. - research quality 7/10 below threshold (requires 9+)
+21:15:58
+> Executing: Law firms with high document processing times
+21:16:02
+Found 7 new candidates. Starting Deep Analysis...
+21:16:02
+> 🔍 Researching | Baker & Hostetler...
+21:17:03
+📊 Research complete for | Baker & Hostetler: Quality 8/10
+21:17:07
+✅ Qualified | Baker & Hostetler (80). Deep diving...
+21:17:11
+🚫 Research quality too low (8/10) - email NOT generated for | Baker & Hostetler (requires 9+)
+21:17:11
+🚫 Email NOT queued for | Baker & Hostetler - research quality 8/10 below threshold (requires 9+)
+21:17:31
+> 🔍 Researching | Jones Day...
+21:17:41
+📊 Research complete for | Jones Day: Quality 9/10
+21:17:45
+✅ Qualified | Jones Day (85). Deep diving...
+21:17:50
+> 📝 Generating research-backed email for | Jones Day...
+21:17:52
+✉️ Research-backed email generated using 2 real facts
+21:17:52
+📧 Auto-queued research-backed email for | Jones Day
+21:18:12
+> 🔍 Researching | Perkins Coie...
+21:19:17
+📊 Research complete for | Perkins Coie: Quality 8/10
+21:19:22
+✅ Qualified | Perkins Coie (85). Deep diving...
+21:19:26
+🚫 Research quality too low (8/10) - email NOT generated for | Perkins Coie (requires 9+)
+21:19:26
+🚫 Email NOT queued for | Perkins Coie - research quality 8/10 below threshold (requires 9+)
+21:19:47
+> 🔍 Researching | Foley & Lardner...
+21:19:55
+📊 Research complete for | Foley & Lardner: Quality 9/10
+21:19:59
+✅ Qualified | Foley & Lardner (85). Deep diving...
+21:20:03
+> 📝 Generating research-backed email for | Foley & Lardner...
+21:20:05
+✉️ Research-backed email generated using 3 real facts
+21:20:05
+📧 Auto-queued research-backed email for | Foley & Lardner
+21:20:25
+> 🔍 Researching | McGuireWoods...
+21:20:55
+📊 Research complete for | McGuireWoods: Quality 9/10
+21:21:00
+✅ Qualified | McGuireWoods (80). Deep diving...
+21:21:04
+> 📝 Generating research-backed email for | McGuireWoods...
+21:21:05
+✉️ Research-backed email generated using 4 real facts
+21:21:06
+📧 Auto-queued research-backed email for | McGuireWoods
+21:21:26
+> 🔍 Researching | Husch Blackwell...
+21:21:56
+📊 Research complete for | Husch Blackwell: Quality 9/10
+21:22:00
+✅ Qualified | Husch Blackwell (80). Deep diving...
+21:22:05
+> 📝 Generating research-backed email for | Husch Blackwell...
+21:22:07
+✉️ Research-backed email generated using 3 real facts
+21:22:07
+📧 Auto-queued research-backed email for | Husch Blackwell
+21:22:27
+> 🔍 Researching | Polsinelli...
+21:22:28
+📊 Research complete for | Polsinelli: Quality 0/10
+21:22:32
+✅ Qualified | Polsinelli (80). Deep diving...
+21:22:36
+🚫 Research quality too low (0/10) - email NOT generated for | Polsinelli (requires 9+)
+21:22:36
+🚫 Email NOT queued for | Polsinelli - research quality 0/10 below threshold (requires 9+)
+21:23:01
+> Executing: HVAC companies with high customer complaint rates
+21:23:06
+Found 4 new candidates. Starting Deep Analysis...
+21:23:06
+> 🔍 Researching ABC Heating and Cooling...
+21:23:23
+📊 Research complete for ABC Heating and Cooling: Quality 4/10
+21:23:28
+✅ Qualified ABC Heating and Cooling (85). Deep diving...
+21:23:33
+🚫 Research quality too low (4/10) - email NOT generated for ABC Heating and Cooling (requires 9+)
+21:23:33
+🚫 Email NOT queued for ABC Heating and Cooling - research quality 4/10 below threshold (requires 9+)
+21:23:53
+> 🔍 Researching Bay Area Heating and Cooling...
+21:25:34
+📊 Research complete for Bay Area Heating and Cooling: Quality 8/10
+21:25:39
+✅ Qualified Bay Area Heating and Cooling (85). Deep diving...
+21:25:43
+🚫 Research quality too low (8/10) - email NOT generated for Bay Area Heating and Cooling (requires 9+)
+21:25:43
+🚫 Email NOT queued for Bay Area Heating and Cooling - research quality 8/10 below threshold (requires 9+)
+21:26:03
+> 🔍 Researching Cool Air Solutions...
+21:26:49
+📊 Research complete for Cool Air Solutions: Quality 8/10
+21:26:55
+✅ Qualified Cool Air Solutions (85). Deep diving...
+21:26:58
+🚫 Research quality too low (8/10) - email NOT generated for Cool Air Solutions (requires 9+)
+21:26:58
+🚫 Email NOT queued for Cool Air Solutions - research quality 8/10 below threshold (requires 9+)

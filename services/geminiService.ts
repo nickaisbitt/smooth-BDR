@@ -170,9 +170,10 @@ export const findLeads = async (query: string, blacklist: string[] = []): Promis
           if (line.includes('||')) {
               const parts = line.split('||').map(p => p.trim()).filter(p => p.length > 0);
               if (parts.length >= 3) {
-                  const name = parts[0];
-                  let url = parts[1];
-                  const desc = parts[2];
+                  // Clean up company name - remove any stray pipe characters
+                  const name = parts[0].replace(/^\|+\s*/, '').replace(/\s*\|+$/, '').trim();
+                  let url = parts[1].replace(/^\|+\s*/, '').replace(/\s*\|+$/, '').trim();
+                  const desc = parts[2].replace(/^\|+\s*/, '').replace(/\s*\|+$/, '').trim();
                   
                   url = url.replace(/\/$/, '');
                   if (!url.startsWith('http')) url = `https://${url}`;
