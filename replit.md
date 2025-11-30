@@ -1,274 +1,34 @@
 # Smooth AI AutoBDR
 
 ## Overview
-This is an AI-powered Business Development Representative (BDR) application that automates lead generation, email outreach, and tracking. The application uses Google's Gemini AI for intelligent email generation and includes a comprehensive pipeline management system.
-
-**Status**: Fully configured and running in Replit environment
-
-**Original Source**: Imported from GitHub - AI Studio app
-
-## Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite
-- **Backend**: Node.js + Express
-- **Database**: SQLite (local file-based)
-- **UI Framework**: Tailwind CSS
-- **AI Service**: Google Gemini API
-- **Email Service**: Nodemailer (SMTP)
-- **Charts**: Recharts
-
-## Project Structure
-```
-.
-├── components/          # React components
-│   ├── AgentTerminal.tsx
-│   ├── AnalyticsView.tsx
-│   ├── CalendarView.tsx
-│   ├── LeadCard.tsx
-│   ├── PipelineBoard.tsx
-│   └── ...
-├── services/           # Business logic and integrations
-│   ├── emailService.ts
-│   ├── geminiService.ts
-│   ├── googleSheetsService.ts
-│   └── ...
-├── App.tsx            # Main React application
-├── server.js          # Express backend server
-├── vite.config.ts     # Vite configuration
-├── package.json       # Dependencies
-└── README.md          # Original documentation
-```
-
-## Recent Changes (Nov 30, 2025)
-
-### Research Quality Threshold Increased to 9/10
-50. Raised research quality threshold from 5/10 to 9/10 across all code paths
-51. Updated `automationService.js` - queueEmailForLead now requires quality >= 9
-52. Updated `server.js` - /api/research/generate-email requires quality >= 9
-53. Updated `App.tsx` - Growth Engine only queues emails with quality >= 9
-54. Ensures only high-quality, personalized emails get sent
-
-### Iterative Research Orchestrator (Multi-Pass Research)
-55. Created `conductIterativeResearch()` in researchService.js
-56. Research keeps improving until it reaches target quality (9/10) or max attempts (3)
-57. **Pass 1**: Standard scraping (main site, about page, news search)
-58. **Pass 2**: Extended scraping (15+ additional page paths, expanded news with company name variations)
-59. **Pass 3**: Deep research (alternative URLs, www/non-www variants)
-60. Accumulates data across passes - each attempt builds on previous findings
-61. Enhanced AI analysis with stricter scoring criteria (9-10 only for truly specific data)
-62. API returns orchestrator state showing all attempts and quality progression
-63. Prevents generic emails like "congrats on the new office" without real data
-
-### Inbox UI Improvements
-64. Filter buttons (All/Unread/Linked/Unlinked) moved to same row as Received/Sent tabs
-65. Auto-sync inbox every 30 seconds for received emails
-
-### Unified Inbox View (Received + Sent Emails)
-41. Created unified inbox displaying both received and sent emails
-42. Added tab switcher UI with "Received" and "Sent" tabs with icons
-43. Received emails show Mail/MailOpen icons (read/unread status)
-44. Sent emails show Send icon, pulled from automation email_queue
-45. "Sync Inbox" button only shows for received emails (hidden for sent)
-46. Filter buttons (All/Unread/Linked/Unlinked) only apply to received emails
-47. Backend API now supports `?type=received|sent` parameter to fetch both sources
-48. Seamless switching between incoming replies and outgoing emails in one view
-49. Daily email limit increased to 200 emails/day (from 40)
-
-## Previous Changes (Nov 29, 2025)
-### Replit Environment Setup
-1. Installed Node.js 20 and all npm dependencies
-2. Configured Vite to run on port 5000 with host 0.0.0.0 and `allowedHosts: true` for Replit proxy compatibility
-3. Added API proxy in Vite config to forward `/api/*` requests to backend (port 3000)
-4. Updated backend server to explicitly bind to 0.0.0.0:3000 for production deployment compatibility
-5. Enhanced .gitignore with database and environment variable patterns
-6. Created workflow to run both backend and frontend concurrently
-7. Configured deployment for production (autoscale mode with npm build and node server.js)
-
-### AI Integration Migration
-8. Installed Replit AI Integrations (OpenRouter) - no personal API key needed, usage billed to Replit credits
-9. Refactored AI service architecture: moved AI calls from client-side to server-side by creating `/api/ai/chat` endpoint for security
-10. Updated `geminiService.ts` to call backend API instead of using OpenAI SDK directly in browser
-
-### IMAP Inbox Feature (Email Reading)
-11. Added IMAP email reading capability to receive and view incoming emails
-12. Created `imapService.js` backend service using imapflow and mailparser libraries
-13. Built Inbox view with email list, filters (All/Unread/Linked/Unlinked), and email detail pane
-14. Auto-links incoming emails to existing leads by matching sender email addresses
-15. Added database tables: `email_messages` and `imap_settings`
-
-### Unified Email Configuration
-16. Merged SMTP and IMAP settings into single "Email Configuration" section in Settings
-17. Same credentials (username/password) work for both sending and receiving
-18. Smart host derivation: enters `hostinger.com` or `smtp.hostinger.com` -> auto-derives `imap.hostinger.com` for inbox
-19. Created unified `EmailConfig` type in types.ts with backwards-compatible aliases
-20. Single "Save Config" button saves both SMTP and IMAP settings
-21. Separate "Test Send" and "Test Inbox" buttons to verify both directions work
-
-### Bug Fixes
-22. Fixed InboxView crash when emails have missing from/to fields (null safety checks added)
-23. Fixed email field mapping in API - properly returns `from`, `to`, `date` instead of raw database field names
-24. Added IMAP connection timeout handling (15s timeout) for more reliable connections
-25. Fixed automation toggle endpoint to accept both 'enabled' and 'enable' request body keys
-26. Improved IMAP fetchNewEmails to gracefully handle empty mailboxes without throwing errors
-
-### Autonomous BDR System (Full Automation)
-25. Created `automationService.js` - Server-side automation scheduler with background jobs
-26. Added automation database tables: `automation_state`, `email_queue`, `reply_analysis`, `automation_logs`
-27. Implemented server-side scheduler that runs every 1-5 minutes for:
-    - Automatic inbox sync (every 5 minutes)
-    - Email queue processing (every 1 minute)
-    - Reply analysis (every 2 minutes)
-28. Added AI-powered reply categorization (INTERESTED, NOT_INTERESTED, QUESTION, OUT_OF_OFFICE, BOUNCE, REFERRAL)
-29. Added auto-response generation for positive replies and questions
-30. Integrated auto-queue: When Growth Engine qualifies a lead, first email automatically queues for sending
-31. Created System Status dashboard (`SystemStatusView.tsx`) with:
-    - Real-time automation status (running/paused)
-    - Daily email quota tracking (sent today / limit)
-    - Email queue management (pending, sent, failed)
-    - Reply analysis summary
-    - Activity logs
-    - Quick action buttons (Send Now, Analyze Replies, Retry Failed)
-32. Added 15+ automation API endpoints for full control:
-    - `/api/automation/status` - Get stats
-    - `/api/automation/toggle` - Enable/disable automation
-    - `/api/automation/queue-email` - Queue emails
-    - `/api/automation/send-queued` - Trigger sending
-    - `/api/automation/process-replies` - Analyze replies
-    - And more...
-
-### Research-First Email Pipeline (NEW)
-33. Created `services/researchService.js` - Real web scraping to extract ACTUAL company data
-    - Uses axios + cheerio for website scraping
-    - Extracts: title, meta description, headings, main content, about pages
-    - Searches Google News RSS for recent company news
-    - AI analyzes scraped data to generate insights and personalized hooks
-34. Added research quality scoring (1-10 scale):
-    - Score >= 5: Email generation allowed
-    - Score < 5: Email blocked until more research available
-35. Server-side quality gate in `queueEmailForLead()` prevents low-quality emails
-36. Research API endpoints:
-    - `/api/research/conduct` - Full research pipeline (scrape + news + AI analysis)
-    - `/api/research/scrape` - Quick website scrape
-    - `/api/research/generate-email` - Generate email using research data
-37. Updated Growth Engine (`handleAnalyze` in App.tsx):
-    - Runs real research before qualifying leads
-    - Stores research data on Lead objects
-    - Only queues emails if research quality >= 5/10
-38. Added Email Review Queue in System Status:
-    - Click pending emails to preview and edit subject/body
-    - Approve & Send or Remove from Queue
-    - Shows research quality score for each email
-39. Added ResearchData interface to types.ts
-40. Database migrations: Added `research_quality`, `approved_by`, `approved_at` columns to email_queue
-
-## Configuration
-
-### Development Environment
-- **Frontend**: Runs on port 5000 (0.0.0.0) - accessible from browser
-- **Backend API**: Runs on port 3000 (0.0.0.0) - accepts connections on all interfaces
-  - In dev mode, Vite proxies `/api/*` requests from frontend to backend
-- **Database**: SQLite file at `./smooth_ai.db`
-- **Workflow**: Both servers run together via `node server.js & npm run dev`
-
-### Production Environment (Deployment)
-- **Mode**: Autoscale (stateless, scales with traffic)
-- **Build Command**: `npm run build` (compiles TypeScript and builds React app)
-- **Run Command**: `node server.js` (serves API and static frontend)
-- **Server Binding**: 0.0.0.0 on port from `PORT` env variable (defaults to 3000)
-- **Static Files**: Serves built React app from `./dist/` directory
-- **External Port**: Port 80 (Replit automatically maps to internal port 5000 in dev, port 3000 in production)
-
-### AI Integration (Replit AI Integrations)
-The application uses **Replit AI Integrations** for AI-powered features:
-- **No API key needed** - Uses Replit's built-in OpenRouter integration
-- **Billed to Replit credits** - Usage charges go to your Replit account
-- **Model**: meta-llama/llama-3.3-70b-instruct (via OpenRouter)
-
-The following environment variables are automatically set by Replit:
-- `AI_INTEGRATIONS_OPENROUTER_BASE_URL`: API endpoint
-- `AI_INTEGRATIONS_OPENROUTER_API_KEY`: Authentication token
-
-### Email Configuration (Unified SMTP + IMAP)
-Email sending and receiving uses a single unified configuration in Settings:
-- **Host**: Enter any variant (smtp.hostinger.com, imap.hostinger.com, or just hostinger.com) - automatically derives correct hosts for each protocol
-- **Username/Password**: Same credentials for both sending (SMTP) and receiving (IMAP)
-- **SMTP**: Uses port 465 with TLS for sending
-- **IMAP**: Uses port 993 with TLS for receiving
-- **Test Send**: Sends a test email to verify outgoing works
-- **Test Inbox**: Connects to IMAP to verify incoming works
-- Includes rate limiting (60 requests per minute per IP)
-
-## Features
-- **Lead Management**: Add, track, and manage leads through multiple stages
-- **AI Email Generation**: Uses Gemini AI to generate personalized outreach emails
-- **Email Tracking**: Tracks email opens via pixel tracking
-- **Pipeline Visualization**: Kanban-style board and table views
-- **Analytics Dashboard**: Email performance metrics and charts
-- **Quality Control**: Monitor and review AI-generated content
-- **Calendar View**: Schedule and track activities
-- **LinkedIn Integration**: Link and track LinkedIn profiles
-
-### CRM Features (New)
-- **Deals Pipeline**: Full sales pipeline with drag-and-drop Kanban board
-  - Stages: Qualified → Contacted → Meeting Scheduled → Proposal Sent → Negotiation → Won/Lost
-  - Revenue forecasting with weighted pipeline value
-  - Monthly won/lost tracking
-- **Deal Management**: Track deal value, probability, expected close date
-- **Lead Detail View**: Slide-out panel for viewing/editing leads with:
-  - Deal information (value, probability, close date, industry, company size)
-  - Multiple contacts with roles (add/edit/delete contacts)
-  - Activity timeline (calls, meetings, emails, notes, tasks)
-  - Notes history
-- **Revenue Tracking**: Won/Lost status with actual revenue and reason tracking
-
-## Development
-
-### Running Locally
-The application is already running via the Replit workflow. To restart:
-1. Use the "Run" button in Replit
-2. Or manually run: `node server.js & npm run dev`
-
-### Making Changes
-- Frontend code hot-reloads automatically with Vite HMR
-- Backend changes require workflow restart
-- Database schema is auto-initialized on server start
-
-### Building for Production
-```bash
-npm run build
-```
-This compiles TypeScript and builds the React app to `./dist/`
-
-## Deployment
-Configured to deploy on Replit with:
-- **Build**: `npm run build`
-- **Run**: `node server.js`
-- **Mode**: Autoscale (stateless, scales with traffic)
-
-In production, the Express server serves the built React app from the `dist/` directory and provides API endpoints.
-
-## API Endpoints
-- `POST /api/send-email`: Send email via SMTP with tracking
-- `GET /api/track/open/:leadId`: Tracking pixel endpoint (returns 1x1 GIF)
-- `GET /api/track/status`: Poll for email open events
-- `POST /api/ai/chat`: AI chat completion (uses Replit AI Integrations/OpenRouter)
-
-## Database Schema
-SQLite tables:
-- `email_logs`: Records of sent emails (lead_id, to_email, subject, sent_at)
-- `tracking_events`: Email tracking events (lead_id, type, timestamp)
+Smooth AI AutoBDR is an AI-powered Business Development Representative (BDR) application designed to automate lead generation, personalized email outreach, and pipeline management. It leverages Google's Gemini AI for intelligent content generation and includes robust tracking and analytical capabilities. The project aims to streamline sales development processes, improve outreach effectiveness through personalization, and provide comprehensive insights into lead engagement.
 
 ## User Preferences
-None specified yet.
+I want the agent to:
+- Adopt an iterative development approach, focusing on delivering functional increments.
+- Ask for clarification or confirmation before implementing major changes or complex features.
+- Provide detailed explanations for significant code modifications or architectural decisions.
+- Maintain a clear and organized code structure, adhering to established conventions.
 
-## Known Issues / Limitations
-- Uses local SQLite database (not suitable for multi-instance deployments)
-- Email tracking requires public URL to be configured in SMTP settings
-- No authentication/authorization system implemented
+## System Architecture
+The application features a modern full-stack architecture with a React 18 (TypeScript, Vite) frontend and a Node.js (Express) backend. Data is persisted using SQLite. The UI is built with Tailwind CSS for rapid styling and Recharts for data visualization. Key architectural decisions include:
+- **Multi-Source Intelligence Research**: An iterative, multi-pass research orchestrator gathers data from 7+ parallel intelligence sources (website scraping, news RSS, press releases, executive news, careers pages) per company to generate highly personalized outreach. Research quality is scored (1-10) and only leads with a quality score >= 9 proceed to email generation.
+- **Autonomous BDR System**: A server-side automation scheduler manages background jobs for inbox synchronization, email queue processing, and AI-powered reply analysis (categorizing replies as INTERESTED, NOT_INTERESTED, etc., and generating auto-responses).
+- **Unified Email Configuration**: A single settings interface manages both SMTP (sending) and IMAP (receiving) email configurations, automatically deriving host settings.
+- **Unified Inbox View**: Displays both sent and received emails, with filtering and linking to leads.
+- **CRM Features**: Includes a full sales pipeline with a drag-and-drop Kanban board, deal management (value, probability, close date), and a detailed lead view with multiple contacts, activity timelines, and notes.
+- **AI Integration**: AI calls are proxied through a server-side endpoint for security and leverage Replit AI Integrations (OpenRouter) with the `meta-llama/llama-3.3-70b-instruct` model.
+- **Deployment**: Configured for Replit's autoscale production environment, serving the React build via the Express server.
 
-## Next Steps / Potential Improvements
-- Add user authentication
-- Migrate to PostgreSQL for production scalability
-- Implement LinkedIn OAuth integration
-- Add Google Sheets API integration for lead import/export
-- Enhanced error handling and logging
-- Email template library
+## External Dependencies
+- **AI Service**: Google Gemini API (via Replit AI Integrations/OpenRouter, using `meta-llama/llama-3.3-70b-instruct`)
+- **Email Services**:
+    - **Nodemailer**: For sending emails via SMTP.
+    - **imapflow & mailparser**: For receiving and parsing emails via IMAP.
+- **Database**: SQLite (local file-based).
+- **UI Libraries**:
+    - **Tailwind CSS**: For styling.
+    - **Recharts**: For analytics charts.
+- **Web Scraping**:
+    - **axios**: HTTP client.
+    - **cheerio**: For parsing and manipulating HTML.

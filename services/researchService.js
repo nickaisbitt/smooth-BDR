@@ -161,6 +161,175 @@ export async function searchCompanyNews(companyName) {
   }
 }
 
+// Search for company hiring/jobs to understand growth and pain points
+export async function searchCompanyJobs(companyName) {
+  try {
+    const searchUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' hiring OR jobs OR careers')}&hl=en-US&gl=US&ceid=US:en`;
+    const response = await fetchWithTimeout(searchUrl, 10000);
+    
+    if (!response.ok) {
+      return { success: false, jobs: [] };
+    }
+    
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    
+    const jobs = $('item').map((_, item) => ({
+      title: $(item).find('title').text(),
+      link: $(item).find('link').text(),
+      pubDate: $(item).find('pubDate').text()
+    })).get().slice(0, 5);
+    
+    return { success: true, jobs };
+  } catch (error) {
+    return { success: false, jobs: [], error: error.message };
+  }
+}
+
+// Search for press releases and announcements
+export async function searchPressReleases(companyName) {
+  try {
+    const searchUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' announces OR launches OR expands OR partners')}&hl=en-US&gl=US&ceid=US:en`;
+    const response = await fetchWithTimeout(searchUrl, 10000);
+    
+    if (!response.ok) {
+      return { success: false, releases: [] };
+    }
+    
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    
+    const releases = $('item').map((_, item) => ({
+      title: $(item).find('title').text(),
+      link: $(item).find('link').text(),
+      pubDate: $(item).find('pubDate').text()
+    })).get().slice(0, 5);
+    
+    return { success: true, releases };
+  } catch (error) {
+    return { success: false, releases: [], error: error.message };
+  }
+}
+
+// Search for executive/leadership mentions
+export async function searchExecutives(companyName) {
+  try {
+    const searchUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' CEO OR founder OR president OR director')}&hl=en-US&gl=US&ceid=US:en`;
+    const response = await fetchWithTimeout(searchUrl, 10000);
+    
+    if (!response.ok) {
+      return { success: false, mentions: [] };
+    }
+    
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    
+    const mentions = $('item').map((_, item) => ({
+      title: $(item).find('title').text(),
+      link: $(item).find('link').text(),
+      pubDate: $(item).find('pubDate').text()
+    })).get().slice(0, 5);
+    
+    return { success: true, mentions };
+  } catch (error) {
+    return { success: false, mentions: [], error: error.message };
+  }
+}
+
+// Scrape team/leadership page for real names
+export async function scrapeTeamPage(baseUrl) {
+  const teamPaths = ['/team', '/leadership', '/our-team', '/about/team', '/about/leadership', '/people', '/attorneys', '/professionals', '/management'];
+  
+  for (const path of teamPaths) {
+    try {
+      const url = new URL(path, baseUrl).href;
+      const response = await fetchWithTimeout(url, 10000);
+      
+      if (!response.ok) continue;
+      
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      
+      $('script, style, nav, footer, header').remove();
+      
+      // Extract people names and roles
+      const people = [];
+      
+      // Look for common patterns
+      $('h3, h4, .name, .person-name, .team-member-name, .attorney-name').each((_, el) => {
+        const name = $(el).text().trim();
+        const parent = $(el).parent();
+        const role = parent.find('.title, .role, .position, .job-title').first().text().trim() || 
+                     $(el).next().text().trim().slice(0, 100);
+        
+        if (name.length > 3 && name.length < 50 && name.includes(' ') && !name.includes('©')) {
+          people.push({ name, role: role.slice(0, 100) });
+        }
+      });
+      
+      // Also look for structured data
+      $('[itemtype*="Person"]').each((_, el) => {
+        const name = $(el).find('[itemprop="name"]').text().trim();
+        const role = $(el).find('[itemprop="jobTitle"]').text().trim();
+        if (name.length > 3) {
+          people.push({ name, role });
+        }
+      });
+      
+      if (people.length > 0) {
+        return { success: true, people: people.slice(0, 20), url };
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+  
+  return { success: false, people: [] };
+}
+
+// Scrape careers page for hiring signals
+export async function scrapeCareersPage(baseUrl) {
+  const careerPaths = ['/careers', '/jobs', '/join-us', '/work-with-us', '/careers/open-positions', '/about/careers'];
+  
+  for (const path of careerPaths) {
+    try {
+      const url = new URL(path, baseUrl).href;
+      const response = await fetchWithTimeout(url, 10000);
+      
+      if (!response.ok) continue;
+      
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      
+      $('script, style, nav, footer').remove();
+      
+      const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+      
+      // Count job listings
+      const jobCount = ($('.job-listing, .job-item, .position, .career-item, .opening').length) ||
+                       (bodyText.match(/apply now|view job|learn more/gi) || []).length;
+      
+      // Extract job titles
+      const jobs = [];
+      $('h2, h3, h4, .job-title, .position-title').each((_, el) => {
+        const title = $(el).text().trim();
+        if (title.length > 5 && title.length < 100 && 
+            (title.match(/manager|director|analyst|engineer|specialist|coordinator|assistant|associate|executive/i))) {
+          jobs.push(title);
+        }
+      });
+      
+      if (jobCount > 0 || jobs.length > 0) {
+        return { success: true, jobCount, jobs: jobs.slice(0, 10), url };
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+  
+  return { success: false, jobCount: 0, jobs: [] };
+}
+
 export async function analyzeResearchWithAI(scrapedData, companyName, serviceProfile) {
   try {
     const prompt = `You are a B2B sales researcher. Analyze this company's website data and provide actionable insights for a personalized outreach email.
@@ -408,51 +577,95 @@ async function searchCompanyNewsExtended(companyName) {
 // Enhanced AI analysis with more data
 async function analyzeResearchWithAIEnhanced(scrapedData, companyName, serviceProfile, attempt) {
   try {
+    // Format team members if available
+    const teamSection = scrapedData.teamMembers?.length > 0 
+      ? `TEAM/LEADERSHIP (${scrapedData.teamMembers.length} people found):\n${scrapedData.teamMembers.map(p => `- ${p.name}${p.role ? ` (${p.role})` : ''}`).join('\n')}`
+      : 'NO TEAM DATA FOUND';
+    
+    // Format careers info if available
+    const careersSection = scrapedData.careersInfo 
+      ? `HIRING STATUS: ${scrapedData.careersInfo.jobCount || 0} open positions\nOpen roles: ${scrapedData.careersInfo.jobs?.join(', ') || 'Unknown'}`
+      : 'NO CAREERS DATA FOUND';
+    
+    // Format press releases if available
+    const pressSection = scrapedData.pressReleases?.releases?.length > 0
+      ? `PRESS RELEASES/ANNOUNCEMENTS:\n${scrapedData.pressReleases.releases.map(r => `- ${r.title} (${r.pubDate})`).join('\n')}`
+      : '';
+    
+    // Format executive news if available
+    const execSection = scrapedData.executiveNews?.mentions?.length > 0
+      ? `EXECUTIVE/LEADERSHIP NEWS:\n${scrapedData.executiveNews.mentions.map(m => `- ${m.title}`).join('\n')}`
+      : '';
+    
+    // Format job news if available
+    const jobSection = scrapedData.jobNews?.jobs?.length > 0
+      ? `HIRING/GROWTH NEWS:\n${scrapedData.jobNews.jobs.map(j => `- ${j.title}`).join('\n')}`
+      : '';
+    
     const prompt = `You are an expert B2B sales researcher. This is research attempt #${attempt}. Analyze ALL available data thoroughly and provide detailed, actionable insights.
 
 COMPANY: ${companyName}
 WEBSITE: ${scrapedData.url}
 
-SCRAPED DATA:
+═══════════════════════════════════════════
+WEBSITE INTELLIGENCE
+═══════════════════════════════════════════
 Title: ${scrapedData.title}
 Meta Description: ${scrapedData.metaDescription}
 Main Headings: ${scrapedData.headings?.h1s?.join(', ') || 'None found'}
 Sub Headings: ${scrapedData.headings?.h2s?.join(', ') || 'None found'}
 
 MAIN CONTENT:
-${scrapedData.bodyText?.slice(0, 3000) || 'No content extracted'}
+${scrapedData.bodyText?.slice(0, 2500) || 'No content extracted'}
 
-${scrapedData.aboutPageContent ? `ABOUT PAGE:
-${scrapedData.aboutPageContent.slice(0, 2000)}` : ''}
+${scrapedData.aboutPageContent ? `ABOUT PAGE:\n${scrapedData.aboutPageContent.slice(0, 1500)}` : ''}
 
-${scrapedData.extendedPages?.length > 0 ? `ADDITIONAL PAGES SCRAPED:
-${scrapedData.extendedPages.map(p => `[${p.path}]: ${p.content.slice(0, 500)}`).join('\n')}` : ''}
+${scrapedData.extendedPages?.length > 0 ? `ADDITIONAL PAGES:\n${scrapedData.extendedPages.map(p => `[${p.path}]: ${p.content.slice(0, 400)}`).join('\n')}` : ''}
 
-${scrapedData.news?.articles?.length > 0 ? `RECENT NEWS (${scrapedData.news.articles.length} articles):
-${scrapedData.news.articles.map(a => `- ${a.title} (${a.pubDate})`).join('\n')}` : 'NO RECENT NEWS FOUND'}
+═══════════════════════════════════════════
+PEOPLE INTELLIGENCE
+═══════════════════════════════════════════
+${teamSection}
 
-OUR SERVICE:
+═══════════════════════════════════════════
+HIRING/GROWTH INTELLIGENCE
+═══════════════════════════════════════════
+${careersSection}
+${jobSection}
+
+═══════════════════════════════════════════
+NEWS INTELLIGENCE
+═══════════════════════════════════════════
+${scrapedData.news?.articles?.length > 0 ? `RECENT NEWS (${scrapedData.news.articles.length} articles):\n${scrapedData.news.articles.map(a => `- ${a.title} (${a.pubDate})`).join('\n')}` : 'NO RECENT NEWS FOUND'}
+
+${pressSection}
+${execSection}
+
+═══════════════════════════════════════════
+OUR SERVICE (what we're selling):
 ${serviceProfile || 'AI automation solutions for business operations'}
 
-CRITICAL SCORING RULES:
-- Score 9-10: ONLY if we have SPECIFIC company details (real names, real numbers, real news, real services mentioned)
-- Score 7-8: Good data but missing specifics
-- Score 5-6: Basic info only
-- Score 1-4: Very little useful data
+═══════════════════════════════════════════
+SCORING CRITERIA (BE STRICT):
+- Score 9-10: EXCELLENT - Has real executive names, specific numbers (employee count, revenue hints), recent news/announcements, AND specific services/products
+- Score 7-8: GOOD - Has some specifics but missing key details like people names or recent triggers
+- Score 5-6: BASIC - Generic company info, no specifics
+- Score 1-4: POOR - Very little useful data
 
 Return a JSON object with these fields:
 {
-  "companyOverview": "Detailed 3-4 sentence summary with SPECIFIC details about what they do",
+  "companyOverview": "Detailed 3-4 sentence summary with SPECIFIC details",
   "industryVertical": "Their specific industry/niche",
-  "companySize": "Estimate with reasoning",
+  "companySize": "Estimate based on hiring activity, office locations, team size hints",
   "keyServices": ["SPECIFIC services from website, not generic"],
   "potentialPainPoints": ["SPECIFIC pain points based on their actual business"],
-  "recentTriggers": ["ACTUAL news, hires, or events - empty array if none found"],
-  "personalizedHooks": ["5 SPECIFIC hooks using real data from research"],
-  "keyPeople": ["ACTUAL names found on website"],
-  "competitiveAdvantage": "What makes them unique based on their content",
+  "recentTriggers": ["ACTUAL news, hires, or events - use press releases and job postings"],
+  "personalizedHooks": ["5 SPECIFIC hooks using real names, real news, real data"],
+  "keyPeople": ["ACTUAL names and roles from team page"],
+  "hiringInsights": "What their job openings tell us about their needs",
+  "competitiveAdvantage": "What makes them unique",
   "outreachAngle": "The SPECIFIC best angle based on real research data",
-  "researchQuality": "Score 1-10 - BE STRICT, only 9+ if truly excellent data",
+  "researchQuality": "Score 1-10 - BE HONEST about data quality",
   "missingData": ["What data would help improve this research"]
 }
 
@@ -524,7 +737,12 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
   let accumulatedData = {
     mainSite: null,
     aboutPage: null,
+    teamPage: null,
+    careersPage: null,
     news: null,
+    pressReleases: null,
+    jobNews: null,
+    executiveNews: null,
     extendedPages: [],
     servicesPages: []
   };
@@ -541,40 +759,63 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
     };
     
     try {
-      // PASS 1: Standard research
+      // PASS 1: Standard research + team page + careers
       if (attempt === 1) {
-        console.log(`    📄 Pass 1: Standard scraping...`);
+        console.log(`    📄 Pass 1: Multi-source intelligence gathering...`);
         attemptLog.strategies.push('standard_scrape');
         
-        accumulatedData.mainSite = await scrapeWebsite(websiteUrl);
+        // Parallel scraping for speed
+        const [mainSite, aboutPage, teamPage, careersPage, news] = await Promise.all([
+          scrapeWebsite(websiteUrl),
+          scrapeAboutPage(websiteUrl),
+          scrapeTeamPage(websiteUrl),
+          scrapeCareersPage(websiteUrl),
+          searchCompanyNews(companyName)
+        ]);
         
-        if (accumulatedData.mainSite.success) {
-          accumulatedData.aboutPage = await scrapeAboutPage(websiteUrl);
+        accumulatedData.mainSite = mainSite;
+        accumulatedData.aboutPage = aboutPage;
+        accumulatedData.teamPage = teamPage;
+        accumulatedData.careersPage = careersPage;
+        accumulatedData.news = news;
+        
+        if (teamPage.success) {
+          console.log(`    👥 Found ${teamPage.people?.length || 0} team members`);
         }
-        
-        accumulatedData.news = await searchCompanyNews(companyName);
+        if (careersPage.success) {
+          console.log(`    💼 Found ${careersPage.jobCount || 0} job listings`);
+        }
       }
       
-      // PASS 2: Extended scraping - more pages, more news sources
+      // PASS 2: Extended intelligence - executive news, press releases, hiring signals
       if (attempt >= 2 && accumulatedData.mainSite?.success) {
-        console.log(`    📄 Pass 2: Extended page scraping...`);
-        attemptLog.strategies.push('extended_pages');
+        console.log(`    📄 Pass 2: Extended intelligence gathering...`);
+        attemptLog.strategies.push('extended_intelligence');
         
-        // Scrape additional about/team pages
+        // Parallel multi-source news search
+        const [extendedNews, pressReleases, jobNews, executiveNews] = await Promise.all([
+          searchCompanyNewsExtended(companyName),
+          searchPressReleases(companyName),
+          searchCompanyJobs(companyName),
+          searchExecutives(companyName)
+        ]);
+        
+        accumulatedData.news = extendedNews;
+        accumulatedData.pressReleases = pressReleases;
+        accumulatedData.jobNews = jobNews;
+        accumulatedData.executiveNews = executiveNews;
+        
+        console.log(`    📰 News: ${extendedNews.articles?.length || 0}, Press: ${pressReleases.releases?.length || 0}, Jobs: ${jobNews.jobs?.length || 0}, Execs: ${executiveNews.mentions?.length || 0}`);
+        
+        // Scrape additional pages
         const moreAboutPages = await scrapeExtendedPages(websiteUrl, EXTENDED_ABOUT_PATHS);
         accumulatedData.extendedPages = [...accumulatedData.extendedPages, ...moreAboutPages];
         
-        // Scrape service pages
         const servicePages = await scrapeExtendedPages(websiteUrl, EXTENDED_SERVICE_PATHS);
         accumulatedData.servicesPages = [...accumulatedData.servicesPages, ...servicePages];
-        
-        // Extended news search
-        console.log(`    📰 Extended news search...`);
-        attemptLog.strategies.push('extended_news');
-        accumulatedData.news = await searchCompanyNewsExtended(companyName);
       }
       
-      // PASS 3: Deep dive - try alternative domains, subdomains
+      // PASS 3: Deep dive - alternative URLs, retry team page with more paths
       if (attempt >= 3) {
         console.log(`    🔎 Pass 3: Deep research strategies...`);
         attemptLog.strategies.push('deep_research');
@@ -588,6 +829,11 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
         if (altScrape.success && altScrape.bodyText.length > (accumulatedData.mainSite?.bodyText?.length || 0)) {
           console.log(`    ✓ Alternative URL had more content`);
           accumulatedData.mainSite = altScrape;
+          
+          // Retry team page on alt URL
+          if (!accumulatedData.teamPage?.success) {
+            accumulatedData.teamPage = await scrapeTeamPage(altUrl);
+          }
         }
       }
       
@@ -598,7 +844,15 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
         const combinedData = {
           ...accumulatedData.mainSite,
           aboutPageContent: accumulatedData.aboutPage?.bodyText || '',
+          teamMembers: accumulatedData.teamPage?.people || [],
+          careersInfo: accumulatedData.careersPage?.success ? {
+            jobCount: accumulatedData.careersPage.jobCount,
+            jobs: accumulatedData.careersPage.jobs
+          } : null,
           news: accumulatedData.news,
+          pressReleases: accumulatedData.pressReleases,
+          jobNews: accumulatedData.jobNews,
+          executiveNews: accumulatedData.executiveNews,
           extendedPages: [...accumulatedData.extendedPages, ...accumulatedData.servicesPages]
         };
         

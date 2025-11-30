@@ -152,6 +152,14 @@ let db;
         }
         
         await initAutomationTables(db);
+        
+        // Pre-load SMTP config into cache on startup
+        const smtpConfig = await loadSmtpConfigFromDb();
+        if (smtpConfig) {
+            cachedSmtpConfig = smtpConfig;
+            console.log(`✅ SMTP config cached: ${smtpConfig.host}`);
+        }
+        
         startAutomationScheduler();
     } catch (e) {
         console.error("❌ Database Init Failed:", e);
