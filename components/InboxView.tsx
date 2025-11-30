@@ -84,7 +84,7 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
     }
   };
 
-  const fetchEmailDetails = async (id: number) => {
+  const fetchEmailDetails = async (id: number | string) => {
     try {
       const res = await fetch(`/api/inbox/${id}`);
       if (res.ok) {

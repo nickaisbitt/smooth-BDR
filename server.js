@@ -567,6 +567,37 @@ app.get('/api/inbox/:id', async (req, res) => {
     const { id } = req.params;
     
     try {
+        // Check if this is a sent email (prefixed with "sent_")
+        if (id.startsWith('sent_')) {
+            const sentId = id.replace('sent_', '');
+            const email = await db.get(
+                `SELECT id, lead_id, lead_name,
+                        'Smooth AI' as 'from', to_email as 'to', subject, 
+                        body, body as body_html, sent_at as date, 1 as isRead
+                 FROM email_queue WHERE id = ? AND status = 'sent'`, 
+                [sentId]
+            );
+            
+            if (!email) {
+                return res.status(404).json({ error: "Sent email not found" });
+            }
+            
+            return res.json({
+                id: `sent_${email.id}`,
+                type: 'sent',
+                lead_id: email.lead_id,
+                leadName: email.lead_name,
+                from: email.from,
+                to: email.to,
+                subject: email.subject,
+                body: email.body,
+                body_html: email.body_html,
+                date: new Date(email.date).toISOString(),
+                isRead: true
+            });
+        }
+        
+        // Regular received email
         const email = await db.get(
             `SELECT id, external_id, lead_id, 
                     from_email as 'from', to_email as 'to', subject, 
