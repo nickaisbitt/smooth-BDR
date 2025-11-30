@@ -40,6 +40,28 @@ This is an AI-powered Business Development Representative (BDR) application that
 
 ## Recent Changes (Nov 30, 2025)
 
+### Research Quality Threshold Increased to 9/10
+50. Raised research quality threshold from 5/10 to 9/10 across all code paths
+51. Updated `automationService.js` - queueEmailForLead now requires quality >= 9
+52. Updated `server.js` - /api/research/generate-email requires quality >= 9
+53. Updated `App.tsx` - Growth Engine only queues emails with quality >= 9
+54. Ensures only high-quality, personalized emails get sent
+
+### Iterative Research Orchestrator (Multi-Pass Research)
+55. Created `conductIterativeResearch()` in researchService.js
+56. Research keeps improving until it reaches target quality (9/10) or max attempts (3)
+57. **Pass 1**: Standard scraping (main site, about page, news search)
+58. **Pass 2**: Extended scraping (15+ additional page paths, expanded news with company name variations)
+59. **Pass 3**: Deep research (alternative URLs, www/non-www variants)
+60. Accumulates data across passes - each attempt builds on previous findings
+61. Enhanced AI analysis with stricter scoring criteria (9-10 only for truly specific data)
+62. API returns orchestrator state showing all attempts and quality progression
+63. Prevents generic emails like "congrats on the new office" without real data
+
+### Inbox UI Improvements
+64. Filter buttons (All/Unread/Linked/Unlinked) moved to same row as Received/Sent tabs
+65. Auto-sync inbox every 30 seconds for received emails
+
 ### Unified Inbox View (Received + Sent Emails)
 41. Created unified inbox displaying both received and sent emails
 42. Added tab switcher UI with "Received" and "Sent" tabs with icons
