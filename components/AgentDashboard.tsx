@@ -15,7 +15,9 @@ import {
   Plus,
   Power,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  X,
+  Loader
 } from 'lucide-react';
 
 interface AgentStatus {
@@ -28,6 +30,14 @@ interface AgentStatus {
   last_heartbeat: number;
   started_at: number;
   enabled: number;
+}
+
+interface AgentLog {
+  timestamp: number;
+  agent: string;
+  action: string;
+  item_id?: string;
+  details?: string;
 }
 
 interface QueueStats {
@@ -51,6 +61,9 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
   const [adding, setAdding] = useState(false);
   const [masterEnabled, setMasterEnabled] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<AgentStatus | null>(null);
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
