@@ -236,6 +236,168 @@ export async function searchExecutives(companyName) {
   }
 }
 
+// Web search using DuckDuckGo HTML (free, no API key needed)
+export async function webSearch(query, maxResults = 5) {
+  try {
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await axiosInstance.get(searchUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      }
+    });
+    
+    const $ = cheerio.load(response.data);
+    const results = [];
+    
+    $('.result').each((i, el) => {
+      if (results.length >= maxResults) return;
+      
+      const titleEl = $(el).find('.result__a');
+      const snippetEl = $(el).find('.result__snippet');
+      const urlEl = $(el).find('.result__url');
+      
+      const title = titleEl.text().trim();
+      const snippet = snippetEl.text().trim();
+      let url = titleEl.attr('href') || '';
+      
+      // DuckDuckGo wraps URLs, extract the actual URL
+      if (url.includes('uddg=')) {
+        const match = url.match(/uddg=([^&]+)/);
+        if (match) {
+          url = decodeURIComponent(match[1]);
+        }
+      }
+      
+      if (title && url && !url.includes('duckduckgo.com')) {
+        results.push({ title, snippet, url });
+      }
+    });
+    
+    console.log(`    🔍 Web search for "${query.slice(0, 40)}..." found ${results.length} results`);
+    return { success: true, results };
+  } catch (error) {
+    console.error(`Web search failed for ${query}:`, error.message);
+    return { success: false, results: [], error: error.message };
+  }
+}
+
+// Fetch and extract content from a URL
+async function fetchAndExtract(url, maxChars = 3000) {
+  try {
+    const response = await fetchWithTimeout(url, 15000);
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    
+    // Remove unwanted elements
+    $('script, style, nav, footer, header, iframe, noscript, aside, .sidebar, .ad, .advertisement, .cookie').remove();
+    
+    // Get main content
+    const title = $('title').text().trim();
+    const mainContent = $('main, article, .content, #content, .main, #main, .post, .article-body')
+      .first()
+      .text()
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    const bodyText = mainContent || $('body').text().replace(/\s+/g, ' ').trim();
+    
+    return {
+      success: true,
+      title,
+      content: bodyText.slice(0, maxChars),
+      url
+    };
+  } catch (error) {
+    return { success: false, error: error.message, url };
+  }
+}
+
+// Comprehensive web research for a company
+export async function conductWebResearch(companyName, websiteUrl) {
+  console.log(`    🌐 Conducting web research for: ${companyName}`);
+  
+  const results = {
+    companyInfo: [],
+    linkedinInfo: null,
+    crunchbaseInfo: null,
+    reviewsInfo: [],
+    generalInfo: []
+  };
+  
+  // Search queries to run
+  const searches = [
+    { query: `"${companyName}" company overview about`, type: 'companyInfo' },
+    { query: `"${companyName}" CEO founder leadership team`, type: 'companyInfo' },
+    { query: `"${companyName}" revenue employees size funding`, type: 'companyInfo' },
+    { query: `site:linkedin.com/company "${companyName}"`, type: 'linkedin' },
+    { query: `site:crunchbase.com "${companyName}"`, type: 'crunchbase' },
+    { query: `"${companyName}" reviews customers testimonials`, type: 'reviews' }
+  ];
+  
+  // Run searches in parallel (2 at a time to avoid rate limiting)
+  for (let i = 0; i < searches.length; i += 2) {
+    const batch = searches.slice(i, i + 2);
+    const batchResults = await Promise.all(
+      batch.map(s => webSearch(s.query, 3))
+    );
+    
+    for (let j = 0; j < batch.length; j++) {
+      const searchResult = batchResults[j];
+      const searchType = batch[j].type;
+      
+      if (searchResult.success && searchResult.results.length > 0) {
+        if (searchType === 'linkedin') {
+          results.linkedinInfo = searchResult.results[0];
+        } else if (searchType === 'crunchbase') {
+          results.crunchbaseInfo = searchResult.results[0];
+        } else if (searchType === 'reviews') {
+          results.reviewsInfo = searchResult.results;
+        } else {
+          results.companyInfo.push(...searchResult.results);
+        }
+      }
+    }
+    
+    // Small delay between batches
+    if (i + 2 < searches.length) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  
+  // Fetch content from top results (limit to 3 to save time)
+  const urlsToFetch = [
+    ...results.companyInfo.slice(0, 2).map(r => r.url),
+    results.linkedinInfo?.url,
+    results.crunchbaseInfo?.url
+  ].filter(Boolean).slice(0, 4);
+  
+  const fetchedContent = [];
+  for (const url of urlsToFetch) {
+    // Skip PDFs and other non-HTML
+    if (url.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx)$/i)) continue;
+    
+    const content = await fetchAndExtract(url, 2000);
+    if (content.success) {
+      fetchedContent.push(content);
+      console.log(`    📄 Fetched content from: ${url.slice(0, 60)}...`);
+    }
+  }
+  
+  results.fetchedContent = fetchedContent;
+  results.totalSearchResults = results.companyInfo.length + results.reviewsInfo.length;
+  
+  console.log(`    ✅ Web research complete: ${results.totalSearchResults} search results, ${fetchedContent.length} pages fetched`);
+  
+  return results;
+}
+
 // Scrape team/leadership page for real names
 export async function scrapeTeamPage(baseUrl) {
   const teamPaths = ['/team', '/leadership', '/our-team', '/about/team', '/about/leadership', '/people', '/attorneys', '/professionals', '/management'];
@@ -602,6 +764,23 @@ async function analyzeResearchWithAIEnhanced(scrapedData, companyName, servicePr
       ? `HIRING/GROWTH NEWS:\n${scrapedData.jobNews.jobs.map(j => `- ${j.title}`).join('\n')}`
       : '';
     
+    // Format web research data if available
+    const webResearchSection = scrapedData.webResearch?.fetchedContent?.length > 0
+      ? `WEB SEARCH RESULTS (${scrapedData.webResearch.fetchedContent.length} pages):\n${scrapedData.webResearch.fetchedContent.map(c => `[${c.title}] (${c.url}):\n${c.content.slice(0, 1500)}`).join('\n\n')}`
+      : '';
+    
+    const webSearchSnippets = scrapedData.webResearch?.companyInfo?.length > 0
+      ? `SEARCH SNIPPETS:\n${scrapedData.webResearch.companyInfo.map(r => `- ${r.title}: ${r.snippet}`).join('\n')}`
+      : '';
+    
+    const linkedinInfo = scrapedData.webResearch?.linkedinInfo
+      ? `LINKEDIN: ${scrapedData.webResearch.linkedinInfo.title} - ${scrapedData.webResearch.linkedinInfo.snippet}`
+      : '';
+    
+    const crunchbaseInfo = scrapedData.webResearch?.crunchbaseInfo
+      ? `CRUNCHBASE: ${scrapedData.webResearch.crunchbaseInfo.title} - ${scrapedData.webResearch.crunchbaseInfo.snippet}`
+      : '';
+    
     const prompt = `You are an expert B2B sales researcher. This is research attempt #${attempt}. Analyze ALL available data thoroughly and provide detailed, actionable insights.
 
 COMPANY: ${companyName}
@@ -621,6 +800,16 @@ ${scrapedData.bodyText?.slice(0, 2500) || 'No content extracted'}
 ${scrapedData.aboutPageContent ? `ABOUT PAGE:\n${scrapedData.aboutPageContent.slice(0, 1500)}` : ''}
 
 ${scrapedData.extendedPages?.length > 0 ? `ADDITIONAL PAGES:\n${scrapedData.extendedPages.map(p => `[${p.path}]: ${p.content.slice(0, 400)}`).join('\n')}` : ''}
+
+═══════════════════════════════════════════
+WEB SEARCH INTELLIGENCE (from Google/DuckDuckGo)
+═══════════════════════════════════════════
+${webSearchSnippets || 'No web search snippets found'}
+
+${linkedinInfo}
+${crunchbaseInfo}
+
+${webResearchSection || 'No additional web content fetched'}
 
 ═══════════════════════════════════════════
 PEOPLE INTELLIGENCE
@@ -744,7 +933,8 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
     jobNews: null,
     executiveNews: null,
     extendedPages: [],
-    servicesPages: []
+    servicesPages: [],
+    webResearch: null
   };
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -759,18 +949,19 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
     };
     
     try {
-      // PASS 1: Standard research + team page + careers
+      // PASS 1: Standard research + team page + careers + WEB SEARCH
       if (attempt === 1) {
         console.log(`    📄 Pass 1: Multi-source intelligence gathering...`);
-        attemptLog.strategies.push('standard_scrape');
+        attemptLog.strategies.push('standard_scrape', 'web_search');
         
-        // Parallel scraping for speed
-        const [mainSite, aboutPage, teamPage, careersPage, news] = await Promise.all([
+        // Parallel scraping for speed - including web search
+        const [mainSite, aboutPage, teamPage, careersPage, news, webResearch] = await Promise.all([
           scrapeWebsite(websiteUrl),
           scrapeAboutPage(websiteUrl),
           scrapeTeamPage(websiteUrl),
           scrapeCareersPage(websiteUrl),
-          searchCompanyNews(companyName)
+          searchCompanyNews(companyName),
+          conductWebResearch(companyName, websiteUrl)
         ]);
         
         accumulatedData.mainSite = mainSite;
@@ -778,12 +969,16 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
         accumulatedData.teamPage = teamPage;
         accumulatedData.careersPage = careersPage;
         accumulatedData.news = news;
+        accumulatedData.webResearch = webResearch;
         
         if (teamPage.success) {
           console.log(`    👥 Found ${teamPage.people?.length || 0} team members`);
         }
         if (careersPage.success) {
           console.log(`    💼 Found ${careersPage.jobCount || 0} job listings`);
+        }
+        if (webResearch.totalSearchResults > 0) {
+          console.log(`    🌐 Web search found ${webResearch.totalSearchResults} results, fetched ${webResearch.fetchedContent?.length || 0} pages`);
         }
       }
       
@@ -838,7 +1033,7 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
       }
       
       // Run AI analysis with all accumulated data
-      if (accumulatedData.mainSite?.success) {
+      if (accumulatedData.mainSite?.success || accumulatedData.webResearch?.fetchedContent?.length > 0) {
         console.log(`    🤖 AI analysis (attempt ${attempt})...`);
         
         const combinedData = {
@@ -853,7 +1048,8 @@ export async function conductIterativeResearch(companyName, websiteUrl, serviceP
           pressReleases: accumulatedData.pressReleases,
           jobNews: accumulatedData.jobNews,
           executiveNews: accumulatedData.executiveNews,
-          extendedPages: [...accumulatedData.extendedPages, ...accumulatedData.servicesPages]
+          extendedPages: [...accumulatedData.extendedPages, ...accumulatedData.servicesPages],
+          webResearch: accumulatedData.webResearch
         };
         
         const aiResult = await analyzeResearchWithAIEnhanced(combinedData, companyName, serviceProfile, attempt);
