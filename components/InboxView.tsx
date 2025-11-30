@@ -132,8 +132,8 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
   return (
     <div className="flex flex-col h-full animate-fadeIn">
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Inbox</h1>
             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
               {(['received', 'sent'] as EmailType[]).map((t) => (
@@ -151,6 +151,23 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
                 </button>
               ))}
             </div>
+            {emailType === 'received' && (
+              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                {(['all', 'unread', 'linked', 'unlinked'] as FilterType[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setFilter(f); setPage(1); }}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      filter === f
+                        ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {emailType === 'received' && (
             <button
@@ -167,23 +184,6 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
             </button>
           )}
         </div>
-        {emailType === 'received' && (
-          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
-            {(['all', 'unread', 'linked', 'unlinked'] as FilterType[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => { setFilter(f); setPage(1); }}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  filter === f
-                    ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {error && (
