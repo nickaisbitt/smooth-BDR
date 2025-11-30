@@ -13,6 +13,14 @@ export const AGENT_CONFIG = {
     targetQuality: 9,
     enabled: true
   },
+  RESEARCH_RETRY: {
+    name: 'research-retry',
+    pollIntervalMs: 30000,
+    maxRetries: 10,
+    targetQuality: 9,
+    retryDelayMs: 60000,
+    enabled: true
+  },
   EMAIL_GENERATOR: {
     name: 'email-generator',
     pollIntervalMs: 15000,

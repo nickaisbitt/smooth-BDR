@@ -18,6 +18,7 @@ let isRunning = false;
 const AGENT_FILES = {
   'prospect-finder': 'prospectFinder.js',
   'research': 'researchAgent.js',
+  'research-retry': 'researchRetryAgent.js',
   'email-generator': 'emailGenerator.js',
   'email-sender': 'emailSender.js',
   'inbox': 'inboxAgent.js'
