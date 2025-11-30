@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lead, InboxEmail } from '../types';
-import { RefreshCw, Mail, MailOpen, Link, ExternalLink, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Mail, MailOpen, Link, ExternalLink, X, ChevronLeft, ChevronRight, Send } from 'lucide-react';
 
 interface Props {
   leads: Lead[];
@@ -131,10 +131,44 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
 
   return (
     <div className="flex flex-col h-full animate-fadeIn">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Inbox</h1>
-          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Inbox</h1>
+            <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              {(['received', 'sent'] as EmailType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setEmailType(t)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
+                    emailType === t
+                      ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {t === 'received' ? <Mail size={14} /> : <Send size={14} />}
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {emailType === 'received' && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                syncing
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800'
+              }`}
+            >
+              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync Inbox'}
+            </button>
+          )}
+        </div>
+        {emailType === 'received' && (
+          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
             {(['all', 'unread', 'linked', 'unlinked'] as FilterType[]).map((f) => (
               <button
                 key={f}
@@ -149,19 +183,7 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
               </button>
             ))}
           </div>
-        </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            syncing
-              ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
-              : 'bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800'
-          }`}
-        >
-          <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing...' : 'Sync Inbox'}
-        </button>
+        )}
       </div>
 
       {error && (
@@ -195,7 +217,9 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-1">
-                        {email.isRead ? (
+                        {emailType === 'sent' ? (
+                          <Send size={16} className="text-slate-400" />
+                        ) : email.isRead ? (
                           <MailOpen size={16} className="text-slate-400" />
                         ) : (
                           <Mail size={16} className="text-blue-500" />
