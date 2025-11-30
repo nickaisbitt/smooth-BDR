@@ -105,6 +105,16 @@ export const InboxView: React.FC<Props> = ({ leads }) => {
     fetchEmails();
   }, [page, filter, emailType]);
 
+  useEffect(() => {
+    if (emailType !== 'received') return;
+    
+    const syncInterval = setInterval(() => {
+      handleSync();
+    }, 30000);
+    
+    return () => clearInterval(syncInterval);
+  }, [emailType]);
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
