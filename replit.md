@@ -38,7 +38,20 @@ This is an AI-powered Business Development Representative (BDR) application that
 └── README.md          # Original documentation
 ```
 
-## Recent Changes (Nov 29, 2025)
+## Recent Changes (Nov 30, 2025)
+
+### Unified Inbox View (Received + Sent Emails)
+41. Created unified inbox displaying both received and sent emails
+42. Added tab switcher UI with "Received" and "Sent" tabs with icons
+43. Received emails show Mail/MailOpen icons (read/unread status)
+44. Sent emails show Send icon, pulled from automation email_queue
+45. "Sync Inbox" button only shows for received emails (hidden for sent)
+46. Filter buttons (All/Unread/Linked/Unlinked) only apply to received emails
+47. Backend API now supports `?type=received|sent` parameter to fetch both sources
+48. Seamless switching between incoming replies and outgoing emails in one view
+49. Daily email limit increased to 200 emails/day (from 40)
+
+## Previous Changes (Nov 29, 2025)
 ### Replit Environment Setup
 1. Installed Node.js 20 and all npm dependencies
 2. Configured Vite to run on port 5000 with host 0.0.0.0 and `allowedHosts: true` for Replit proxy compatibility

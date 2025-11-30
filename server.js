@@ -485,7 +485,7 @@ app.get('/api/inbox', async (req, res) => {
             
             const emails = await db.all(
                 `SELECT id, 'sent' as type, lead_id, 
-                        user as 'from', to_email as 'to', subject, 
+                        'Smooth AI' as 'from', to_email as 'to', subject, 
                         SUBSTR(body, 1, 200) as preview, sent_at as date, 0 as isRead
                  FROM email_queue ${whereClause}
                  ORDER BY sent_at DESC
