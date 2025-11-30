@@ -455,7 +455,7 @@ function App() {
           const researchData = await researchRes.json();
           research = researchData.research;
           researchQuality = researchData.quality || 0;
-          addLog(`📊 Research complete for ${lead.companyName}: Quality ${researchQuality}/10`, researchQuality >= 5 ? 'success' : 'warning');
+          addLog(`📊 Research complete for ${lead.companyName}: Quality ${researchQuality}/10`, researchQuality >= 9 ? 'success' : 'warning');
         } else {
           addLog(`⚠️ Research failed for ${lead.companyName}, proceeding with basic analysis`, 'warning');
         }
@@ -473,7 +473,7 @@ function App() {
           dm = await findDecisionMaker(lead.companyName, lead.website);
           triggers = await findTriggers(lead.companyName, lead.website);
           
-          if (researchQuality >= 5 && research) {
+          if (researchQuality >= 9 && research) {
             addLog(`📝 Generating research-backed email for ${lead.companyName}...`, 'action');
             try {
               const emailRes = await fetch('/api/research/generate-email', {
@@ -499,15 +499,14 @@ function App() {
                 addLog(`✉️ Research-backed email generated using ${emailData.email.usedFacts?.length || 0} real facts`, 'success');
               } else {
                 const errData = await emailRes.json();
-                addLog(`⚠️ Email gen failed: ${errData.error}. Using fallback.`, 'warning');
-                emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
+                addLog(`🚫 Email NOT generated for ${lead.companyName} - ${errData.error}`, 'warning');
               }
             } catch (emailErr) {
               console.error("Research email generation error:", emailErr);
-              emailSequence = await generateEmailSequence({ ...lead, decisionMaker: dm, techStack }, serviceProfile, analysis, triggers);
+              addLog(`🚫 Email generation failed for ${lead.companyName} - will not send without quality research`, 'warning');
             }
           } else {
-            addLog(`⚠️ Research quality too low (${researchQuality}/10) - NOT queueing email for ${lead.companyName}`, 'warning');
+            addLog(`🚫 Research quality too low (${researchQuality}/10) - email NOT generated for ${lead.companyName} (requires 9+)`, 'warning');
           }
           
           const variant = Math.random() > 0.5 ? 'B' : 'A';
