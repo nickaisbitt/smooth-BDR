@@ -98,6 +98,11 @@ async function processInbox() {
       return;
     }
     
+    const agentEnabled = await db.get('SELECT enabled FROM agent_enabled WHERE agent_name = ?', [config.name]);
+    if (agentEnabled && !agentEnabled.enabled) {
+      return;
+    }
+    
     await syncInbox();
     
     await processUnanalyzedReplies();

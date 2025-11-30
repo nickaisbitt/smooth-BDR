@@ -73,6 +73,11 @@ async function processResearch() {
       return;
     }
     
+    const agentEnabled = await db.get('SELECT enabled FROM agent_enabled WHERE agent_name = ?', [config.name]);
+    if (agentEnabled && !agentEnabled.enabled) {
+      return;
+    }
+    
     const item = await acquireQueueItem(db, 'research_queue', config.name);
     
     if (!item) return;

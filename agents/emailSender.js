@@ -82,6 +82,11 @@ async function processPendingEmails() {
       return;
     }
     
+    const agentEnabled = await db.get('SELECT enabled FROM agent_enabled WHERE agent_name = ?', [config.name]);
+    if (agentEnabled && !agentEnabled.enabled) {
+      return;
+    }
+    
     const smtpConfig = await loadSmtpConfig();
     if (!smtpConfig) {
       return;

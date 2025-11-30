@@ -60,6 +60,7 @@ function App() {
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   
   // CIRCUIT BREAKER STATE
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
@@ -92,6 +93,58 @@ function App() {
     }, 60000); // Check every minute
     return () => clearInterval(gcInterval);
   }, []);
+
+  // Fetch Agent Logs and Automation State
+  useEffect(() => {
+    const fetchAgentData = async () => {
+      try {
+        const [logsRes, statusRes] = await Promise.all([
+          fetch('/api/agents/logs?limit=50'),
+          fetch('/api/automation/status')
+        ]);
+        
+        const logsData = await logsRes.json();
+        const statusData = await statusRes.json();
+        
+        if (logsData.logs && logsData.logs.length > 0) {
+          const formattedLogs: AgentLog[] = logsData.logs.map((log: any) => ({
+            id: log.id || String(log.timestamp),
+            timestamp: log.timestamp,
+            message: log.message,
+            type: log.level === 'error' ? 'error' : log.level === 'warn' ? 'warning' : log.level === 'success' ? 'success' : 'info'
+          }));
+          setAgentLogs(formattedLogs);
+        }
+        
+        if (statusData.enabled !== undefined) {
+          setIsGrowthEngineActive(statusData.enabled);
+        }
+      } catch (error) {
+        console.error('Failed to fetch agent data:', error);
+      }
+    };
+    
+    fetchAgentData();
+    const interval = setInterval(fetchAgentData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleGrowthEngine = async () => {
+    try {
+      const res = await fetch('/api/automation/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !isGrowthEngineActive })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsGrowthEngineActive(data.enabled);
+        addLog(data.enabled ? '🚀 Growth Engine Started' : '⏹️ Growth Engine Stopped', data.enabled ? 'success' : 'info');
+      }
+    } catch (error) {
+      addLog('Failed to toggle Growth Engine', 'error');
+    }
+  };
 
   // --- GOOGLE SHEETS AUTO-SYNC ENGINE ---
   
@@ -688,20 +741,13 @@ function App() {
 
                  <div className="flex flex-col xl:flex-row gap-6 h-auto min-h-[400px]">
                      <div className="flex-1 flex flex-col gap-2">
-                        <AgentTerminal logs={logs} active={isGrowthEngineActive} />
-                        {cooldownTime > 0 ? (
-                            <div className="w-full bg-yellow-100 h-2 rounded-full overflow-hidden relative">
-                                <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-[8px] font-bold text-yellow-800 z-10">COOLING DOWN ({cooldownTime}s)</div>
-                                <div className="bg-yellow-500 h-full transition-all duration-1000 ease-linear" style={{width: `${(cooldownTime/maxCooldown)*100}%`}}></div>
-                            </div>
-                        ) : (
-                            <button 
-                                onClick={() => setIsGrowthEngineActive(!isGrowthEngineActive)} 
-                                className={`w-full py-3 text-xs font-bold rounded-lg shadow-sm transition-all active:scale-95 ${isGrowthEngineActive ? 'bg-white text-red-500 border border-red-200' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
-                            >
-                                {isGrowthEngineActive ? 'STOP NEURAL AGENT' : 'START GROWTH ENGINE'}
-                            </button>
-                        )}
+                        <AgentTerminal logs={agentLogs.length > 0 ? agentLogs : logs} active={isGrowthEngineActive} />
+                        <button 
+                            onClick={handleToggleGrowthEngine} 
+                            className={`w-full py-3 text-xs font-bold rounded-lg shadow-sm transition-all active:scale-95 ${isGrowthEngineActive ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                        >
+                            {isGrowthEngineActive ? '⚡ GROWTH ENGINE RUNNING' : 'START GROWTH ENGINE'}
+                        </button>
                      </div>
                      <div className="w-full xl:w-80">
                          <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />

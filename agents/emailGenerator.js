@@ -148,6 +148,11 @@ async function processEmails() {
       return;
     }
     
+    const agentEnabled = await db.get('SELECT enabled FROM agent_enabled WHERE agent_name = ?', [config.name]);
+    if (agentEnabled && !agentEnabled.enabled) {
+      return;
+    }
+    
     const item = await acquireQueueItem(db, 'draft_queue', config.name);
     
     if (!item) return;

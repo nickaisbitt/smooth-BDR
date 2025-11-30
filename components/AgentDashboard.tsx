@@ -12,7 +12,10 @@ import {
   Inbox,
   AlertTriangle,
   ChevronRight,
-  Plus
+  Plus,
+  Power,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 
 interface AgentStatus {
@@ -24,6 +27,7 @@ interface AgentStatus {
   current_item: string | null;
   last_heartbeat: number;
   started_at: number;
+  enabled: number;
 }
 
 interface QueueStats {
@@ -45,6 +49,8 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
   const [showAddProspect, setShowAddProspect] = useState(false);
   const [newProspect, setNewProspect] = useState({ companyName: '', websiteUrl: '', contactEmail: '', contactName: '' });
   const [adding, setAdding] = useState(false);
+  const [masterEnabled, setMasterEnabled] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -58,12 +64,46 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
       
       if (agentData.agents) setAgents(agentData.agents);
       if (queueData.queues) setQueues(queueData.queues);
+      if (agentData.masterEnabled !== undefined) setMasterEnabled(agentData.masterEnabled);
     } catch (error) {
       console.error('Failed to fetch agent status:', error);
     } finally {
       setLoading(false);
     }
   }, [apiBase]);
+
+  const toggleAgent = async (agentName: string, currentEnabled: boolean) => {
+    setToggling(agentName);
+    try {
+      await fetch(`${apiBase}/agents/toggle/${agentName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled })
+      });
+      fetchStatus();
+    } catch (error) {
+      console.error('Failed to toggle agent:', error);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const toggleMaster = async () => {
+    setToggling('master');
+    try {
+      await fetch(`${apiBase}/automation/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !masterEnabled })
+      });
+      setMasterEnabled(!masterEnabled);
+      fetchStatus();
+    } catch (error) {
+      console.error('Failed to toggle master:', error);
+    } finally {
+      setToggling(null);
+    }
+  };
 
   useEffect(() => {
     fetchStatus();
@@ -148,6 +188,18 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={toggleMaster}
+            disabled={toggling === 'master'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium ${
+              masterEnabled 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-gray-700 hover:bg-gray-800 text-white'
+            }`}
+          >
+            <Power className={`w-4 h-4 ${toggling === 'master' ? 'animate-pulse' : ''}`} />
+            {masterEnabled ? 'Engine Running' : 'Engine Stopped'}
+          </button>
+          <button
             onClick={() => setShowAddProspect(true)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
           >
@@ -197,7 +249,7 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
               agents.map((agent) => (
                 <div key={agent.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${agent.health === 'healthy' ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                    <div className={`p-2 rounded-lg ${agent.health === 'healthy' && agent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
                       {getAgentIcon(agent.name)}
                     </div>
                     <div>
@@ -207,11 +259,29 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    {getHealthBadge(agent.health)}
-                    <div className="text-xs text-gray-400 mt-1">
-                      Last: {formatTime(agent.last_heartbeat)}
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      {getHealthBadge(agent.health)}
+                      <div className="text-xs text-gray-400 mt-1">
+                        Last: {formatTime(agent.last_heartbeat)}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => toggleAgent(agent.name, !!agent.enabled)}
+                      disabled={toggling === agent.name}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        agent.enabled 
+                          ? 'text-green-600 hover:bg-green-50' 
+                          : 'text-gray-400 hover:bg-gray-100'
+                      }`}
+                      title={agent.enabled ? 'Disable agent' : 'Enable agent'}
+                    >
+                      {agent.enabled ? (
+                        <ToggleRight className={`w-6 h-6 ${toggling === agent.name ? 'animate-pulse' : ''}`} />
+                      ) : (
+                        <ToggleLeft className={`w-6 h-6 ${toggling === agent.name ? 'animate-pulse' : ''}`} />
+                      )}
+                    </button>
                   </div>
                 </div>
               ))

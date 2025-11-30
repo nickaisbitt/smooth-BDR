@@ -37,24 +37,24 @@ export const AgentTerminal: React.FC<Props> = ({ logs, active }) => {
                     </div>
                 )}
 
-                <div className="space-y-2">
-                    {logs.map((log) => (
-                        <div key={log.id} className={`flex items-start gap-3 animate-fadeIn`}>
-                            <span className="text-slate-600 shrink-0">
-                                {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' })}
-                            </span>
-                            <span className={`
-                                ${log.type === 'info' ? 'text-slate-300' : ''}
-                                ${log.type === 'success' ? 'text-green-400' : ''}
-                                ${log.type === 'warning' ? 'text-yellow-400' : ''}
-                                ${log.type === 'error' ? 'text-red-400' : ''}
-                                ${log.type === 'action' ? 'text-blue-400 font-bold' : ''}
-                            `}>
-                                {log.type === 'action' && '> '}
-                                {log.message}
-                            </span>
-                        </div>
-                    ))}
+                <div className="space-y-1.5">
+                    {logs.map((log) => {
+                        const time = new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
+                        return (
+                            <div key={log.id} className={`flex items-start gap-0 animate-fadeIn font-mono`}>
+                                <span className="text-slate-500 shrink-0 w-16">{time}</span>
+                                <span className={`
+                                    ${log.type === 'info' ? 'text-slate-300' : ''}
+                                    ${log.type === 'success' ? 'text-green-400' : ''}
+                                    ${log.type === 'warning' ? 'text-yellow-400' : ''}
+                                    ${log.type === 'error' ? 'text-red-400' : ''}
+                                    ${log.type === 'action' ? 'text-cyan-400' : ''}
+                                `}>
+                                    {log.message}
+                                </span>
+                            </div>
+                        );
+                    })}
                     <div ref={bottomRef} />
                 </div>
 

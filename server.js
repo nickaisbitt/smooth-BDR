@@ -47,7 +47,8 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // RATE LIMITER: Protect SMTP Reputation
 const limiter = rateLimit({
@@ -1044,25 +1045,85 @@ app.get('/api/agents/status', async (req, res) => {
     try {
         const agents = await db.all(`
             SELECT 
-                agent_name as name,
-                status,
-                last_heartbeat,
-                items_processed as processed,
-                current_item,
-                error_count as errors,
-                started_at,
+                s.agent_name as name,
+                s.status,
+                s.last_heartbeat,
+                s.items_processed as processed,
+                s.current_item,
+                s.error_count as errors,
+                s.started_at,
+                COALESCE(e.enabled, 1) as enabled,
                 CASE 
-                    WHEN status = 'running' AND last_heartbeat > ? THEN 'healthy'
-                    WHEN status = 'running' THEN 'stale'
-                    ELSE status
+                    WHEN s.status = 'running' AND s.last_heartbeat > ? THEN 'healthy'
+                    WHEN s.status = 'running' THEN 'stale'
+                    ELSE s.status
                 END as health
-            FROM agent_status
-            ORDER BY agent_name
+            FROM agent_status s
+            LEFT JOIN agent_enabled e ON s.agent_name = e.agent_name
+            ORDER BY s.agent_name
         `, [Date.now() - 60000]);
         
-        res.json({ success: true, agents });
+        const automationState = await db.get('SELECT is_running FROM automation_state WHERE id = 1');
+        
+        res.json({ success: true, agents, masterEnabled: automationState?.is_running === 1 });
     } catch (error) {
-        res.json({ success: true, agents: [] });
+        res.json({ success: true, agents: [], masterEnabled: false });
+    }
+});
+
+// POST /api/agents/toggle/:agent - Toggle individual agent on/off
+app.post('/api/agents/toggle/:agent', async (req, res) => {
+    const { agent } = req.params;
+    const { enabled } = req.body;
+    
+    try {
+        await db.run(`
+            INSERT INTO agent_enabled (agent_name, enabled, updated_at) 
+            VALUES (?, ?, ?)
+            ON CONFLICT(agent_name) DO UPDATE SET enabled = ?, updated_at = ?
+        `, [agent, enabled ? 1 : 0, Date.now(), enabled ? 1 : 0, Date.now()]);
+        
+        const agentLabel = agent.replace('-', ' ').toUpperCase();
+        await db.run(`
+            INSERT INTO agent_logs (agent_name, level, message, timestamp)
+            VALUES (?, 'info', ?, ?)
+        `, [agent, `${agentLabel}: Agent ${enabled ? 'ENABLED' : 'DISABLED'} by user`, Date.now()]);
+        
+        res.json({ success: true, agent, enabled });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/automation/toggle - Toggle master automation on/off
+app.post('/api/automation/toggle', async (req, res) => {
+    const { enabled } = req.body;
+    
+    try {
+        await db.run(`UPDATE automation_state SET is_running = ?, updated_at = ? WHERE id = 1`, [enabled ? 1 : 0, Date.now()]);
+        
+        await db.run(`
+            INSERT INTO agent_logs (agent_name, level, message, timestamp)
+            VALUES ('system', 'info', ?, ?)
+        `, [`SYSTEM: Growth Engine ${enabled ? 'STARTED' : 'STOPPED'}`, Date.now()]);
+        
+        res.json({ success: true, enabled });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/automation/status - Get master automation status
+app.get('/api/automation/status', async (req, res) => {
+    try {
+        const state = await db.get('SELECT is_running, emails_sent_today, last_reset_date FROM automation_state WHERE id = 1');
+        res.json({ 
+            success: true, 
+            enabled: state?.is_running === 1,
+            emailsSentToday: state?.emails_sent_today || 0
+        });
+    } catch (error) {
+        res.json({ success: true, enabled: false, emailsSentToday: 0 });
     }
 });
 

@@ -109,7 +109,18 @@ export async function initAgentTables(db) {
     CREATE INDEX IF NOT EXISTS idx_research_queue_status ON research_queue(status);
     CREATE INDEX IF NOT EXISTS idx_draft_queue_status ON draft_queue(status);
     CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_name, created_at);
+    
+    CREATE TABLE IF NOT EXISTS agent_enabled (
+      agent_name TEXT PRIMARY KEY,
+      enabled INTEGER DEFAULT 1,
+      updated_at INTEGER
+    );
   `);
+  
+  const agents = ['prospect-finder', 'research', 'email-generator', 'email-sender', 'inbox'];
+  for (const agent of agents) {
+    await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);
+  }
   
   console.log("✅ Agent tables initialized");
 }
