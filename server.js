@@ -25,6 +25,7 @@ import {
 } from './services/automationService.js';
 import {
   conductFullResearch,
+  conductIterativeResearch,
   formatResearchForEmail,
   scrapeWebsite
 } from './services/researchService.js';
@@ -979,28 +980,31 @@ app.post('/api/automation/retry-failed', async (req, res) => {
 
 // ============ RESEARCH API ENDPOINTS ============
 
-// POST /api/research/conduct - Conduct full research on a company
+// POST /api/research/conduct - Conduct full research on a company (with iterative improvement)
 app.post('/api/research/conduct', async (req, res) => {
-    const { companyName, websiteUrl, serviceProfile } = req.body;
+    const { companyName, websiteUrl, serviceProfile, targetQuality = 9, maxAttempts = 3 } = req.body;
     
     if (!companyName || !websiteUrl) {
         return res.status(400).json({ error: "Company name and website URL are required" });
     }
     
     try {
-        console.log(`🔍 API: Starting research for ${companyName}`);
-        const research = await conductFullResearch(companyName, websiteUrl, serviceProfile);
+        console.log(`🔍 API: Starting iterative research for ${companyName} (target: ${targetQuality}/10, max ${maxAttempts} attempts)`);
+        
+        // Use iterative research that keeps trying until quality >= 9 or max attempts reached
+        const research = await conductIterativeResearch(companyName, websiteUrl, serviceProfile, targetQuality, maxAttempts);
         
         const formatted = formatResearchForEmail(research);
         
         res.json({
-            success: research.researchQuality >= 5,
+            success: research.researchQuality >= targetQuality,
             research,
             formatted,
             quality: research.researchQuality,
-            message: research.researchQuality >= 5 
-                ? `Research complete with quality score ${research.researchQuality}/10`
-                : `Research quality too low (${research.researchQuality}/10). Need more data before emailing.`
+            orchestrator: research.orchestrator,
+            message: research.researchQuality >= targetQuality 
+                ? `Research complete with quality score ${research.researchQuality}/10 after ${research.totalAttempts || 1} attempt(s)`
+                : `Research quality ${research.researchQuality}/10 after ${research.orchestrator?.attempts?.length || 1} attempts. Below target of ${targetQuality}/10.`
         });
     } catch (error) {
         console.error("Research Error:", error);

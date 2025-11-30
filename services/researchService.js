@@ -317,3 +317,343 @@ export function formatResearchForEmail(research) {
     quality: research.researchQuality
   };
 }
+
+// Additional page paths for deeper scraping on retry attempts
+const EXTENDED_ABOUT_PATHS = [
+  '/about', '/about-us', '/company', '/team', '/our-team', '/who-we-are',
+  '/leadership', '/our-story', '/history', '/mission', '/values',
+  '/management', '/executives', '/founders', '/people', '/staff'
+];
+
+const EXTENDED_SERVICE_PATHS = [
+  '/services', '/solutions', '/products', '/what-we-do', '/offerings',
+  '/capabilities', '/expertise', '/practice-areas', '/industries'
+];
+
+// Scrape additional pages for more context
+async function scrapeExtendedPages(baseUrl, paths) {
+  const results = [];
+  
+  for (const path of paths) {
+    try {
+      const url = new URL(path, baseUrl).href;
+      const result = await scrapeWebsite(url);
+      if (result.success && result.bodyText.length > 200) {
+        results.push({
+          path,
+          content: result.bodyText.slice(0, 2000),
+          title: result.title
+        });
+      }
+    } catch (error) {
+      continue;
+    }
+    
+    // Limit to 3 successful scrapes per category to save time
+    if (results.length >= 3) break;
+  }
+  
+  return results;
+}
+
+// Search for company news with variations
+async function searchCompanyNewsExtended(companyName) {
+  const variations = [
+    companyName,
+    companyName.replace(/\s+(Inc|LLC|Corp|Ltd|Co)\.?$/i, ''),
+    companyName.split(' ').slice(0, 2).join(' ')
+  ];
+  
+  const allArticles = [];
+  const seenTitles = new Set();
+  
+  for (const query of variations) {
+    const news = await searchCompanyNews(query);
+    if (news.success && news.articles) {
+      for (const article of news.articles) {
+        if (!seenTitles.has(article.title)) {
+          seenTitles.add(article.title);
+          allArticles.push(article);
+        }
+      }
+    }
+  }
+  
+  // Also try industry-specific searches
+  const industryQueries = [
+    `"${companyName}" expansion`,
+    `"${companyName}" hiring`,
+    `"${companyName}" growth`
+  ];
+  
+  for (const query of industryQueries) {
+    try {
+      const news = await searchCompanyNews(query);
+      if (news.success && news.articles) {
+        for (const article of news.articles) {
+          if (!seenTitles.has(article.title)) {
+            seenTitles.add(article.title);
+            allArticles.push(article);
+          }
+        }
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  return { success: true, articles: allArticles.slice(0, 10) };
+}
+
+// Enhanced AI analysis with more data
+async function analyzeResearchWithAIEnhanced(scrapedData, companyName, serviceProfile, attempt) {
+  try {
+    const prompt = `You are an expert B2B sales researcher. This is research attempt #${attempt}. Analyze ALL available data thoroughly and provide detailed, actionable insights.
+
+COMPANY: ${companyName}
+WEBSITE: ${scrapedData.url}
+
+SCRAPED DATA:
+Title: ${scrapedData.title}
+Meta Description: ${scrapedData.metaDescription}
+Main Headings: ${scrapedData.headings?.h1s?.join(', ') || 'None found'}
+Sub Headings: ${scrapedData.headings?.h2s?.join(', ') || 'None found'}
+
+MAIN CONTENT:
+${scrapedData.bodyText?.slice(0, 3000) || 'No content extracted'}
+
+${scrapedData.aboutPageContent ? `ABOUT PAGE:
+${scrapedData.aboutPageContent.slice(0, 2000)}` : ''}
+
+${scrapedData.extendedPages?.length > 0 ? `ADDITIONAL PAGES SCRAPED:
+${scrapedData.extendedPages.map(p => `[${p.path}]: ${p.content.slice(0, 500)}`).join('\n')}` : ''}
+
+${scrapedData.news?.articles?.length > 0 ? `RECENT NEWS (${scrapedData.news.articles.length} articles):
+${scrapedData.news.articles.map(a => `- ${a.title} (${a.pubDate})`).join('\n')}` : 'NO RECENT NEWS FOUND'}
+
+OUR SERVICE:
+${serviceProfile || 'AI automation solutions for business operations'}
+
+CRITICAL SCORING RULES:
+- Score 9-10: ONLY if we have SPECIFIC company details (real names, real numbers, real news, real services mentioned)
+- Score 7-8: Good data but missing specifics
+- Score 5-6: Basic info only
+- Score 1-4: Very little useful data
+
+Return a JSON object with these fields:
+{
+  "companyOverview": "Detailed 3-4 sentence summary with SPECIFIC details about what they do",
+  "industryVertical": "Their specific industry/niche",
+  "companySize": "Estimate with reasoning",
+  "keyServices": ["SPECIFIC services from website, not generic"],
+  "potentialPainPoints": ["SPECIFIC pain points based on their actual business"],
+  "recentTriggers": ["ACTUAL news, hires, or events - empty array if none found"],
+  "personalizedHooks": ["5 SPECIFIC hooks using real data from research"],
+  "keyPeople": ["ACTUAL names found on website"],
+  "competitiveAdvantage": "What makes them unique based on their content",
+  "outreachAngle": "The SPECIFIC best angle based on real research data",
+  "researchQuality": "Score 1-10 - BE STRICT, only 9+ if truly excellent data",
+  "missingData": ["What data would help improve this research"]
+}
+
+Return ONLY valid JSON, no markdown.`;
+
+    const response = await openrouter.chat.completions.create({
+      model: "meta-llama/llama-3.3-70b-instruct",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2000
+    });
+
+    const content = response.choices[0]?.message?.content || '';
+    
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No valid JSON in AI response');
+    }
+    
+    const analysis = JSON.parse(jsonMatch[0]);
+    return {
+      success: true,
+      analysis
+    };
+  } catch (error) {
+    console.error('Enhanced AI analysis failed:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Main iterative research orchestrator
+export async function conductIterativeResearch(companyName, websiteUrl, serviceProfile, targetQuality = 9, maxAttempts = 3) {
+  console.log(`🔍 Starting iterative research for: ${companyName} (target: ${targetQuality}/10)`);
+  
+  const orchestratorState = {
+    companyName,
+    websiteUrl,
+    targetQuality,
+    maxAttempts,
+    attempts: [],
+    currentAttempt: 0,
+    bestResult: null,
+    bestQuality: 0,
+    status: 'in_progress'
+  };
+  
+  let accumulatedData = {
+    mainSite: null,
+    aboutPage: null,
+    news: null,
+    extendedPages: [],
+    servicesPages: []
+  };
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    orchestratorState.currentAttempt = attempt;
+    console.log(`\n  📊 Attempt ${attempt}/${maxAttempts}...`);
+    
+    const attemptLog = {
+      attempt,
+      startedAt: Date.now(),
+      strategies: [],
+      quality: 0
+    };
+    
+    try {
+      // PASS 1: Standard research
+      if (attempt === 1) {
+        console.log(`    📄 Pass 1: Standard scraping...`);
+        attemptLog.strategies.push('standard_scrape');
+        
+        accumulatedData.mainSite = await scrapeWebsite(websiteUrl);
+        
+        if (accumulatedData.mainSite.success) {
+          accumulatedData.aboutPage = await scrapeAboutPage(websiteUrl);
+        }
+        
+        accumulatedData.news = await searchCompanyNews(companyName);
+      }
+      
+      // PASS 2: Extended scraping - more pages, more news sources
+      if (attempt >= 2 && accumulatedData.mainSite?.success) {
+        console.log(`    📄 Pass 2: Extended page scraping...`);
+        attemptLog.strategies.push('extended_pages');
+        
+        // Scrape additional about/team pages
+        const moreAboutPages = await scrapeExtendedPages(websiteUrl, EXTENDED_ABOUT_PATHS);
+        accumulatedData.extendedPages = [...accumulatedData.extendedPages, ...moreAboutPages];
+        
+        // Scrape service pages
+        const servicePages = await scrapeExtendedPages(websiteUrl, EXTENDED_SERVICE_PATHS);
+        accumulatedData.servicesPages = [...accumulatedData.servicesPages, ...servicePages];
+        
+        // Extended news search
+        console.log(`    📰 Extended news search...`);
+        attemptLog.strategies.push('extended_news');
+        accumulatedData.news = await searchCompanyNewsExtended(companyName);
+      }
+      
+      // PASS 3: Deep dive - try alternative domains, subdomains
+      if (attempt >= 3) {
+        console.log(`    🔎 Pass 3: Deep research strategies...`);
+        attemptLog.strategies.push('deep_research');
+        
+        // Try www vs non-www
+        const altUrl = websiteUrl.includes('www.') 
+          ? websiteUrl.replace('www.', '')
+          : websiteUrl.replace('://', '://www.');
+        
+        const altScrape = await scrapeWebsite(altUrl);
+        if (altScrape.success && altScrape.bodyText.length > (accumulatedData.mainSite?.bodyText?.length || 0)) {
+          console.log(`    ✓ Alternative URL had more content`);
+          accumulatedData.mainSite = altScrape;
+        }
+      }
+      
+      // Run AI analysis with all accumulated data
+      if (accumulatedData.mainSite?.success) {
+        console.log(`    🤖 AI analysis (attempt ${attempt})...`);
+        
+        const combinedData = {
+          ...accumulatedData.mainSite,
+          aboutPageContent: accumulatedData.aboutPage?.bodyText || '',
+          news: accumulatedData.news,
+          extendedPages: [...accumulatedData.extendedPages, ...accumulatedData.servicesPages]
+        };
+        
+        const aiResult = await analyzeResearchWithAIEnhanced(combinedData, companyName, serviceProfile, attempt);
+        
+        if (aiResult.success) {
+          attemptLog.quality = aiResult.analysis.researchQuality || 0;
+          attemptLog.missingData = aiResult.analysis.missingData || [];
+          
+          // Track best result
+          if (attemptLog.quality > orchestratorState.bestQuality) {
+            orchestratorState.bestQuality = attemptLog.quality;
+            orchestratorState.bestResult = {
+              companyName,
+              websiteUrl,
+              researchStarted: orchestratorState.attempts[0]?.startedAt || Date.now(),
+              mainSite: accumulatedData.mainSite,
+              aboutPage: accumulatedData.aboutPage,
+              news: accumulatedData.news,
+              extendedPages: accumulatedData.extendedPages,
+              aiAnalysis: aiResult.analysis,
+              researchQuality: attemptLog.quality,
+              totalAttempts: attempt,
+              researchCompleted: Date.now()
+            };
+          }
+          
+          console.log(`    📊 Quality: ${attemptLog.quality}/10 (target: ${targetQuality})`);
+          
+          // Check if we've reached target quality
+          if (attemptLog.quality >= targetQuality) {
+            console.log(`  ✅ Target quality reached on attempt ${attempt}!`);
+            orchestratorState.status = 'completed';
+            attemptLog.completedAt = Date.now();
+            orchestratorState.attempts.push(attemptLog);
+            break;
+          } else if (attempt < maxAttempts) {
+            console.log(`    ⚠️ Below target. Missing: ${(attemptLog.missingData || []).join(', ') || 'unknown'}`);
+          }
+        }
+      } else {
+        attemptLog.quality = 1;
+        attemptLog.error = 'Main site scrape failed';
+      }
+      
+    } catch (error) {
+      console.error(`    ❌ Attempt ${attempt} error:`, error.message);
+      attemptLog.error = error.message;
+    }
+    
+    attemptLog.completedAt = Date.now();
+    orchestratorState.attempts.push(attemptLog);
+  }
+  
+  // Final status
+  if (orchestratorState.bestQuality >= targetQuality) {
+    orchestratorState.status = 'completed';
+  } else if (orchestratorState.bestQuality > 0) {
+    orchestratorState.status = 'max_attempts_reached';
+  } else {
+    orchestratorState.status = 'failed';
+  }
+  
+  console.log(`\n🏁 Research complete for ${companyName}:`);
+  console.log(`   Best quality: ${orchestratorState.bestQuality}/10 after ${orchestratorState.attempts.length} attempts`);
+  console.log(`   Status: ${orchestratorState.status}`);
+  
+  return {
+    ...orchestratorState.bestResult,
+    orchestrator: {
+      attempts: orchestratorState.attempts,
+      status: orchestratorState.status,
+      targetQuality,
+      maxAttempts
+    }
+  };
+}
