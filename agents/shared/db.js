@@ -56,6 +56,11 @@ export async function initAgentTables(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER,
       completed_at INTEGER,
+      retry_count INTEGER DEFAULT 0,
+      sources_tried TEXT DEFAULT '[]',
+      exhausted INTEGER DEFAULT 0,
+      exhaustion_reason TEXT,
+      last_retry_at INTEGER,
       FOREIGN KEY (prospect_id) REFERENCES prospect_queue(id)
     );
     
@@ -129,10 +134,27 @@ export async function initAgentTables(db) {
     CREATE INDEX IF NOT EXISTS idx_agent_messages_to ON agent_messages(to_agent, read_at);
   `);
   
-  const agents = ['prospect-finder', 'research', 'email-generator', 'email-sender', 'inbox'];
+  const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];
   for (const agent of agents) {
     await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);
   }
+  
+  // Add retry columns to research_queue if they don't exist
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN retry_count INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN sources_tried TEXT DEFAULT '[]'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN exhausted INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN exhaustion_reason TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN last_retry_at INTEGER`);
+  } catch (e) { /* column exists */ }
   
   console.log("✅ Agent tables initialized");
 }
