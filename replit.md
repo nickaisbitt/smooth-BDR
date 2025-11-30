@@ -28,6 +28,15 @@ The application features a modern full-stack architecture with a React 18 (TypeS
 - **AI Integration**: AI calls are proxied through a server-side endpoint for security and leverage Replit AI Integrations (OpenRouter) with the `meta-llama/llama-3.3-70b-instruct` model.
 - **Deployment**: Configured for Replit's autoscale production environment, serving the React build via the Express server.
 
+## Development Workflow
+The development environment runs three parallel processes using a single workflow command:
+```bash
+node server.js & node agents/supervisor.js & npm run dev & wait
+```
+- **Express API Server** (port 3000): Backend API handling leads, emails, agents, and automation
+- **Agent Supervisor**: Spawns and manages the 6 autonomous agents
+- **Vite Dev Server** (port 5000): Frontend development server with hot reload
+
 ## External Dependencies
 - **AI Service**: Google Gemini API (via Replit AI Integrations/OpenRouter, using `meta-llama/llama-3.3-70b-instruct`)
 - **Email Services**:
