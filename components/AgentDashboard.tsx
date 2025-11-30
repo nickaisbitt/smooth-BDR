@@ -33,11 +33,12 @@ interface AgentStatus {
 }
 
 interface AgentLog {
-  timestamp: number;
-  agent: string;
-  action: string;
-  item_id?: string;
+  id: number;
+  agent_name: string;
+  level: string;
+  message: string;
   details?: string;
+  created_at: number;
 }
 
 interface QueueStats {
@@ -123,6 +124,36 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
     const interval = setInterval(fetchStatus, 10000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  const fetchAgentLogs = useCallback(async (agentName: string) => {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`${apiBase}/agents/logs?agent=${agentName}&limit=50`);
+      const data = await res.json();
+      if (data.logs) setAgentLogs(data.logs);
+    } catch (error) {
+      console.error('Failed to fetch agent logs:', error);
+      setAgentLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, [apiBase]);
+
+  const handleAgentClick = (agent: AgentStatus) => {
+    setSelectedAgent(agent);
+    fetchAgentLogs(agent.name);
+  };
+
+  const closeAgentDetail = () => {
+    setSelectedAgent(null);
+    setAgentLogs([]);
+  };
+
+  const formatDateTime = (timestamp: number) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
 
   const getAgentIcon = (name: string) => {
     switch (name) {
@@ -260,7 +291,11 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
               </div>
             ) : (
               agents.map((agent) => (
-                <div key={agent.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div 
+                  key={agent.name} 
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => handleAgentClick(agent)}
+                >
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${agent.health === 'healthy' && agent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
                       {getAgentIcon(agent.name)}
@@ -280,7 +315,7 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
                       </div>
                     </div>
                     <button
-                      onClick={() => toggleAgent(agent.name, !!agent.enabled)}
+                      onClick={(e) => { e.stopPropagation(); toggleAgent(agent.name, !!agent.enabled); }}
                       disabled={toggling === agent.name}
                       className={`p-1.5 rounded-lg transition-all ${
                         agent.enabled 
@@ -295,6 +330,7 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
                         <ToggleLeft className={`w-6 h-6 ${toggling === agent.name ? 'animate-pulse' : ''}`} />
                       )}
                     </button>
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
                   </div>
                 </div>
               ))
@@ -435,6 +471,148 @@ export default function AgentDashboard({ apiBase = '/api' }: AgentDashboardProps
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {selectedAgent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${selectedAgent.health === 'healthy' && selectedAgent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                  {getAgentIcon(selectedAgent.name)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 capitalize">
+                    {selectedAgent.name.replace('-', ' ')} Agent
+                  </h3>
+                  <p className="text-sm text-gray-500">Activity & Status Details</p>
+                </div>
+              </div>
+              <button
+                onClick={closeAgentDetail}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-5 border-b border-gray-100">
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-gray-900">{selectedAgent.processed}</div>
+                  <div className="text-xs text-gray-500">Processed</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-red-600">{selectedAgent.errors}</div>
+                  <div className="text-xs text-gray-500">Errors</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className={`text-sm font-medium ${selectedAgent.health === 'healthy' ? 'text-green-600' : 'text-yellow-600'}`}>
+                    {selectedAgent.health}
+                  </div>
+                  <div className="text-xs text-gray-500">Health</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className={`text-sm font-medium ${selectedAgent.enabled ? 'text-green-600' : 'text-gray-500'}`}>
+                    {selectedAgent.enabled ? 'Enabled' : 'Disabled'}
+                  </div>
+                  <div className="text-xs text-gray-500">Status</div>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-4 text-xs text-gray-500">
+                <span>Started: {formatDateTime(selectedAgent.started_at)}</span>
+                <span>Last heartbeat: {formatDateTime(selectedAgent.last_heartbeat)}</span>
+                {selectedAgent.current_item && (
+                  <span className="text-blue-600">Working on: {selectedAgent.current_item}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Recent Activity</h4>
+              {loadingLogs ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader className="w-6 h-6 text-blue-600 animate-spin" />
+                  <span className="ml-2 text-gray-500">Loading activity...</span>
+                </div>
+              ) : agentLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p>No recent activity</p>
+                  <p className="text-sm">Activity will appear here as the agent processes items</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {agentLogs.map((log) => (
+                    <div key={log.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm">
+                      <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+                        log.level === 'error' 
+                          ? 'bg-red-500' 
+                          : log.level === 'success' || log.level === 'info' && log.message.includes('complete')
+                          ? 'bg-green-500'
+                          : log.level === 'warn'
+                          ? 'bg-yellow-500'
+                          : 'bg-blue-500'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {log.message}
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            log.level === 'error' ? 'bg-red-100 text-red-700' :
+                            log.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
+                            log.level === 'success' ? 'bg-green-100 text-green-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {log.level}
+                          </span>
+                        </div>
+                        {log.details && (
+                          <p className="text-gray-600 mt-0.5 truncate">{log.details}</p>
+                        )}
+                        <div className="text-xs text-gray-400 mt-1">
+                          {formatDateTime(log.created_at)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex justify-between items-center">
+              <button
+                onClick={() => fetchAgentLogs(selectedAgent.name)}
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingLogs ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleAgent(selectedAgent.name, !!selectedAgent.enabled); }}
+                disabled={toggling === selectedAgent.name}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  selectedAgent.enabled 
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                    : 'bg-green-50 text-green-600 hover:bg-green-100'
+                }`}
+              >
+                {selectedAgent.enabled ? (
+                  <>
+                    <ToggleRight className="w-4 h-4" />
+                    Disable Agent
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-4 h-4" />
+                    Enable Agent
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
