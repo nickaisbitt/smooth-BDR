@@ -1033,9 +1033,9 @@ app.post('/api/research/generate-email', async (req, res) => {
         return res.status(400).json({ error: "Lead and research data are required" });
     }
     
-    if (research.researchQuality < 5) {
+    if (research.researchQuality < 9) {
         return res.status(400).json({ 
-            error: "Research quality too low. Must be at least 5/10 to generate email.",
+            error: "Research quality too low. Must be at least 9/10 to generate email.",
             quality: research.researchQuality
         });
     }

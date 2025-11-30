@@ -236,9 +236,9 @@ export async function checkDailyLimitReset(db) {
 export async function queueEmailForLead(db, lead, emailDraft, sequenceStep = 0, delayMinutes = 0) {
   const researchQuality = lead.researchQuality || 0;
   
-  if (researchQuality < 5) {
-    await logAutomation(db, 'QUEUE_BLOCKED', `Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below minimum threshold`, { leadId: lead.id, researchQuality });
-    return { success: false, reason: 'Research quality too low', researchQuality };
+  if (researchQuality < 9) {
+    await logAutomation(db, 'QUEUE_BLOCKED', `Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below minimum threshold (requires 9+)`, { leadId: lead.id, researchQuality });
+    return { success: false, reason: 'Research quality too low (requires 9+)', researchQuality };
   }
   
   const scheduledFor = Date.now() + (delayMinutes * 60 * 1000);

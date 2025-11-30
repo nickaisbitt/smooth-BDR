@@ -521,7 +521,7 @@ function App() {
           }
           lead.activeVariant = variant;
           
-          if (dm?.email && emailSequence.length > 0 && researchQuality >= 5) {
+          if (dm?.email && emailSequence.length > 0 && researchQuality >= 9) {
             try {
               await fetch('/api/automation/queue-email', {
                 method: 'POST',
@@ -537,8 +537,8 @@ function App() {
             } catch (e) {
               console.error("Failed to auto-queue email:", e);
             }
-          } else if (dm?.email && researchQuality < 5) {
-            addLog(`🚫 Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below threshold`, 'warning');
+          } else if (dm?.email && researchQuality < 9) {
+            addLog(`🚫 Email NOT queued for ${lead.companyName} - research quality ${researchQuality}/10 below threshold (requires 9+)`, 'warning');
           }
       } else {
           addLog(`❌ Disqualified ${lead.companyName} (${analysis.score}).`, 'warning');
