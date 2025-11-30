@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ViewType } from '../types';
-import { LayoutDashboard, Users, BarChart3, Settings, ShieldCheck, Activity, Calendar, Linkedin, Mail, Zap, DollarSign } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Settings, ShieldCheck, Activity, Calendar, Linkedin, Mail, Zap, DollarSign, Bot } from 'lucide-react';
 
 interface Props {
   currentView: ViewType;
@@ -71,6 +71,12 @@ export const Sidebar: React.FC<Props> = ({ currentView, onViewChange }) => {
             onClick={() => onViewChange('analytics')} 
         />
         <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">
+             <SidebarItem 
+                icon={<Bot size={20} />} 
+                label="Agents" 
+                active={currentView === 'agents'} 
+                onClick={() => onViewChange('agents')} 
+            />
              <SidebarItem 
                 icon={<Zap size={20} />} 
                 label="Automation" 

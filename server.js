@@ -1037,6 +1037,187 @@ app.post('/api/research/scrape', async (req, res) => {
     }
 });
 
+// ============ AGENT SYSTEM API ENDPOINTS ============
+
+// GET /api/agents/status - Get status of all agents
+app.get('/api/agents/status', async (req, res) => {
+    try {
+        const agents = await db.all(`
+            SELECT 
+                agent_name as name,
+                status,
+                last_heartbeat,
+                items_processed as processed,
+                current_item,
+                error_count as errors,
+                started_at,
+                CASE 
+                    WHEN status = 'running' AND last_heartbeat > ? THEN 'healthy'
+                    WHEN status = 'running' THEN 'stale'
+                    ELSE status
+                END as health
+            FROM agent_status
+            ORDER BY agent_name
+        `, [Date.now() - 60000]);
+        
+        res.json({ success: true, agents });
+    } catch (error) {
+        res.json({ success: true, agents: [] });
+    }
+});
+
+// GET /api/agents/queues - Get queue statistics
+app.get('/api/agents/queues', async (req, res) => {
+    try {
+        const tables = ['prospect_queue', 'research_queue', 'draft_queue'];
+        const stats = {};
+        
+        for (const table of tables) {
+            try {
+                const row = await db.get(`
+                    SELECT 
+                        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
+                        COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing,
+                        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+                        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
+                        COUNT(CASE WHEN status = 'low_quality' THEN 1 END) as low_quality
+                    FROM ${table}
+                `);
+                stats[table.replace('_queue', '')] = row || { pending: 0, processing: 0, completed: 0, failed: 0 };
+            } catch (e) {
+                stats[table.replace('_queue', '')] = { pending: 0, processing: 0, completed: 0, failed: 0 };
+            }
+        }
+        
+        res.json({ success: true, queues: stats });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/agents/prospect - Add prospect to the pipeline
+app.post('/api/agents/prospect', async (req, res) => {
+    const { companyName, websiteUrl, contactEmail, contactName, source, priority } = req.body;
+    
+    if (!companyName || !websiteUrl) {
+        return res.status(400).json({ error: "Company name and website URL are required" });
+    }
+    
+    try {
+        const result = await db.run(`
+            INSERT INTO prospect_queue (company_name, website_url, contact_email, contact_name, source, priority, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+        `, [companyName, websiteUrl, contactEmail || null, contactName || null, source || 'manual', priority || 5, Date.now()]);
+        
+        res.json({ 
+            success: true, 
+            prospectId: result.lastID,
+            message: `Added ${companyName} to prospect queue`
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/agents/prospect/bulk - Add multiple prospects
+app.post('/api/agents/prospect/bulk', async (req, res) => {
+    const { prospects } = req.body;
+    
+    if (!Array.isArray(prospects) || prospects.length === 0) {
+        return res.status(400).json({ error: "Prospects array is required" });
+    }
+    
+    try {
+        let added = 0;
+        for (const p of prospects) {
+            if (p.companyName && p.websiteUrl) {
+                await db.run(`
+                    INSERT INTO prospect_queue (company_name, website_url, contact_email, contact_name, source, priority, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                `, [p.companyName, p.websiteUrl, p.contactEmail || null, p.contactName || null, p.source || 'bulk', p.priority || 5, Date.now()]);
+                added++;
+            }
+        }
+        
+        res.json({ 
+            success: true, 
+            added,
+            message: `Added ${added} prospects to queue`
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/agents/logs - Get recent agent logs
+app.get('/api/agents/logs', async (req, res) => {
+    const { agent, level, limit = 50 } = req.query;
+    
+    try {
+        let query = 'SELECT * FROM agent_logs';
+        const params = [];
+        const conditions = [];
+        
+        if (agent) {
+            conditions.push('agent_name = ?');
+            params.push(agent);
+        }
+        if (level) {
+            conditions.push('level = ?');
+            params.push(level);
+        }
+        
+        if (conditions.length > 0) {
+            query += ' WHERE ' + conditions.join(' AND ');
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT ?';
+        params.push(parseInt(limit));
+        
+        const logs = await db.all(query, params);
+        
+        res.json({ success: true, logs });
+    } catch (error) {
+        res.json({ success: true, logs: [] });
+    }
+});
+
+// GET /api/agents/pipeline - Get full pipeline view
+app.get('/api/agents/pipeline', async (req, res) => {
+    try {
+        const prospects = await db.all(`
+            SELECT id, company_name, website_url, status, created_at 
+            FROM prospect_queue 
+            ORDER BY created_at DESC LIMIT 20
+        `);
+        
+        const research = await db.all(`
+            SELECT id, company_name, status, current_quality, research_pass, created_at 
+            FROM research_queue 
+            ORDER BY created_at DESC LIMIT 20
+        `);
+        
+        const drafts = await db.all(`
+            SELECT id, company_name, status, research_quality, email_subject, created_at 
+            FROM draft_queue 
+            ORDER BY created_at DESC LIMIT 20
+        `);
+        
+        const emails = await db.all(`
+            SELECT id, lead_name, to_email, status, research_quality, created_at, sent_at
+            FROM email_queue 
+            ORDER BY created_at DESC LIMIT 20
+        `);
+        
+        res.json({
+            success: true,
+            pipeline: { prospects, research, drafts, emails }
+        });
+    } catch (error) {
+        res.json({ success: true, pipeline: { prospects: [], research: [], drafts: [], emails: [] } });
+    }
+});
+
 // POST /api/research/generate-email - Generate email with research data
 app.post('/api/research/generate-email', async (req, res) => {
     const { lead, research, serviceProfile } = req.body;

@@ -28,7 +28,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node server.js & npm run dev"
+args = "node agents/supervisor.js & node server.js & npm run dev"
 waitForPort = 5000
 
 [[ports]]
@@ -40,7 +40,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 37685
+localPort = 37543
 externalPort = 3002
 
 [[ports]]

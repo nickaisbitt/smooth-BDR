@@ -17,6 +17,7 @@ import { SystemStatusView } from './components/SystemStatusView';
 import { DealsView } from './components/DealsView';
 import { LeadDetailView } from './components/LeadDetailView';
 import { findLeads, analyzeLeadFitness, generateEmailSequence, generateMasterPlan, findDecisionMaker, findTriggers, setCostCallback, testOpenRouterConnection } from './services/geminiService';
+import AgentDashboard from './components/AgentDashboard';
 import { 
     saveLeadsToStorage, loadLeadsFromStorage, saveStrategies, loadStrategies,
     saveLogs, loadLogs, saveProfile, loadProfile, saveSMTPConfig, loadSMTPConfig,
@@ -745,6 +746,7 @@ function App() {
         {currentView === 'linkedin' && <LinkedInView />}
         {currentView === 'inbox' && <InboxView leads={leads} />}
         {currentView === 'system_status' && <SystemStatusView smtpConfig={emailConfig} leads={leads} />}
+        {currentView === 'agents' && <AgentDashboard />}
         {currentView === 'deals' && (
           <DealsView 
             leads={leads} 
