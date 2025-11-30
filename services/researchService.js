@@ -236,12 +236,101 @@ export async function searchExecutives(companyName) {
   }
 }
 
+// Search Wikipedia for company information
+export async function searchWikipedia(companyName) {
+  try {
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(companyName)}&format=json&origin=*`;
+    const response = await axiosInstance.get(searchUrl, { timeout: 30000 });
+    
+    if (response.data?.query?.search?.length > 0) {
+      const topResult = response.data.query.search[0];
+      const pageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(topResult.title.replace(/ /g, '_'))}`;
+      
+      // Fetch the actual page content
+      const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(topResult.title)}&prop=extracts&exintro=true&explaintext=true&format=json&origin=*`;
+      const contentResponse = await axiosInstance.get(contentUrl, { timeout: 30000 });
+      
+      const pages = contentResponse.data?.query?.pages || {};
+      const pageContent = Object.values(pages)[0]?.extract || '';
+      
+      return {
+        success: true,
+        title: topResult.title,
+        snippet: topResult.snippet.replace(/<[^>]*>/g, ''),
+        url: pageUrl,
+        content: pageContent.slice(0, 2000)
+      };
+    }
+    return { success: false, error: 'No Wikipedia results found' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Search Yahoo Finance for public company information
+export async function searchYahooFinance(companyName) {
+  try {
+    const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(companyName)}&quotesCount=3&newsCount=0`;
+    const response = await axiosInstance.get(searchUrl, { timeout: 30000 });
+    
+    const quotes = response.data?.quotes || [];
+    if (quotes.length > 0) {
+      const results = quotes.map(q => ({
+        symbol: q.symbol,
+        name: q.shortname || q.longname,
+        exchange: q.exchange,
+        type: q.quoteType,
+        industry: q.industry,
+        sector: q.sector
+      }));
+      return { success: true, results };
+    }
+    return { success: false, results: [] };
+  } catch (error) {
+    return { success: false, results: [], error: error.message };
+  }
+}
+
+// Search industry news sources (TechCrunch, Business Wire)
+export async function searchIndustryNews(companyName) {
+  try {
+    const sources = [
+      `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' site:techcrunch.com')}&hl=en-US&gl=US&ceid=US:en`,
+      `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' site:businesswire.com')}&hl=en-US&gl=US&ceid=US:en`,
+      `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' acquisition OR funding OR partnership')}&hl=en-US&gl=US&ceid=US:en`
+    ];
+    
+    const allNews = [];
+    for (const url of sources) {
+      try {
+        const response = await fetchWithTimeout(url, 15000);
+        if (response.ok) {
+          const xml = await response.text();
+          const $ = cheerio.load(xml, { xmlMode: true });
+          $('item').slice(0, 3).each((_, item) => {
+            allNews.push({
+              title: $(item).find('title').text(),
+              link: $(item).find('link').text(),
+              pubDate: $(item).find('pubDate').text(),
+              source: $(item).find('source').text()
+            });
+          });
+        }
+      } catch (e) { /* continue to next source */ }
+    }
+    
+    return { success: allNews.length > 0, news: allNews };
+  } catch (error) {
+    return { success: false, news: [], error: error.message };
+  }
+}
+
 // Web search using DuckDuckGo HTML (free, no API key needed)
 export async function webSearch(query, maxResults = 5) {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const response = await axiosInstance.get(searchUrl, {
-      timeout: 15000,
+      timeout: 30000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -287,7 +376,7 @@ export async function webSearch(query, maxResults = 5) {
 // Fetch and extract content from a URL
 async function fetchAndExtract(url, maxChars = 3000) {
   try {
-    const response = await fetchWithTimeout(url, 15000);
+    const response = await fetchWithTimeout(url, 30000);
     if (!response.ok) {
       return { success: false, error: `HTTP ${response.status}` };
     }
@@ -392,6 +481,34 @@ export async function conductWebResearch(companyName, websiteUrl) {
   
   results.fetchedContent = fetchedContent;
   results.totalSearchResults = results.companyInfo.length + results.reviewsInfo.length;
+  
+  // Additional research sources
+  try {
+    console.log('    📚 Checking Wikipedia...');
+    const wikiResult = await searchWikipedia(companyName);
+    if (wikiResult.success) {
+      results.wikipediaInfo = wikiResult;
+      console.log(`    ✓ Found Wikipedia article: ${wikiResult.title}`);
+    }
+  } catch (e) { /* ignore */ }
+  
+  try {
+    console.log('    📈 Checking financial data...');
+    const financeResult = await searchYahooFinance(companyName);
+    if (financeResult.success && financeResult.results.length > 0) {
+      results.financeInfo = financeResult.results;
+      console.log(`    ✓ Found ${financeResult.results.length} financial records`);
+    }
+  } catch (e) { /* ignore */ }
+  
+  try {
+    console.log('    📰 Checking industry news...');
+    const newsResult = await searchIndustryNews(companyName);
+    if (newsResult.success) {
+      results.industryNews = newsResult.news;
+      console.log(`    ✓ Found ${newsResult.news.length} industry news articles`);
+    }
+  } catch (e) { /* ignore */ }
   
   console.log(`    ✅ Web research complete: ${results.totalSearchResults} search results, ${fetchedContent.length} pages fetched`);
   
