@@ -195,6 +195,56 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
     setAgentLogs([]);
   };
 
+  const extractCompanyName = (message: string): string | null => {
+    // Extract company name from messages like:
+    // "Email generated for Company Name (..."
+    // "Generating email for: Company Name (quality: 8/10)"
+    // "Email generated and queued for Company Name"
+    const patterns = [
+      /(?:Email generated for|Generating email for:|queued for)\s+([^\(|]+?)(?:\s*\(|$)/,
+      /for:\s+\|\s+([^\(|]+?)(?:\s*\(|$)/,
+      /for\s+\|\s+([^\s]+)$/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    return null;
+  };
+
+  const fetchDraft = useCallback(async (companyName: string) => {
+    if (!companyName) return;
+    setLoadingDraft(true);
+    try {
+      const encoded = encodeURIComponent(companyName);
+      const res = await fetch(`${apiBase}/agents/draft/${encoded}`);
+      const data = await res.json();
+      if (data.success && data.draft) {
+        setActivityDraft(data.draft);
+      }
+    } catch (error) {
+      console.error('Failed to fetch draft:', error);
+    } finally {
+      setLoadingDraft(false);
+    }
+  }, [apiBase]);
+
+  const handleActivityClick = (log: AgentLog) => {
+    setSelectedActivityLog(log);
+    setActivityDraft(null);
+    
+    // Try to fetch draft if this is an email generation activity
+    if (log.message.includes('Email generated') || log.message.includes('email')) {
+      const companyName = extractCompanyName(log.message);
+      if (companyName) {
+        fetchDraft(companyName);
+      }
+    }
+  };
+
   const formatDateTime = (timestamp: number) => {
     if (!timestamp) return 'N/A';
     const date = new Date(timestamp);
@@ -625,7 +675,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                   {agentLogs.map((log) => (
                     <div 
                       key={log.id} 
-                      onClick={() => setSelectedActivityLog(log)}
+                      onClick={() => handleActivityClick(log)}
                       className="flex items-start gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm cursor-pointer transition-colors group"
                     >
                       <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
