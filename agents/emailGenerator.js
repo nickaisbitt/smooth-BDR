@@ -221,12 +221,30 @@ ${analysis.personalizedHooks?.map((h, i) => `${i + 1}. ${h}`).join('\n')}
 Best Angle: ${analysis.outreachAngle || 'AI automation value'}
 
 ═══════════════════════════════════════
-SENDER'S VALUE PROPOSITION:
+SENDER'S VALUE PROPOSITION (ONLY use claims backed by research):
 ═══════════════════════════════════════
-Nick @ Smooth AI Consulting helps companies:
-- Cut operational costs 40-60% through intelligent automation
-- Eliminate manual data entry and repetitive workflows
-- Build custom AI agents that work 24/7
+${(() => {
+  const claims = [];
+  // Only add claims found in actual research data
+  if (analysis.potentialPainPoints?.some(p => p.toLowerCase().includes('automat') || p.toLowerCase().includes('manual') || p.toLowerCase().includes('process'))) {
+    claims.push('- Automate repetitive workflows they're likely struggling with');
+  }
+  if (analysis.potentialPainPoints?.some(p => p.toLowerCase().includes('data') || p.toLowerCase().includes('integration'))) {
+    claims.push('- Connect disparate systems and reduce manual data entry');
+  }
+  if (analysis.recentTriggers?.some(t => t.toLowerCase().includes('grow') || t.toLowerCase().includes('expand') || t.toLowerCase().includes('hiring'))) {
+    claims.push('- Scale operations efficiently as they grow');
+  }
+  if (analysis.competitiveAdvantage) {
+    claims.push('- Build competitive advantage through AI integration');
+  }
+  // Fallback: generic but safe claims
+  if (claims.length === 0) {
+    claims.push('- Help their teams work smarter with AI automation');
+    claims.push('- Reduce manual work on high-volume tasks');
+  }
+  return 'Nick @ Smooth AI Consulting helps companies:\n' + claims.slice(0, 2).join('\n');
+})()}
 
 ═══════════════════════════════════════
 EMAIL REQUIREMENTS (CRITICAL):
@@ -249,7 +267,7 @@ BODY:
 - Max 100 words total
 - One clear pain point → one clear solution
 - Use their exact industry language
-- Include a specific number (our clients see X% improvement)
+- ONLY reference verifiable facts from the research (don't make up numbers)
 - Sound like a peer, not a salesperson
 
 CTA:
