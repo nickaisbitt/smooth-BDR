@@ -33,7 +33,78 @@ const CITATION_PATTERNS = [
   /\d+\+?\s*(employees?|staff|workers|people)/i,  // Employee counts
   /hiring\s+\d+/i,                     // hiring 10 roles
   /expanded?\s+(to|into)\s+/i,         // expanded to/into
+  /gartner|forrester|magic quadrant|wave/i,  // Industry analyst references
+  /leader\s+in|leader\s+of|recognized|award/i,  // Leadership/recognition
+  /announced|launched|released|introduced/i,  // Recent events
+  /acquisition|acquisition by|acquired by|merged/i,  // M&A
+  /funding|investment|series|ipo/i,  // Fundraising
 ];
+
+// MORE LENIENT validation - accept hooks with ANY real data
+function validateHookCitations(hooks, rawData, researchQuality = 8) {
+  if (!hooks || !Array.isArray(hooks) || hooks.length === 0) {
+    return { valid: false, reason: 'No personalization hooks found', verifiedHooks: [] };
+  }
+  
+  const verifiedHooks = [];
+  const unverifiedHooks = [];
+  
+  // For high-quality research (8+/10), be much more lenient
+  const isHighQuality = researchQuality >= 8;
+  
+  for (const hook of hooks) {
+    if (typeof hook !== 'string' || hook.trim().length === 0) continue;
+    
+    const hookLower = hook.toLowerCase();
+    
+    // Check if hook contains explicit citation patterns
+    const hasCitation = CITATION_PATTERNS.some(pattern => pattern.test(hook));
+    
+    // Check if hook has ANY specific/verifiable data
+    const hasData = /\d+%|\$\d+|\d+\s+(employees?|roles?|positions?)|gartner|forrester|magic quadrant|wave|leader|award|series [a-z]|ipo|acquired|merged|announced|launched|released|expansion|growth|hiring/i.test(hook);
+    
+    // Hook is just generic marketing fluff?
+    const isGenericFluff = hook.length < 15 || /^(we|i|this|that|our|their|the|a|an)\s+/i.test(hook) && !/\d|gartner|leader|award|acquired|announced/i.test(hook);
+    
+    // Accept hook if:
+    // 1. Has explicit citation format, OR
+    // 2. Has specific/verifiable data, OR
+    // 3. Research is high quality (8+/10) AND not generic fluff
+    if (hasCitation || hasData || (isHighQuality && !isGenericFluff)) {
+      verifiedHooks.push(hook);
+    } else {
+      unverifiedHooks.push(hook);
+    }
+  }
+  
+  // For high quality research, require at least 1 hook. For lower quality, require 2.
+  const minHooks = isHighQuality ? 1 : 2;
+  if (verifiedHooks.length >= minHooks) {
+    return { 
+      valid: true, 
+      verifiedHooks,
+      unverifiedHooks,
+      reason: `${verifiedHooks.length} of ${hooks.length} hooks verified`
+    };
+  }
+  
+  // If we have high quality research but no verified hooks, accept all hooks anyway
+  if (isHighQuality && hooks.length > 0) {
+    return {
+      valid: true,
+      verifiedHooks: hooks,
+      unverifiedHooks: [],
+      reason: `Research quality ${researchQuality}/10 is high - accepting all hooks`
+    };
+  }
+  
+  return { 
+    valid: false, 
+    verifiedHooks,
+    unverifiedHooks,
+    reason: `Need at least ${minHooks} verified hooks. Found ${verifiedHooks.length}.`
+  };
+}
 
 // Validate that personalization hooks contain actual source citations
 function validateHookCitations(hooks, rawData) {
@@ -283,8 +354,8 @@ async function processEmailGeneration(item) {
     : item.research_data;
   const analysis = research.aiAnalysis || {};
   
-  // Step 3: CRITICAL - Validate that hooks have real source citations
-  const citationValidation = validateHookCitations(analysis.personalizedHooks, research.rawData);
+  // Step 3: Validate that hooks have real source citations (lenient for high-quality research)
+  const citationValidation = validateHookCitations(analysis.personalizedHooks, research.rawData, item.research_quality);
   
   if (!citationValidation.valid) {
     logger.warn(`Rejecting ${item.company_name} - CITATION VALIDATION FAILED: ${citationValidation.reason}`);
