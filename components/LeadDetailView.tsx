@@ -397,22 +397,24 @@ export const LeadDetailView: React.FC<Props> = ({ lead, onUpdate, onClose }) => 
           </section>
 
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
               <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                 <Users size={16} className="text-slate-400" />
                 Contacts
               </h3>
-              <button 
-                onClick={() => {
-                  setEditingContact(null);
-                  setContactForm({ name: '', role: '', email: '', phone: '', linkedinUrl: '', isPrimary: false });
-                  setShowContactForm(true);
-                }}
-                className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors"
-              >
-                <Plus size={14} />
-                Add Contact
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    setEditingContact(null);
+                    setContactForm({ name: '', role: '', email: '', phone: '', linkedinUrl: '', isPrimary: false });
+                    setShowContactForm(true);
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors"
+                >
+                  <Plus size={14} />
+                  Add Contact
+                </button>
+              </div>
             </div>
 
             {showContactForm && (

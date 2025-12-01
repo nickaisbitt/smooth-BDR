@@ -69,7 +69,26 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                             {colLeads.map(lead => (
                                 <div 
                                     key={lead.id} 
-                                    className={`bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2 relative ${
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.effectAllowed = 'move';
+                                      e.dataTransfer.setData('leadId', lead.id);
+                                    }}
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.dataTransfer.dropEffect = 'move';
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      const draggedLeadId = e.dataTransfer.getData('leadId');
+                                      if (draggedLeadId !== lead.id && onUpdateLead) {
+                                        const draggedLead = leads.find(l => l.id === draggedLeadId);
+                                        if (draggedLead) {
+                                          onUpdateLead({...draggedLead, status: col.id});
+                                        }
+                                      }
+                                    }}
+                                    className={`bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-shadow group flex flex-col gap-2 relative cursor-move ${
                                         isHighValueDeal(lead) 
                                             ? 'border-amber-300 ring-2 ring-amber-100' 
                                             : 'border-slate-200'

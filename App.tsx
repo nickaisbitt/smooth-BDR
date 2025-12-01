@@ -759,7 +759,31 @@ function App() {
                         leads={leads} 
                         onAnalyze={handleAnalyze} 
                         analyzingIds={analyzingIds} 
-                        onHunt={(l) => addLog("Hunt triggered", 'info')} 
+                        onHunt={(l) => {
+                          setAnalyzingIds(prev => new Set([...prev, l.id]));
+                          findDecisionMaker(l.companyName, l.website).then(dm => {
+                            if (dm) {
+                              setLeads(prev => prev.map(lead => 
+                                lead.id === l.id ? {...lead, decisionMaker: dm} : lead
+                              ));
+                              addLog(`Found decision maker: ${dm.name} (${dm.role})`, 'success');
+                            } else {
+                              addLog(`No decision maker found for ${l.companyName}`, 'warning');
+                            }
+                            setAnalyzingIds(prev => {
+                              const updated = new Set(prev);
+                              updated.delete(l.id);
+                              return updated;
+                            });
+                          }).catch(err => {
+                            addLog(`Hunt failed: ${err.message}`, 'error');
+                            setAnalyzingIds(prev => {
+                              const updated = new Set(prev);
+                              updated.delete(l.id);
+                              return updated;
+                            });
+                          });
+                        }} 
                         onUpdateLead={handleUpdateLead}
                         onDeleteLead={handleDeleteLead}
                     />
