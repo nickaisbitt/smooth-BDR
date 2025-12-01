@@ -3,7 +3,7 @@
 ## Overview
 Smooth AI AutoBDR is an AI-powered Business Development Representative (BDR) application designed to automate lead generation, personalized email outreach, and pipeline management. It leverages Google's Gemini AI for intelligent content generation and includes robust tracking and analytical capabilities. The project aims to streamline sales development processes, improve outreach effectiveness through personalization, and provide comprehensive insights into lead engagement.
 
-**Current Status:** Production-ready with 142+ emails successfully sent. All 9 autonomous agents operating in parallel with ultra-aggressive optimization.
+**Current Status:** Production-ready with 154+ emails successfully sent. All 9 autonomous agents operating in parallel with maximum throughput optimization. Pipeline fully unlocked with zero bottlenecks.
 
 ## User Preferences
 I want the agent to:
@@ -17,6 +17,9 @@ I want the agent to:
 - **Email Generator Quality Check**: Removed hardcoded 6/10 threshold, now uses config.minQuality (3/10) for consistent lenient processing
 - **Prospect Finder Validation**: Added data validation to skip placeholder prospects and invalid URLs before research pipeline
 - **Data Migration**: Successfully migrated 57 pending emails from draft_queue to email_queue with valid contact emails
+- **Email Reviewer Batch Optimization**: Increased batch size to 50 emails/cycle for faster review throughput
+- **Email Sender Speed Boost**: Increased polling to 2x speed (300ms), batch size to 200/cycle, delay to 1ms = 1000 emails/sec theoretical
+- **Data Quality Cleanup**: Removed malformed emails with mismatched research data and short bodies
 - **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at maximum throughput
 
 ## System Architecture
@@ -32,7 +35,7 @@ The application features a modern full-stack architecture with a React 18 (TypeS
   8. **Inbox Agent**: Monitors IMAP inbox for replies (5s polling)
   9. **Logo Finder Agent**: Enriches prospects with logos (60s polling, 30/batch)
 - **Multi-Source Intelligence Research**: Parallel research orchestrator gathers data from 7+ sources (website scraping, Google News, press releases, executive news, careers pages, web search) with adaptive fallbacks.
-- **Ultra-Aggressive Optimization**: Email reviewer 3/10 minimum (activated Dec 1), email generator 3/10 minimum, email sender 150/batch with 3ms delays = **333 emails/sec theoretical throughput**
+- **Ultra-Aggressive Optimization**: Email reviewer 3/10 minimum (50/batch), email generator 3/10 minimum, email sender 200/batch with 1ms delays = **1000 emails/sec theoretical throughput**
 - **Persistent Research Retry System**: Auto-retry with progressive strategies (deep crawl, news deep search, executive search, comprehensive web) with fail-fast philosophy (1 retry max).
 - **Autonomous BDR System**: Server-side automation scheduler for inbox sync, email queue processing, and AI-powered reply analysis.
 - **Unified Email Configuration**: Single interface for SMTP sending and IMAP receiving with auto host derivation.
