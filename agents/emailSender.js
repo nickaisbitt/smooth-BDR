@@ -100,7 +100,7 @@ async function processPendingEmails() {
     }
     
     const remainingToday = dailyLimit - emailsSentToday;
-    const batchSize = Math.min(config.batchSize * 5, remainingToday); // 5x batch size for maximum throughput
+    const batchSize = Math.min(config.batchSize, remainingToday); // Use config batchSize, respect rate limits
     
     // CRITICAL: Only send emails that are APPROVED (not pending_approval)
     // Emails with status 'pending_approval' need manual review first

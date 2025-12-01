@@ -12,7 +12,7 @@ I want the agent to:
 - Provide detailed explanations for significant code modifications or architectural decisions.
 - Maintain a clear and organized code structure, adhering to established conventions.
 
-## Recent Optimizations (Dec 1, 2025)
+## Recent Optimizations (Dec 1, 2025 - Final Pass)
 - **Email Reviewer Threshold Fix**: Changed hardcoded 5/10 approval threshold to use config.minEmailQuality (3/10) for aggressive flow
 - **Email Generator Quality Check**: Removed hardcoded 6/10 threshold, now uses config.minQuality (3/10) for consistent processing
 - **Prospect Finder Validation**: Added data validation to skip placeholder prospects and invalid URLs before research pipeline
@@ -21,8 +21,9 @@ I want the agent to:
 - **Email Sender Rate Limit Fix**: Adjusted to 250ms delay, 25/batch for sustainable 4 emails/sec (respects strict Hostinger SMTP limits)
 - **Email Generator Company Validation**: Added critical check to prevent mismatched company/research data from causing hallucinations
 - **Data Cleanup**: Deleted 113 rejected emails and reset 8 failed emails for retry with corrected logic
+- **Email Sender Batch Multiplier Fix**: Removed hardcoded 5x batch multiplier on line 103 to respect config batch size (25/batch)
 - **Data Quality Cleanup**: Removed malformed emails with mismatched research data and short bodies
-- **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at sustainable throughput
+- **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at sustainable throughput (4 emails/sec with 250ms delays)
 
 ## System Architecture
 The application features a modern full-stack architecture with a React 18 (TypeScript, Vite) frontend and a Node.js (Express) backend. Data is persisted using SQLite. The UI is built with Tailwind CSS for rapid styling and Recharts for data visualization. Key architectural decisions include:
