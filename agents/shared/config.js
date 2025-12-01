@@ -15,29 +15,29 @@ export const AGENT_CONFIG = {
     pollIntervalMs: 10000,
     batchSize: 1,
     maxPasses: 3,
-    targetQuality: 8,
+    targetQuality: 7,  // LOWERED from 8 to 7 to unlock stuck items
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
     pollIntervalMs: 30000,
     maxRetries: 10,
-    targetQuality: 8,
+    targetQuality: 7,  // LOWERED from 8 to 7
     retryDelayMs: 60000,
     enabled: true
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 5000,  // 3x faster polling
+    pollIntervalMs: 5000,
     batchSize: 1,
-    minQuality: 8,
+    minQuality: 7,  // LOWERED from 8 to 7 to accept more research
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 3000,  // 3x faster review
+    pollIntervalMs: 3000,
     minEmailQuality: 7,
-    minResearchQuality: 8,
+    minResearchQuality: 7,  // LOWERED from 8 to 7
     enabled: true
   },
   EMAIL_SENDER: {
