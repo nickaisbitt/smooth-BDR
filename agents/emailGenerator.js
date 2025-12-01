@@ -204,6 +204,12 @@ const painPoint = analysis.potentialPainPoints?.[0] || '';
 const recentEvent = analysis.recentTriggers?.[0] || '';
 const keyPerson = analysis.keyPeople?.[0]?.split(',')[0] || firstName;
 
+// PRE-CHECK: If critical facts are missing, skip to prevent AI hallucinations
+if (!hook?.trim() || !painPoint?.trim()) {
+  logger.info(`[EARLY EXIT] Insufficient research facts for ${item.company_name}: hook="${hook}" painPoint="${painPoint}" - cannot generate without hallucinating`);
+  throw new Error('Missing hook or pain point - would require inference');
+}
+
 // Use EXACT research facts without any interpretation
 const prompt = `GENERATE ONLY IF ALL RESEARCH FACTS PRESENT. Otherwise return empty email.
 
@@ -275,21 +281,18 @@ Return valid JSON:
   try {
     const email = JSON.parse(jsonStr);
     
-    if (!email.subject || !email.body) {
-      // Fallback: generate safe defaults
-      return {
-        subject: email.subject || 'Quick thought on your company',
-        body: email.body || 'Worth a brief chat?'
-      };
+    // If AI returned empty subject or body, it means facts were insufficient
+    // Return empty to signal skip instead of using generic fallback
+    if (!email.subject?.trim() || !email.body?.trim()) {
+      logger.info(`[SKIP] AI declined generation - insufficient facts for ${item.company_name}`);
+      return { subject: '', body: '' };  // Empty = skip this email
     }
     
     return email;
   } catch (parseError) {
-    // Ultimate fallback
-    return {
-      subject: 'Quick thought on your company',
-      body: 'Worth a brief chat?'
-    };
+    // JSON parse failed = return empty to skip
+    logger.info(`[SKIP] JSON parse failed for ${item.company_name} - returning empty to skip`);
+    return { subject: '', body: '' };  // Empty = skip this email
   }
 }
 
@@ -396,6 +399,15 @@ async function processEmailGeneration(item) {
   };
   
   const email = await generatePersonalizedEmail(verifiedItem);
+  
+  // If email is empty, it means AI declined due to insufficient facts - skip entirely
+  if (!email.subject?.trim() || !email.body?.trim()) {
+    await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
+      last_error: 'AI declined generation - insufficient research facts to avoid hallucinations'
+    });
+    logger.info(`[SKIPPED] ${item.company_name} - AI declined due to insufficient specific facts`);
+    return { success: false, reason: 'AI declined due to insufficient facts' };
+  }
   
   await db.run(`
     UPDATE draft_queue 
