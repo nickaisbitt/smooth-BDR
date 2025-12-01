@@ -249,6 +249,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
             <tr className="text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-slate-50/50 border-b border-slate-100">
               <th className="px-6 py-3">Company</th>
               <th className="px-6 py-3">Fit Score</th>
+              <th className="px-6 py-3">Research Quality</th>
               <th className="px-6 py-3">Key Contact</th>
               <th className="px-6 py-3">Source</th>
               <th className="px-6 py-3 text-right">Actions</th>
@@ -257,7 +258,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
           <tbody className="divide-y divide-slate-50">
             {displayedLeads.length === 0 ? (
                 <tr>
-                    <td colSpan={5} className="px-6 py-20 text-center">
+                    <td colSpan={6} className="px-6 py-20 text-center">
                         <div className="flex flex-col items-center justify-center text-slate-300">
                             <svg className="w-12 h-12 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                             <p className="text-sm font-medium">No leads match your filter.</p>
