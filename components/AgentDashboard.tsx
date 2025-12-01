@@ -786,6 +786,32 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                 </div>
               )}
 
+              {loadingDraft && (
+                <div className="flex items-center justify-center py-4 bg-blue-50 rounded-lg">
+                  <Loader className="w-5 h-5 text-blue-600 animate-spin mr-2" />
+                  <span className="text-sm text-blue-600">Loading email draft...</span>
+                </div>
+              )}
+
+              {activityDraft && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                  <div className="mb-3">
+                    <label className="text-xs font-medium text-blue-900 uppercase">Email Subject</label>
+                    <p className="text-blue-900 font-semibold mt-1">{activityDraft.email_subject || activityDraft.subject || '(No subject)'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-blue-900 uppercase">Email Body</label>
+                    <p className="text-blue-800 mt-1 break-words whitespace-pre-wrap text-sm leading-relaxed">{activityDraft.email_body || activityDraft.body || '(No body)'}</p>
+                  </div>
+                  {activityDraft.research_quality && (
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      <span className="text-xs font-medium text-blue-900">Research Quality: </span>
+                      <span className="text-xs font-bold text-blue-900">{activityDraft.research_quality}/10</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-200">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <div className="text-xs text-gray-500 mb-1">Level</div>
