@@ -474,8 +474,8 @@ async function reviewPendingEmails() {
       return;
     }
     
-    // BATCH PROCESSING: Review up to 5 emails per cycle
-    const batchSize = 5;
+    // BATCH PROCESSING: Review up to 20 emails per cycle for maximum throughput
+    const batchSize = 20;
     const pendingEmails = await db.all(`
       SELECT * FROM email_queue 
       WHERE status = 'pending_approval' 
