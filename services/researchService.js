@@ -325,6 +325,162 @@ export async function searchIndustryNews(companyName) {
   }
 }
 
+// Bing search as fallback (RSS-based, no API key needed)
+async function bingSearch(query, maxResults = 3) {
+  try {
+    const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
+    const response = await axiosInstance.get(searchUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    
+    const $ = cheerio.load(response.data, { xmlMode: true });
+    const results = [];
+    
+    $('item').slice(0, maxResults).each((_, item) => {
+      const title = $(item).find('title').text().trim();
+      const description = $(item).find('description').text().trim().replace(/<[^>]*>/g, '');
+      const link = $(item).find('link').text().trim();
+      
+      if (title && link && !link.includes('bing.com')) {
+        results.push({ title, snippet: description || 'No description', url: link });
+      }
+    });
+    
+    if (results.length > 0) {
+      console.log(`    🔍 Bing fallback found ${results.length} results`);
+    }
+    return { success: results.length > 0, results };
+  } catch (error) {
+    return { success: false, results: [] };
+  }
+}
+
+// Google scraping as last resort fallback
+async function googleScrape(query, maxResults = 3) {
+  try {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=5`;
+    const response = await axiosInstance.get(searchUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      }
+    });
+    
+    const $ = cheerio.load(response.data);
+    const results = [];
+    
+    // Google search result containers
+    $('div.g, div[data-hveid]').each((i, el) => {
+      if (results.length >= maxResults) return;
+      
+      const titleEl = $(el).find('h3').first();
+      const linkEl = $(el).find('a[href^="http"]').first();
+      const snippetEl = $(el).find('[data-sncf], .VwiC3b, span.st').first();
+      
+      const title = titleEl.text().trim();
+      const url = linkEl.attr('href') || '';
+      const snippet = snippetEl.text().trim();
+      
+      if (title && url && !url.includes('google.com') && !url.includes('webcache')) {
+        results.push({ title, snippet: snippet || 'No description', url });
+      }
+    });
+    
+    if (results.length > 0) {
+      console.log(`    🔍 Google fallback found ${results.length} results`);
+    }
+    return { success: results.length > 0, results };
+  } catch (error) {
+    return { success: false, results: [] };
+  }
+}
+
+// Search Reddit for company mentions (no auth needed - uses public JSON API)
+export async function searchReddit(companyName, maxResults = 5) {
+  try {
+    const subreddits = ['business', 'startups', 'technology', 'entrepreneur'];
+    const allPosts = [];
+    
+    for (const subreddit of subreddits) {
+      try {
+        const searchUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(companyName)}&sort=relevance&t=year&limit=3`;
+        const response = await axiosInstance.get(searchUrl, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'SmoothAI-ResearchBot/1.0 (Company Research)'
+          }
+        });
+        
+        if (response.data?.data?.children) {
+          response.data.data.children.forEach(post => {
+            if (post.data?.title) {
+              allPosts.push({
+                title: post.data.title,
+                subreddit: post.data.subreddit,
+                score: post.data.score,
+                url: `https://reddit.com${post.data.permalink}`,
+                comments: post.data.num_comments,
+                created: new Date(post.data.created_utc * 1000).toISOString()
+              });
+            }
+          });
+        }
+      } catch (e) { /* continue to next subreddit */ }
+      
+      // Rate limit protection
+      await new Promise(r => setTimeout(r, 200));
+    }
+    
+    // Dedupe and sort by score
+    const uniquePosts = [...new Map(allPosts.map(p => [p.url, p])).values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults);
+    
+    return { success: uniquePosts.length > 0, posts: uniquePosts };
+  } catch (error) {
+    return { success: false, posts: [], error: error.message };
+  }
+}
+
+// Search SEC EDGAR for public company filings
+export async function searchSECFilings(companyName) {
+  try {
+    const searchUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(companyName)}&dateRange=custom&startdt=2023-01-01&enddt=2025-12-31&forms=10-K,10-Q,8-K&from=0&size=5`;
+    
+    const response = await axiosInstance.get(searchUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'SmoothAI Research (contact@smoothaiconsultancy.com)',
+        'Accept': 'application/json'
+      }
+    });
+    
+    const filings = [];
+    if (response.data?.hits?.hits) {
+      response.data.hits.hits.forEach(hit => {
+        const source = hit._source || {};
+        filings.push({
+          company: source.display_names?.[0] || companyName,
+          form: source.form,
+          filedAt: source.file_date,
+          description: source.file_description,
+          cik: source.ciks?.[0],
+          url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${source.ciks?.[0]}&type=10-K`
+        });
+      });
+    }
+    
+    return { success: filings.length > 0, filings };
+  } catch (error) {
+    return { success: false, filings: [], error: error.message };
+  }
+}
+
 // Web search using DuckDuckGo HTML (free, no API key needed)
 export async function webSearch(query, maxResults = 5) {
   try {
@@ -366,9 +522,50 @@ export async function webSearch(query, maxResults = 5) {
     });
     
     console.log(`    🔍 Web search for "${query.slice(0, 40)}..." found ${results.length} results`);
+    
+    // If DuckDuckGo fails or returns too few results, try fallbacks
+    if (results.length < 2) {
+      // Try Bing fallback
+      const bingResults = await bingSearch(query, maxResults);
+      if (bingResults.success) {
+        results.push(...bingResults.results.filter(r => !results.find(e => e.url === r.url)));
+      }
+      
+      // If still not enough, try Google
+      if (results.length < 2) {
+        const googleResults = await googleScrape(query, maxResults);
+        if (googleResults.success) {
+          results.push(...googleResults.results.filter(r => !results.find(e => e.url === r.url)));
+        }
+      }
+    }
+    
     return { success: true, results };
   } catch (error) {
     console.error(`Web search failed for ${query}:`, error.message);
+    
+    // Try fallbacks on error too
+    let results = [];
+    try {
+      const bingResults = await bingSearch(query, maxResults);
+      if (bingResults.success) {
+        results.push(...bingResults.results);
+      }
+    } catch (e) { /* ignore */ }
+    
+    if (results.length < 2) {
+      try {
+        const googleResults = await googleScrape(query, maxResults);
+        if (googleResults.success) {
+          results.push(...googleResults.results.filter(r => !results.find(e => e.url === r.url)));
+        }
+      } catch (e) { /* ignore */ }
+    }
+    
+    if (results.length > 0) {
+      return { success: true, results };
+    }
+    
     return { success: false, results: [], error: error.message };
   }
 }
@@ -507,6 +704,26 @@ export async function conductWebResearch(companyName, websiteUrl) {
     if (newsResult.success) {
       results.industryNews = newsResult.news;
       console.log(`    ✓ Found ${newsResult.news.length} industry news articles`);
+    }
+  } catch (e) { /* ignore */ }
+  
+  // Search Reddit for company discussions
+  try {
+    console.log('    💬 Checking Reddit discussions...');
+    const redditResult = await searchReddit(companyName);
+    if (redditResult.success && redditResult.posts.length > 0) {
+      results.redditPosts = redditResult.posts;
+      console.log(`    ✓ Found ${redditResult.posts.length} Reddit discussions`);
+    }
+  } catch (e) { /* ignore */ }
+  
+  // Search SEC filings for public companies
+  try {
+    console.log('    📋 Checking SEC filings...');
+    const secResult = await searchSECFilings(companyName);
+    if (secResult.success && secResult.filings.length > 0) {
+      results.secFilings = secResult.filings;
+      console.log(`    ✓ Found ${secResult.filings.length} SEC filings`);
     }
   } catch (e) { /* ignore */ }
   
