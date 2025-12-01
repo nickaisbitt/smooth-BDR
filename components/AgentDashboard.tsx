@@ -197,19 +197,23 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
 
   const extractCompanyName = (message: string): string | null => {
     // Extract company name from messages like:
-    // "Email generated for Company Name (..."
+    // "Email generated for: | Company Name (..."
     // "Generating email for: Company Name (quality: 8/10)"
     // "Email generated and queued for Company Name"
     const patterns = [
-      /(?:Email generated for|Generating email for:|queued for)\s+([^\(|]+?)(?:\s*\(|$)/,
-      /for:\s+\|\s+([^\(|]+?)(?:\s*\(|$)/,
-      /for\s+\|\s+([^\s]+)$/
+      /for:\s+\|\s+(.+?)\s*\(/,  // "for: | Company Name ("
+      /for\s+(.+?)\s*\(/,         // "for Company Name ("
+      /Email generated for (.+?)$/,  // at end of message
     ];
     
     for (const pattern of patterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
-        return match[1].trim();
+        const name = match[1].trim();
+        // Clean up any extra characters
+        if (name && name.length > 0 && name !== '|') {
+          return name;
+        }
       }
     }
     return null;
