@@ -198,37 +198,44 @@ async function generatePersonalizedEmail(item) {
   const contactName = item.contact_name || analysis.keyPeople?.[0] || 'there';
   const firstName = contactName.split(' ')[0];
   
-  // EXPANDED TEMPLATE-BASED EMAIL GENERATION - EVIDENCE-BASED, NOT HALLUCINATIONS
-const hook = analysis.personalizedHooks?.[0] || analysis.recentTriggers?.[0] || 'your growth';
-const painPoint = analysis.potentialPainPoints?.[0] || 'operational efficiency';
-const company = analysis.companyOverview || 'strong market position';
-const keyPerson = analysis.keyPeople?.[0] || firstName;
+  // ULTRA-STRICT TEMPLATE - NO INFERENCES, ONLY EXPLICIT FACTS FROM RESEARCH
+const hook = analysis.personalizedHooks?.[0] || '';
+const painPoint = analysis.potentialPainPoints?.[0] || '';
+const recentEvent = analysis.recentTriggers?.[0] || '';
+const keyPerson = analysis.keyPeople?.[0]?.split(',')[0] || firstName;
 
-const prompt = `Write a COMPELLING, FACT-BASED cold email using ONLY information explicitly stated below. NO inferences, projections, or assumptions.
+// Use EXACT research facts without any interpretation
+const prompt = `GENERATE ONLY IF ALL RESEARCH FACTS PRESENT. Otherwise return empty email.
 
-RESEARCH FACTS (stated exactly - use these only):
-- Hook/Trigger: "${hook}"
-- Pain Point: "${painPoint}"
-- Company Background: "${company}"
-- Contact: ${keyPerson}
+RESEARCH DATA (EXPLICIT FACTS ONLY):
+Hook: "${hook}"
+Pain Point: "${painPoint}"  
+Recent Event/Trigger: "${recentEvent}"
+Contact: ${keyPerson}
+Company: ${item.company_name}
 
-STRUCTURE (must follow):
-Subject: 3-5 words, specific to the company/hook
-Body: 4 paragraphs, 150-180 words total
-  1. OPEN WITH SPECIFICITY: Reference the exact hook, trigger, or research finding. No generic phrases. Example: "I noticed ${item.company_name} recently expanded..."
-  2. SHOW RESEARCH: Demonstrate you know the company. Use ONE specific fact from research (market position, recent news, growth, etc.)
-  3. CONNECT PAIN POINT: State the pain point explicitly tied to what you just mentioned. Example: "This likely means you're..."
-  4. VALUE & CTA: One sentence on how to discuss further. One specific, low-friction ask. Example: "Worth a 15-minute call?"
+RULES - ABSOLUTE:
+1. IF any field above is blank or generic → DECLINE email, return {"subject":"", "body":""}
+2. NO inferences ("likely", "probably", "may", "could", "should")
+3. NO assumptions about needs or challenges
+4. NO generic phrases ("I hope you're well", "I came across", "I wanted to reach out", "touching base")
+5. NO buzzwords (leverage, synergy, revolutionize, best-in-class, cutting-edge, industry-leading)
+6. ONLY state facts that are EXPLICITLY in the research data above
+7. Each sentence must cite where the fact comes from
 
-CRITICAL RULES:
-✗ NO assumptions ("likely faces", "probably struggles") - only state if research explicitly says it
-✗ NO generic openers ("I hope this finds you well", "I came across your company")
-✗ NO outcome claims unless data proves it ("could save 40%" = FORBIDDEN unless "40%" is in research)
-✗ NO buzzwords (leverage, synergy, revolutionary, best-in-class, cutting-edge, etc.)
-✗ Each claim must trace back to the facts above
+STRUCTURE (if facts are sufficient):
+Subject: 2-3 words directly from the hook - MUST be specific, not generic
+Body: 3 sentences EXACTLY
+  Sentence 1: State the specific hook/trigger fact from research. Start with company name.
+  Sentence 2: Name the specific pain point from research. NO interpretations.
+  Sentence 3: Ask a single, specific question. Low friction only.
 
-Return valid JSON ONLY:
-{"subject": "3-5 words specific", "body": "4 paragraphs, cite research, 150-180 words"}`;
+EXAMPLE:
+- GOOD: "Salesforce announced expansion into healthcare (from recent news). Your practice uses legacy patient data systems (from research). Does your team want to evaluate modern CRM tools?"
+- BAD: "I noticed you likely face scaling challenges. We help companies optimize operations. Worth a chat?"
+
+Return valid JSON:
+{"subject": "ONLY if facts exist else empty", "body": "3 exact sentences from research facts only, or empty"}`;
 
   const response = await openrouter.chat.completions.create({
     model: "meta-llama/llama-3.3-70b-instruct",
