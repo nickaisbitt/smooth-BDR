@@ -20,6 +20,7 @@ const AGENT_FILES = {
   'research': 'researchAgent.js',
   'research-retry': 'researchRetryAgent.js',
   'email-generator': 'emailGenerator.js',
+  'email-reviewer': 'emailReviewer.js',
   'email-sender': 'emailSender.js',
   'inbox': 'inboxAgent.js'
 };

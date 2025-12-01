@@ -28,6 +28,13 @@ export const AGENT_CONFIG = {
     minQuality: 8,
     enabled: true
   },
+  EMAIL_REVIEWER: {
+    name: 'email-reviewer',
+    pollIntervalMs: 8000,
+    minEmailQuality: 7,
+    minResearchQuality: 8,
+    enabled: true
+  },
   EMAIL_SENDER: {
     name: 'email-sender',
     pollIntervalMs: 60000,

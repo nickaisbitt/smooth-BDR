@@ -81,20 +81,69 @@ function validateHookCitations(hooks, rawData) {
   };
 }
 
-// Cross-reference hooks against raw research data
-function crossReferenceWithRawData(hooks, rawData) {
-  if (!rawData) return { verified: false, matches: [] };
+// Extract all URLs from raw research data for verification
+function extractSourceUrls(rawData) {
+  if (!rawData) return new Set();
   
-  const matches = [];
+  const urls = new Set();
+  const rawText = JSON.stringify(rawData);
+  
+  // Extract URLs from the raw data
+  const urlMatches = rawText.match(/https?:\/\/[^\s"',\]]+/g) || [];
+  urlMatches.forEach(url => urls.add(url.toLowerCase()));
+  
+  // Also track source types mentioned
+  if (rawData.scrapedData?.url) urls.add(rawData.scrapedData.url.toLowerCase());
+  if (rawData.websiteContent?.url) urls.add(rawData.websiteContent.url.toLowerCase());
+  
+  return urls;
+}
+
+// Check if raw research contains specific news/dates
+function extractVerifiableFacts(rawData) {
+  if (!rawData) return { dates: [], numbers: [], companies: [] };
+  
+  const rawText = JSON.stringify(rawData);
+  
+  const dates = rawText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+20\d{2}|Q[1-4]\s+20\d{2}|20\d{2}/gi) || [];
+  const numbers = rawText.match(/\d+%|\$[\d,.]+[BMK]?|\d{3,}(\s+employees?|\s+workers?|\s+staff)/gi) || [];
+  
+  return { dates: [...new Set(dates)], numbers: [...new Set(numbers)] };
+}
+
+// Rigorous cross-reference: verify hook claims exist in raw data
+function crossReferenceWithRawData(hooks, rawData) {
+  if (!rawData) return { verified: false, matches: [], sourceUrls: [] };
+  
+  const sourceUrls = extractSourceUrls(rawData);
+  const verifiableFacts = extractVerifiableFacts(rawData);
   const rawText = JSON.stringify(rawData).toLowerCase();
   
+  const matches = [];
+  
   for (const hook of hooks) {
-    // Extract potential facts from the hook (numbers, names, dates)
-    const facts = hook.match(/(\d+%|\$[\d.]+[BMK]?|\d{4}|[A-Z][a-z]+\s+20\d{2})/g) || [];
+    const hookLower = hook.toLowerCase();
     
-    for (const fact of facts) {
-      if (rawText.includes(fact.toLowerCase())) {
-        matches.push({ hook, fact, verified: true });
+    // Check for date matches
+    for (const date of verifiableFacts.dates) {
+      if (hookLower.includes(date.toLowerCase())) {
+        matches.push({ hook, fact: date, type: 'date', verified: true });
+      }
+    }
+    
+    // Check for number matches
+    for (const num of verifiableFacts.numbers) {
+      if (hookLower.includes(num.toLowerCase())) {
+        matches.push({ hook, fact: num, type: 'number', verified: true });
+      }
+    }
+    
+    // Extract key phrases from hook and verify they exist in raw data
+    const keyPhrases = hook.match(/"[^"]+"|'[^']+'|\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) || [];
+    for (const phrase of keyPhrases) {
+      const cleanPhrase = phrase.replace(/['"]/g, '').toLowerCase();
+      if (cleanPhrase.length > 5 && rawText.includes(cleanPhrase)) {
+        matches.push({ hook, fact: phrase, type: 'phrase', verified: true });
       }
     }
   }
@@ -102,7 +151,9 @@ function crossReferenceWithRawData(hooks, rawData) {
   return { 
     verified: matches.length > 0, 
     matches,
-    matchCount: matches.length
+    matchCount: matches.length,
+    sourceUrls: [...sourceUrls].slice(0, 5),
+    verifiableFacts
   };
 }
 

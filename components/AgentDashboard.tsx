@@ -787,11 +787,6 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
             </div>
 
             <div className="space-y-4">
-              <div className="bg-gray-100 text-xs p-2 rounded font-mono text-gray-600">
-                Company extracted: {extractCompanyName(selectedActivityLog.message) || 'none'} | 
-                Loading: {loadingDraft ? 'yes' : 'no'} | 
-                Draft: {activityDraft ? 'loaded' : 'not loaded'}
-              </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 uppercase">Message</label>
                 <p className="text-gray-900 mt-1 break-words">{selectedActivityLog.message}</p>
