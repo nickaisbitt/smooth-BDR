@@ -28,24 +28,24 @@ export const AGENT_CONFIG = {
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 15000,
+    pollIntervalMs: 5000,  // 3x faster polling
     batchSize: 1,
     minQuality: 8,
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 8000,
+    pollIntervalMs: 3000,  // 3x faster review
     minEmailQuality: 7,
     minResearchQuality: 8,
     enabled: true
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 60000,
+    pollIntervalMs: 10000,  // 6x faster - check every 10s instead of 60s
     batchSize: 5,
     dailyLimit: 200,
-    delayBetweenEmailsMs: 3000,
+    delayBetweenEmailsMs: 1000,  // 3x faster - 1s between emails instead of 3s
     enabled: true
   },
   INBOX: {
