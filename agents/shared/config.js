@@ -1,4 +1,9 @@
 export const AGENT_CONFIG = {
+  COO: {
+    name: 'coo',
+    pollIntervalMs: 15000,
+    enabled: true
+  },
   PROSPECT_FINDER: {
     name: 'prospect-finder',
     pollIntervalMs: 30000,
