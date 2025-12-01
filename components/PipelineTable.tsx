@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Lead, LeadStatus, EmailDraft } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMailtoLink } from '../services/emailService';
+import { LeadDetailView } from './LeadDetailView';
 
 interface Props {
   leads: Lead[];
@@ -111,6 +112,9 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
   // Edit State
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{companyName: string, website: string, description: string}>({companyName:'', website:'', description:''});
+  
+  // Detail View State
+  const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
 
   // Manual Add State
   const [manualCompany, setManualCompany] = useState('');
@@ -277,7 +281,9 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                             </div>
                             <div className="min-w-0">
                                 <div className="font-bold text-slate-800 text-sm leading-tight mb-0.5 truncate pr-8 md:pr-0 flex items-center gap-2">
-                                    {lead.companyName}
+                                    <button onClick={() => setSelectedDetailLeadId(lead.id)} className="text-slate-800 hover:text-blue-600 hover:underline text-left font-bold" title="Open Record">
+                                        {lead.companyName}
+                                    </button>
                                     <button onClick={() => startEdit(lead)} className="text-slate-300 hover:text-blue-500 hidden group-hover:block" title="Edit">
                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                     </button>
@@ -330,10 +336,10 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                     {/* Column 3: Decision Maker */}
                     <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0">
                         {lead.decisionMaker ? (
-                            <div className="bg-white/50 p-1.5 rounded-lg border border-slate-100 inline-block md:block w-full">
-                                <p className="text-xs font-bold text-slate-700">{lead.decisionMaker.name}</p>
+                            <button onClick={() => setSelectedDetailLeadId(lead.id)} className="text-left bg-white/50 p-1.5 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-colors inline-block md:block w-full">
+                                <p className="text-xs font-bold text-slate-700 hover:text-blue-600">{lead.decisionMaker.name}</p>
                                 <p className="text-[10px] text-slate-400 truncate">{lead.decisionMaker.role}</p>
-                            </div>
+                            </button>
                         ) : lead.status !== LeadStatus.NEW && onHunt ? (
                              <button onClick={() => onHunt(lead)} disabled={analyzingIds.has(lead.id)} className="text-[10px] font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-md border border-purple-100 w-full md:w-auto hover:bg-purple-100 transition-colors">
                                 {analyzingIds.has(lead.id) ? 'Finding...' : 'Find Decision Maker'}
@@ -392,6 +398,22 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
               <span className="text-xs text-slate-500 font-medium">Page {page + 1} of {totalPages}</span>
               <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-slate-600">Next</button>
           </div>
+      )}
+
+      {/* Detail View Modal */}
+      {selectedDetailLeadId && (
+        <div className="absolute inset-0 bg-black/20 z-50 flex items-center justify-center p-4 rounded-2xl backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
+            <LeadDetailView 
+              lead={leads.find(l => l.id === selectedDetailLeadId)!}
+              onUpdate={(updatedLead) => {
+                if (onUpdateLead) onUpdateLead(updatedLead);
+                setSelectedDetailLeadId(null);
+              }}
+              onClose={() => setSelectedDetailLeadId(null)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

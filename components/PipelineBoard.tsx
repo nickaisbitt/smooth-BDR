@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Lead, LeadStatus } from '../types';
 import { generateMailtoLink } from '../services/emailService';
+import { LeadDetailView } from './LeadDetailView';
 
 interface Props {
   leads: Lead[];
@@ -9,6 +10,7 @@ interface Props {
   onMarkContacted?: (lead: Lead) => void;
   onDeleteLead?: (leadId: string) => void;
   analyzingIds: Set<string>;
+  onUpdateLead?: (lead: Lead) => void;
 }
 
 const formatCurrency = (value: number): string => {
@@ -20,7 +22,9 @@ const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
-export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds }) => {
+export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds, onUpdateLead }) => {
+  const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
+
   const columns = [
     { id: LeadStatus.NEW, label: 'Identified', color: 'bg-slate-100', text: 'text-slate-600' },
     { id: LeadStatus.ANALYZING, label: 'Processing', color: 'bg-yellow-50', text: 'text-yellow-700' },
@@ -86,7 +90,7 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                     </div>
                                     
                                     <div>
-                                        <h4 className="font-bold text-slate-800 text-sm leading-tight truncate pr-4" title={lead.companyName}>{lead.companyName}</h4>
+                                        <button onClick={() => setSelectedDetailLeadId(lead.id)} className="font-bold text-slate-800 text-sm leading-tight truncate pr-4 hover:text-blue-600 hover:underline text-left" title={lead.companyName}>{lead.companyName}</button>
                                         <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">{lead.description}</p>
                                     </div>
 
@@ -130,15 +134,15 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
 
                                     {/* Decision Maker */}
                                     {lead.decisionMaker && (
-                                        <div className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100">
+                                        <button onClick={() => setSelectedDetailLeadId(lead.id)} className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100 hover:bg-purple-100 hover:border-blue-300 transition-colors w-full text-left">
                                             <div className="w-4 h-4 rounded-full bg-purple-200 flex items-center justify-center text-[8px] text-purple-700 font-bold">
                                                 {lead.decisionMaker.name[0]}
                                             </div>
                                             <div className="overflow-hidden">
-                                                <p className="text-[10px] font-bold text-purple-900 truncate">{lead.decisionMaker.name}</p>
+                                                <p className="text-[10px] font-bold text-purple-900 truncate hover:text-blue-600">{lead.decisionMaker.name}</p>
                                                 <p className="text-[8px] text-purple-600 truncate">{lead.decisionMaker.role}</p>
                                             </div>
-                                        </div>
+                                        </button>
                                     )}
 
                                     {lead.emailSequence && lead.emailSequence.length > 0 && lead.status !== LeadStatus.CONTACTED && (
@@ -198,6 +202,22 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                 )
             })}
         </div>
+
+        {/* Detail View Modal */}
+        {selectedDetailLeadId && (
+          <div className="absolute inset-0 bg-black/20 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
+              <LeadDetailView 
+                lead={leads.find(l => l.id === selectedDetailLeadId)!}
+                onUpdate={(updatedLead) => {
+                  if (onUpdateLead) onUpdateLead(updatedLead);
+                  setSelectedDetailLeadId(null);
+                }}
+                onClose={() => setSelectedDetailLeadId(null)}
+              />
+            </div>
+          </div>
+        )}
     </div>
   );
 };
