@@ -4,12 +4,7 @@ import { createLogger } from './shared/logger.js';
 import { AgentHeartbeat } from './shared/heartbeat.js';
 import { AGENT_CONFIG } from './shared/config.js';
 
-const config = {
-  name: 'email-reviewer',
-  pollInterval: 8000,
-  minEmailQuality: 7,
-  minResearchQuality: 8
-};
+const config = AGENT_CONFIG.EMAIL_REVIEWER;
 
 const logger = createLogger(config.name);
 
