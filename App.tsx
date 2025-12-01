@@ -772,10 +772,11 @@ function App() {
                               {agentStatuses.map((agent) => (
                                 <div 
                                   key={agent.name}
-                                  className={`p-2 rounded-lg border text-xs ${
+                                  onClick={() => setCurrentView('agents')}
+                                  className={`p-2 rounded-lg border text-xs cursor-pointer transition-all hover:shadow-md ${
                                     agent.health === 'healthy' 
-                                      ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' 
-                                      : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'
+                                      ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40' 
+                                      : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                                   }`}
                                 >
                                   <div className="flex items-center gap-1.5 mb-1">
