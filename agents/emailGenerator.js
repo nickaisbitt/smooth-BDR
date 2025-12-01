@@ -16,6 +16,96 @@ let db = null;
 let heartbeat = null;
 let isRunning = false;
 
+// Citation patterns that indicate a hook is backed by real source
+const CITATION_PATTERNS = [
+  /\(source:?\s*[^)]+\)/i,           // (source: website)
+  /\(per\s+[^)]+\)/i,                 // (per press release)
+  /\(from\s+[^)]+\)/i,                // (from LinkedIn)
+  /\(announced?\s+[^)]+\)/i,          // (announced Nov 2024)
+  /\(via\s+[^)]+\)/i,                 // (via their website)
+  /according to\s+/i,                  // according to
+  /per\s+(their|the)\s+\w+/i,          // per their website
+  /based on\s+(their|the)\s+\w+/i,     // based on their careers page
+  /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+20\d{2}/i,  // Date references
+  /Q[1-4]\s+20\d{2}/i,                 // Q1 2024
+  /20\d{2}/,                           // Year reference
+  /\$[\d.]+[BMK]?/i,                   // Dollar amounts
+  /\d+\+?\s*(employees?|staff|workers|people)/i,  // Employee counts
+  /hiring\s+\d+/i,                     // hiring 10 roles
+  /expanded?\s+(to|into)\s+/i,         // expanded to/into
+];
+
+// Validate that personalization hooks contain actual source citations
+function validateHookCitations(hooks, rawData) {
+  if (!hooks || !Array.isArray(hooks) || hooks.length === 0) {
+    return { valid: false, reason: 'No personalization hooks found', verifiedHooks: [] };
+  }
+  
+  const verifiedHooks = [];
+  const unverifiedHooks = [];
+  
+  for (const hook of hooks) {
+    if (typeof hook !== 'string') continue;
+    
+    // Check if hook contains citation patterns
+    const hasCitation = CITATION_PATTERNS.some(pattern => pattern.test(hook));
+    
+    // Check if hook contains specific data that matches raw research
+    const hasSpecificData = /\d+%|\$\d+|\d+\s+(employees?|roles?|positions?)/i.test(hook);
+    
+    // Check if hook references verifiable sources
+    const hasSourceReference = /(website|linkedin|careers?\s*page|press\s*release|news|job\s*(posting|listing)|sec\s*filing)/i.test(hook);
+    
+    if (hasCitation || (hasSpecificData && hasSourceReference)) {
+      verifiedHooks.push(hook);
+    } else {
+      unverifiedHooks.push(hook);
+    }
+  }
+  
+  // Require at least 1 verified hook
+  if (verifiedHooks.length >= 1) {
+    return { 
+      valid: true, 
+      verifiedHooks,
+      unverifiedHooks,
+      reason: `${verifiedHooks.length} of ${hooks.length} hooks verified with citations`
+    };
+  }
+  
+  return { 
+    valid: false, 
+    verifiedHooks,
+    unverifiedHooks,
+    reason: `Only ${verifiedHooks.length} of ${hooks.length} hooks have source citations. Need at least 1 verified hook.`
+  };
+}
+
+// Cross-reference hooks against raw research data
+function crossReferenceWithRawData(hooks, rawData) {
+  if (!rawData) return { verified: false, matches: [] };
+  
+  const matches = [];
+  const rawText = JSON.stringify(rawData).toLowerCase();
+  
+  for (const hook of hooks) {
+    // Extract potential facts from the hook (numbers, names, dates)
+    const facts = hook.match(/(\d+%|\$[\d.]+[BMK]?|\d{4}|[A-Z][a-z]+\s+20\d{2})/g) || [];
+    
+    for (const fact of facts) {
+      if (rawText.includes(fact.toLowerCase())) {
+        matches.push({ hook, fact, verified: true });
+      }
+    }
+  }
+  
+  return { 
+    verified: matches.length > 0, 
+    matches,
+    matchCount: matches.length
+  };
+}
+
 async function generatePersonalizedEmail(item) {
   const research = typeof item.research_data === 'string' 
     ? JSON.parse(item.research_data) 
@@ -127,6 +217,7 @@ Return JSON only:
 }
 
 async function processEmailGeneration(item) {
+  // Step 1: Check basic quality threshold
   if (item.research_quality < config.minQuality) {
     logger.warn(`Skipping ${item.company_name} - research quality ${item.research_quality} below minimum ${config.minQuality}`);
     await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
@@ -135,9 +226,55 @@ async function processEmailGeneration(item) {
     return { success: false, reason: 'Quality too low' };
   }
   
-  logger.info(`Generating email for: ${item.company_name} (quality: ${item.research_quality}/10)`);
+  // Step 2: Parse research and validate citation integrity
+  const research = typeof item.research_data === 'string' 
+    ? JSON.parse(item.research_data) 
+    : item.research_data;
+  const analysis = research.aiAnalysis || {};
   
-  const email = await generatePersonalizedEmail(item);
+  // Step 3: CRITICAL - Validate that hooks have real source citations
+  const citationValidation = validateHookCitations(analysis.personalizedHooks, research.rawData);
+  
+  if (!citationValidation.valid) {
+    logger.warn(`Rejecting ${item.company_name} - CITATION VALIDATION FAILED: ${citationValidation.reason}`);
+    logger.warn(`  Unverified hooks: ${citationValidation.unverifiedHooks?.slice(0, 2).join('; ')}`);
+    
+    // Mark as needing more research, not as skipped
+    await completeQueueItem(db, 'draft_queue', item.id, 'needs_citations', {
+      last_error: `Citation validation failed: ${citationValidation.reason}`,
+      unverified_hooks: JSON.stringify(citationValidation.unverifiedHooks?.slice(0, 3))
+    });
+    return { success: false, reason: 'Hooks lack source citations' };
+  }
+  
+  logger.info(`Citation validation passed for ${item.company_name}: ${citationValidation.reason}`);
+  logger.info(`  Verified hooks: ${citationValidation.verifiedHooks?.length || 0}`);
+  
+  // Step 4: Cross-reference with raw data
+  const crossRef = crossReferenceWithRawData(citationValidation.verifiedHooks, research.rawData);
+  if (crossRef.verified) {
+    logger.info(`  Cross-reference verified: ${crossRef.matchCount} facts matched raw data`);
+  }
+  
+  // Step 5: Generate email with ONLY verified hooks
+  logger.info(`Generating email for: ${item.company_name} (quality: ${item.research_quality}/10, verified hooks: ${citationValidation.verifiedHooks?.length})`);
+  
+  // Override analysis to use only verified hooks
+  const verifiedAnalysis = {
+    ...analysis,
+    personalizedHooks: citationValidation.verifiedHooks
+  };
+  
+  // Create modified item with verified hooks only
+  const verifiedItem = {
+    ...item,
+    research_data: JSON.stringify({
+      ...research,
+      aiAnalysis: verifiedAnalysis
+    })
+  };
+  
+  const email = await generatePersonalizedEmail(verifiedItem);
   
   await db.run(`
     UPDATE draft_queue 
@@ -146,9 +283,10 @@ async function processEmailGeneration(item) {
   `, [email.subject, email.body, Date.now(), Date.now(), item.id]);
   
   if (item.contact_email) {
+    // Step 6: Queue email with approval_required flag
     await db.run(`
-      INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, scheduled_for, status, created_at, research_quality)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, scheduled_for, status, created_at, research_quality, approval_status)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, 'needs_review')
     `, [
       item.lead_id || `prospect_${item.prospect_id}`,
       item.company_name,
@@ -160,14 +298,14 @@ async function processEmailGeneration(item) {
       item.research_quality
     ]);
     
-    await completeQueueItem(db, 'draft_queue', item.id, 'queued');
-    logger.info(`Email generated and queued for ${item.company_name}`);
+    await completeQueueItem(db, 'draft_queue', item.id, 'awaiting_approval');
+    logger.info(`Email generated for ${item.company_name} - AWAITING APPROVAL (verified hooks: ${citationValidation.verifiedHooks?.length})`);
   } else {
     await completeQueueItem(db, 'draft_queue', item.id, 'draft_ready');
     logger.info(`Email generated for ${item.company_name} (no contact email - saved as draft)`);
   }
   
-  return { success: true, email };
+  return { success: true, email, verifiedHooks: citationValidation.verifiedHooks?.length };
 }
 
 async function processEmails() {

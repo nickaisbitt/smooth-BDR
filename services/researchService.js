@@ -1169,32 +1169,40 @@ OUR SERVICE (what we're selling):
 ${serviceProfile || 'AI automation solutions for business operations'}
 
 ═══════════════════════════════════════════
-SCORING CRITERIA (realistic assessment):
-- Score 9-10: EXCELLENT - Has multiple verified data points: company website content + news/press releases + Wikipedia/public info
-- Score 7-8: GOOD - Has company website data + at least one external source (news, SEC filings, or job listings)
-- Score 5-6: BASIC - Only website data, limited external validation
-- Score 1-4: POOR - Scraped data is sparse or failed
+CRITICAL RULES - READ CAREFULLY:
+═══════════════════════════════════════════
+1. DO NOT INVENT OR HALLUCINATE FACTS. Only include information that appears VERBATIM in the scraped data above.
+2. Every personalizedHook MUST include a citation in parentheses: (source: website), (per press release Nov 2024), (from careers page), etc.
+3. If you cannot find a specific fact in the data, DO NOT MAKE IT UP. Leave the field empty or say "Not found in data".
+4. researchQuality score MUST reflect whether you have REAL cited facts, not whether the fields are filled.
+
+═══════════════════════════════════════════
+SCORING CRITERIA (strict assessment):
+- Score 9-10: EXCELLENT - Has 3+ hooks with explicit citations referencing specific data points found in the scraped content
+- Score 7-8: GOOD - Has 2+ hooks with citations, with data verifiable from scraped content
+- Score 5-6: BASIC - Only 1 hook with citation, or citations without dates/specifics
+- Score 1-4: POOR - No hooks have citations, or data cannot be verified from scraped content
 
 Return a JSON object with these fields:
 {
-  "companyOverview": "Detailed 3-4 sentence summary citing SPECIFIC facts (e.g., 'Founded in 2015, headquartered in Houston, 500+ employees per LinkedIn')",
+  "companyOverview": "Detailed 3-4 sentence summary citing SPECIFIC facts FROM THE DATA ABOVE (e.g., 'Founded in 2015, headquartered in Houston, 500+ employees per LinkedIn')",
   "industryVertical": "Their specific industry/niche",
   "companySize": "Estimate with source (e.g., '~2,000 employees based on job listings', '$500M+ revenue per SEC filing')",
-  "keyServices": ["SPECIFIC services from website - quote actual service names"],
-  "potentialPainPoints": ["SPECIFIC pain points with reasoning (e.g., 'Scaling logistics - hiring 15 operations roles')"],
+  "keyServices": ["SPECIFIC services from website - quote actual service names found in data"],
+  "potentialPainPoints": ["SPECIFIC pain points with reasoning (e.g., 'Scaling logistics - hiring 15 operations roles per careers page')"],
   "recentTriggers": ["SPECIFIC events with dates/sources (e.g., 'Acquired ABC Corp in Oct 2024 per press release')"],
   "personalizedHooks": [
-    "HOOK 1: [Cite specific source] Example: 'Your recent expansion into the Midwest (announced Nov 2024) suggests you're scaling operations rapidly'",
-    "HOOK 2: [Reference specific role/person] Example: 'With John Smith joining as CTO last month, I imagine AI automation is now a priority'",
-    "HOOK 3: [Quote from their website] Example: 'Your focus on \"seamless logistics\" aligns with what our AI solutions deliver'",
-    "HOOK 4: [Reference job posting insight] Example: 'I noticed you're hiring 10 data analysts - we could automate 40% of that workflow'",
-    "HOOK 5: [Industry-specific] Example: 'Given the new FDA regulations affecting medical device companies like yours...'"
+    "HOOK WITH CITATION: Example: 'Your recent expansion into the Midwest (announced Nov 2024 per press release) suggests you're scaling operations rapidly'",
+    "HOOK WITH CITATION: Example: 'With John Smith joining as CTO (per LinkedIn Nov 2024), I imagine AI automation is now a priority'",
+    "HOOK WITH CITATION: Example: 'Your focus on \"seamless logistics\" (per your homepage) aligns with what our AI solutions deliver'",
+    "HOOK WITH CITATION: Example: 'I noticed you're hiring 10 data analysts (per careers page) - we could automate 40% of that workflow'",
+    "ONLY include hooks where you found the fact in the data above. Do not invent hooks."
   ],
-  "keyPeople": ["Name - Title (source: LinkedIn/website/news)"],
-  "hiringInsights": "Specific insights from job listings with numbers",
-  "competitiveAdvantage": "What makes them unique - quote from their messaging",
-  "outreachAngle": "The BEST angle citing specific evidence to support it",
-  "researchQuality": "Score 1-10 based on criteria above",
+  "keyPeople": ["Name - Title (source: LinkedIn/website/news) - ONLY if found in data"],
+  "hiringInsights": "Specific insights from job listings with numbers - ONLY if found in data",
+  "competitiveAdvantage": "What makes them unique - quote from their messaging if found",
+  "outreachAngle": "The BEST angle citing specific evidence from the data",
+  "researchQuality": "Score 1-10 based on how many hooks have REAL citations from the data above",
   "missingData": ["What data would help improve this research"]
 }
 

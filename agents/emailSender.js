@@ -102,9 +102,14 @@ async function processPendingEmails() {
     const remainingToday = dailyLimit - emailsSentToday;
     const batchSize = Math.min(config.batchSize, remainingToday);
     
+    // CRITICAL: Only send emails that are APPROVED (not pending_approval)
+    // Emails with status 'pending_approval' need manual review first
     const pendingEmails = await db.all(`
       SELECT * FROM email_queue 
-      WHERE status = 'pending' AND scheduled_for <= ? AND to_email != ''
+      WHERE status = 'pending' 
+        AND (approval_status IS NULL OR approval_status = 'approved' OR approval_status = 'auto_approved')
+        AND scheduled_for <= ? 
+        AND to_email != ''
       ORDER BY scheduled_for ASC
       LIMIT ?
     `, [Date.now(), batchSize]);
