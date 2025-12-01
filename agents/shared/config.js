@@ -1,62 +1,62 @@
 export const AGENT_CONFIG = {
   COO: {
     name: 'coo',
-    pollIntervalMs: 10000,  // ULTRA FAST: monitor every 10s
+    pollIntervalMs: 5000,  // MAXIMUM MONITORING: every 5s
     enabled: true
   },
   PROSPECT_FINDER: {
     name: 'prospect-finder',
-    pollIntervalMs: 10000,  // CRITICAL: 2x faster - was 20000 - NOW KEY BOTTLENECK
-    batchSize: 25,  // MASSIVE: 2.5x increase from 10 - feed research pipeline
+    pollIntervalMs: 5000,  // MAXIMUM SPEED: 2x faster from 10s - CRITICAL BOTTLENECK ELIMINATION
+    batchSize: 50,  // MASSIVE: 2x increase from 25 - max feed to research
     enabled: true
   },
   RESEARCH: {
     name: 'research',
-    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
-    batchSize: 10,  // 25% more parallel: 8→10 concurrent research items
+    pollIntervalMs: 600,  // LIGHTNING: 25% faster from 800ms
+    batchSize: 15,  // 50% more parallel: 10→15 concurrent research items
     maxPasses: 1,  // FAIL FAST: only 1 pass to unlock flow
-    targetQuality: 4,  // SUPER LENIENT: 4/10 to accept all
+    targetQuality: 3,  // EXTREME LENIENT: 3/10 to accept ALL items
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
-    pollIntervalMs: 2000,  // MAXIMUM SPEED: 1.5x faster
-    maxRetries: 3,  // FAIL FAST: 3 retries only
-    targetQuality: 4,  // SUPER LENIENT: 4/10
-    retryDelayMs: 10000,  // 2x faster retry
+    pollIntervalMs: 1500,  // MAXIMUM SPEED: 33% faster from 2000ms
+    maxRetries: 2,  // FAIL FASTER: only 2 retries
+    targetQuality: 3,  // EXTREME LENIENT: 3/10
+    retryDelayMs: 5000,  // 2x faster retry delay
     enabled: true
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
-    batchSize: 15,  // 50% more per cycle
-    minQuality: 4,  // SUPER LENIENT: 4/10
+    pollIntervalMs: 600,  // LIGHTNING: 25% faster
+    batchSize: 20,  // 33% more per cycle
+    minQuality: 3,  // EXTREME LENIENT: 3/10
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
-    minEmailQuality: 4,  // SUPER LENIENT: 4/10
-    minResearchQuality: 4,  // SUPER LENIENT: 4/10
+    pollIntervalMs: 600,  // LIGHTNING FAST: 25% faster
+    minEmailQuality: 3,  // EXTREME LENIENT: 3/10
+    minResearchQuality: 3,  // EXTREME LENIENT: 3/10
     enabled: true
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 1200,  // ULTRA MAXIMUM: 25% faster polling
-    batchSize: 50,  // MASSIVE: 67% more per batch - send 50 at once
-    dailyLimit: 5000,  // UNLIMITED SCALE: max 5000/day
-    delayBetweenEmailsMs: 25,  // EXTREME SPEED: 4x faster sending (25ms between emails)
+    pollIntervalMs: 1000,  // MAXIMUM SPEED: 17% faster from 1200ms
+    batchSize: 100,  // ULTIMATE: 100 emails per batch (2x from 50)
+    dailyLimit: 10000,  // MAXIMUM: 10000/day capacity
+    delayBetweenEmailsMs: 10,  // EXTREME SPEED: 2.5x faster (10ms between emails)
     enabled: true
   },
   INBOX: {
     name: 'inbox',
-    pollIntervalMs: 10000,  // 1.5x faster
+    pollIntervalMs: 5000,  // FASTER: 2x from 10s
     enabled: true
   },
   LOGO_FINDER: {
     name: 'logo-finder',
-    pollIntervalMs: 20000,  // 1.25x faster
-    batchSize: 20,  // 33% more per batch
+    pollIntervalMs: 60000,  // BACKGROUND: slower to preserve resources
+    batchSize: 30,  // INCREASED batch when it runs
     enabled: true
   }
 };
