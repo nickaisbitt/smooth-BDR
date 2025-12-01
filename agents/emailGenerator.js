@@ -455,22 +455,40 @@ async function processEmails() {
       return;
     }
     
-    const item = await acquireQueueItem(db, 'draft_queue', config.name);
+    // BATCH PROCESSING: Process up to 3 items per cycle
+    const batchSize = 3;
+    let processedCount = 0;
     
-    if (!item) return;
-    
-    heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
-    
-    try {
-      await processEmailGeneration(item);
-      heartbeat.incrementProcessed();
-    } catch (error) {
-      logger.error(`Email generation failed for ${item.company_name}`, { error: error.message });
-      heartbeat.incrementErrors();
-      await failQueueItem(db, 'draft_queue', item.id, error.message);
+    for (let i = 0; i < batchSize; i++) {
+      const item = await acquireQueueItem(db, 'draft_queue', config.name);
+      if (!item) break;  // No more items in queue
+      
+      heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
+      
+      try {
+        await processEmailGeneration(item);
+        heartbeat.incrementProcessed();
+        processedCount++;
+      } catch (error) {
+        logger.error(`Email generation failed for ${item.company_name}`, { error: error.message });
+        heartbeat.incrementErrors();
+        await failQueueItem(db, 'draft_queue', item.id, error.message);
+      }
+      
+      heartbeat.clearCurrentItem();
     }
     
-    heartbeat.clearCurrentItem();
+    // Dynamic polling: Fast when processing items, slower when empty
+    if (processedCount > 0 && processedCount === batchSize) {
+      // Queue still has items, poll faster
+      config.pollIntervalMs = 2000;
+    } else if (processedCount === 0) {
+      // Queue empty, poll slower to conserve resources
+      config.pollIntervalMs = 8000;
+    } else {
+      // Queue nearly empty, use normal interval
+      config.pollIntervalMs = 5000;
+    }
     
   } catch (error) {
     logger.error('Email generation cycle failed', { error: error.message });
