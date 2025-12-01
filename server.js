@@ -726,19 +726,6 @@ app.get('/api/automation/status', async (req, res) => {
     }
 });
 
-// POST /api/automation/toggle - Enable/disable automation
-app.post('/api/automation/toggle', async (req, res) => {
-    const enabled = req.body.enabled ?? req.body.enable ?? false;
-    
-    try {
-        const result = await toggleAutomation(db, enabled);
-        res.json({ success: true, isRunning: result });
-    } catch (error) {
-        console.error("Automation Toggle Error:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // POST /api/automation/daily-limit - Update daily email limit
 app.post('/api/automation/daily-limit', async (req, res) => {
     const { limit } = req.body;
