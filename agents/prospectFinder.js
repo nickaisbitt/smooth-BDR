@@ -47,9 +47,26 @@ async function processProspects() {
       heartbeat.setCurrentItem({ id: prospect.id, company: prospect.company_name });
       
       try {
+        // VALIDATION: Skip placeholder/bad data
         if (!prospect.website_url) {
           logger.warn(`Skipping prospect without website: ${prospect.company_name}`);
           await failQueueItem(db, 'prospect_queue', prospect.id, 'No website URL provided', 1);
+          continue;
+        }
+        
+        // VALIDATION: Skip placeholder company names and invalid URLs
+        if (prospect.company_name === 'Company Name' || prospect.website_url === 'https://Website URL' || prospect.website_url.includes('Website')) {
+          logger.warn(`Skipping placeholder prospect: ${prospect.company_name}`);
+          await failQueueItem(db, 'prospect_queue', prospect.id, 'Placeholder data - skipped', 1);
+          continue;
+        }
+        
+        // VALIDATION: Skip invalid URLs
+        try {
+          new URL(prospect.website_url);
+        } catch (e) {
+          logger.warn(`Skipping prospect with invalid URL: ${prospect.company_name} (${prospect.website_url})`);
+          await failQueueItem(db, 'prospect_queue', prospect.id, 'Invalid URL format', 1);
           continue;
         }
         
