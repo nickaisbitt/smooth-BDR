@@ -490,13 +490,19 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                 draft: <FileText className="w-4 h-4" />,
                 email: <Send className="w-4 h-4" />
               };
+              const displayNames: Record<string, string> = {
+                prospect: 'CRM',
+                research: 'Research',
+                draft: 'Draft',
+                email: 'Email'
+              };
               
               return (
                 <div key={queueName} className="p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-gray-500">{icons[queueName]}</span>
-                      <span className="font-medium capitalize">{queueName} Queue</span>
+                      <span className="font-medium">{displayNames[queueName]} Queue</span>
                     </div>
                     <span className="text-sm text-gray-500">{total} total</span>
                   </div>
@@ -526,7 +532,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-1 text-gray-600">
                 <Users className="w-4 h-4" />
-                Prospect
+                CRM
               </div>
               <ChevronRight className="w-4 h-4 text-gray-400" />
               <div className="flex items-center gap-1 text-gray-600">
