@@ -412,8 +412,8 @@ async function processEmailReview(email) {
   
   logger.info(`Final email quality score: ${finalScore}/10`);
   
-  // LENIENT threshold: Allow 5+/10 emails to flow through pipeline
-  const approvalThreshold = 5;  // Only 5+/10 needed (was 7)
+  // USE CONFIG THRESHOLD: Allow emails matching config.minEmailQuality to flow through pipeline
+  const approvalThreshold = config.minEmailQuality;  // ULTRA-AGGRESSIVE: Use config (3/10)
   const approved = finalScore >= approvalThreshold && recommendation !== 'REJECT';
   
   if (approved) {
