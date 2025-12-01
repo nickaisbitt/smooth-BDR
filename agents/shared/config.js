@@ -47,6 +47,12 @@ export const AGENT_CONFIG = {
     name: 'inbox',
     pollIntervalMs: 30000,
     enabled: true
+  },
+  LOGO_FINDER: {
+    name: 'logo-finder',
+    pollIntervalMs: 45000,
+    batchSize: 5,
+    enabled: true
   }
 };
 

@@ -22,7 +22,8 @@ const AGENT_FILES = {
   'email-generator': 'emailGenerator.js',
   'email-reviewer': 'emailReviewer.js',
   'email-sender': 'emailSender.js',
-  'inbox': 'inboxAgent.js'
+  'inbox': 'inboxAgent.js',
+  'logo-finder': 'logoFinder.js'
 };
 
 function startAgent(agentName) {

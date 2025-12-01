@@ -159,6 +159,7 @@ export interface Lead {
   // Enrichment Data
   decisionMaker?: DecisionMaker;
   techStack?: string[];
+  logoUrl?: string;
   
   // Research Data (from real web scraping)
   research?: ResearchData;
