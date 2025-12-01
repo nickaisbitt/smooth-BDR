@@ -12,25 +12,25 @@ export const AGENT_CONFIG = {
   },
   RESEARCH: {
     name: 'research',
-    pollIntervalMs: 10000,
-    batchSize: 1,
+    pollIntervalMs: 3000,  // 3.3x faster - was 10000
+    batchSize: 3,  // BATCH PROCESSING: process 3 research items per cycle
     maxPasses: 3,
-    targetQuality: 7,  // LOWERED from 8 to 7 to unlock stuck items
+    targetQuality: 7,
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
-    pollIntervalMs: 30000,
+    pollIntervalMs: 10000,  // 3x faster - was 30000
     maxRetries: 10,
-    targetQuality: 7,  // LOWERED from 8 to 7
+    targetQuality: 7,
     retryDelayMs: 60000,
     enabled: true
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 5000,
-    batchSize: 1,
-    minQuality: 7,  // LOWERED from 8 to 7 to accept more research
+    pollIntervalMs: 3000,  // 1.67x faster - was 5000
+    batchSize: 3,  // BATCH PROCESSING: process 3 emails per cycle (was 1)
+    minQuality: 7,
     enabled: true
   },
   EMAIL_REVIEWER: {

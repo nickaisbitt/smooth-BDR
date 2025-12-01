@@ -455,11 +455,10 @@ async function processEmails() {
       return;
     }
     
-    // BATCH PROCESSING: Process up to 3 items per cycle
-    const batchSize = 3;
+    // BATCH PROCESSING: Process up to config.batchSize items per cycle
     let processedCount = 0;
     
-    for (let i = 0; i < batchSize; i++) {
+    for (let i = 0; i < config.batchSize; i++) {
       const item = await acquireQueueItem(db, 'draft_queue', config.name);
       if (!item) break;  // No more items in queue
       
@@ -478,16 +477,16 @@ async function processEmails() {
       heartbeat.clearCurrentItem();
     }
     
-    // Dynamic polling: Fast when processing items, slower when empty
-    if (processedCount > 0 && processedCount === batchSize) {
+    // Dynamic polling: Fast when processing full batches, slower when empty
+    if (processedCount > 0 && processedCount === config.batchSize) {
       // Queue still has items, poll faster
       config.pollIntervalMs = 2000;
     } else if (processedCount === 0) {
       // Queue empty, poll slower to conserve resources
       config.pollIntervalMs = 8000;
     } else {
-      // Queue nearly empty, use normal interval
-      config.pollIntervalMs = 5000;
+      // Queue partially processed, use normal interval
+      config.pollIntervalMs = 3000;
     }
     
   } catch (error) {

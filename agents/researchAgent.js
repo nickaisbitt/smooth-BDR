@@ -78,22 +78,32 @@ async function processResearch() {
       return;
     }
     
-    const item = await acquireQueueItem(db, 'research_queue', config.name);
-    
-    if (!item) return;
-    
-    heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
-    
-    try {
-      await processResearchItem(item);
-      heartbeat.incrementProcessed();
-    } catch (error) {
-      logger.error(`Research failed for ${item.company_name}`, { error: error.message });
-      heartbeat.incrementErrors();
-      await failQueueItem(db, 'research_queue', item.id, error.message);
+    // BATCH PROCESSING: Process up to 3 research items per cycle
+    let processed = 0;
+    for (let i = 0; i < config.batchSize; i++) {
+      if (!isRunning) break;
+      
+      const item = await acquireQueueItem(db, 'research_queue', config.name);
+      if (!item) break;  // No more items in queue
+      
+      heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
+      
+      try {
+        await processResearchItem(item);
+        heartbeat.incrementProcessed();
+        processed++;
+      } catch (error) {
+        logger.error(`Research failed for ${item.company_name}`, { error: error.message });
+        heartbeat.incrementErrors();
+        await failQueueItem(db, 'research_queue', item.id, error.message);
+      }
+      
+      heartbeat.clearCurrentItem();
     }
     
-    heartbeat.clearCurrentItem();
+    if (processed > 0) {
+      logger.info(`Processed ${processed} research items this cycle`);
+    }
     
   } catch (error) {
     logger.error('Research processing cycle failed', { error: error.message });
