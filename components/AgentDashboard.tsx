@@ -221,28 +221,37 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
 
   const fetchDraft = useCallback(async (companyName: string) => {
     if (!companyName) return;
+    console.log('[DEBUG] Fetching draft for:', companyName);
     setLoadingDraft(true);
     try {
       const encoded = encodeURIComponent(companyName);
-      const res = await fetch(`${apiBase}/agents/draft/${encoded}`);
+      const url = `${apiBase}/agents/draft/${encoded}`;
+      console.log('[DEBUG] API URL:', url);
+      const res = await fetch(url);
       const data = await res.json();
+      console.log('[DEBUG] API response:', data);
       if (data.success && data.draft) {
+        console.log('[DEBUG] Setting draft:', data.draft);
         setActivityDraft(data.draft);
+      } else {
+        console.log('[DEBUG] No draft found or API failed');
       }
     } catch (error) {
-      console.error('Failed to fetch draft:', error);
+      console.error('[DEBUG] Failed to fetch draft:', error);
     } finally {
       setLoadingDraft(false);
     }
   }, [apiBase]);
 
   const handleActivityClick = (log: AgentLog) => {
+    console.log('[DEBUG] Activity clicked:', log.message);
     setSelectedActivityLog(log);
     setActivityDraft(null);
     
     // Try to fetch draft if this is an email generation activity
-    if (log.message.includes('Email generated') || log.message.includes('email')) {
+    if (log.message.includes('Email generated') || log.message.includes('Generating email') || log.message.includes('email')) {
       const companyName = extractCompanyName(log.message);
+      console.log('[DEBUG] Extracted company name:', companyName);
       if (companyName) {
         fetchDraft(companyName);
       }
@@ -778,6 +787,11 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
             </div>
 
             <div className="space-y-4">
+              <div className="bg-gray-100 text-xs p-2 rounded font-mono text-gray-600">
+                Company extracted: {extractCompanyName(selectedActivityLog.message) || 'none'} | 
+                Loading: {loadingDraft ? 'yes' : 'no'} | 
+                Draft: {activityDraft ? 'loaded' : 'not loaded'}
+              </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 uppercase">Message</label>
                 <p className="text-gray-900 mt-1 break-words">{selectedActivityLog.message}</p>
@@ -787,6 +801,12 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                 <div>
                   <label className="text-xs font-medium text-gray-500 uppercase">Details</label>
                   <p className="text-gray-700 mt-1 break-words whitespace-pre-wrap">{selectedActivityLog.details}</p>
+                </div>
+              )}
+
+              {(selectedActivityLog.message.includes('Email') || selectedActivityLog.message.includes('email')) && !activityDraft && !loadingDraft && (
+                <div className="flex items-center justify-center py-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <span className="text-sm text-yellow-700">No draft found for this activity</span>
                 </div>
               )}
 
