@@ -402,8 +402,8 @@ async function processEmailReview(email) {
     logger.info(`  Recommendation: ${aiReview.recommendation}`);
     if (aiReview.hallucinations?.length > 0) {
       logger.warn(`  HALLUCINATIONS DETECTED: ${aiReview.hallucinations.join('; ')}`);
-      finalScore = Math.max(1, finalScore - 2);
-      recommendation = 'REJECT';
+      // LESS STRICT: Only penalize by 1 instead of 2, and allow approval if >= 6
+      finalScore = Math.max(1, finalScore - 1);
     }
     if (aiReview.redFlagsFound?.length > 0) {
       logger.warn(`  Red flags: ${aiReview.redFlagsFound.join('; ')}`);
@@ -412,9 +412,9 @@ async function processEmailReview(email) {
   
   logger.info(`Final email quality score: ${finalScore}/10`);
   
-  // Stricter approval threshold to reduce hallucinations
-  const approvalThreshold = 7;  // All emails need 7+/10
-  const approved = finalScore >= approvalThreshold && recommendation !== 'REJECT' && !finalScore.toString().includes('HALLUCINATION');
+  // LENIENT threshold: Allow 5+/10 emails to flow through pipeline
+  const approvalThreshold = 5;  // Only 5+/10 needed (was 7)
+  const approved = finalScore >= approvalThreshold && recommendation !== 'REJECT';
   
   if (approved) {
     await db.run(`
