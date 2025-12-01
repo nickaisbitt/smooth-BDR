@@ -12,51 +12,51 @@ export const AGENT_CONFIG = {
   },
   RESEARCH: {
     name: 'research',
-    pollIntervalMs: 2000,  // AGGRESSIVE: 5x faster - was 10000
+    pollIntervalMs: 1500,  // ULTRA FAST: 6.6x faster
     batchSize: 5,  // PARALLEL: process 5 research items concurrently per cycle
-    maxPasses: 3,
-    targetQuality: 6,  // LOWERED to 6/10 to unlock more items
+    maxPasses: 2,  // REDUCED: was 3, now 2 to fail fast
+    targetQuality: 5,  // ULTRA LENIENT: 5/10 to unlock all items
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
-    pollIntervalMs: 5000,  // 6x faster - was 30000
-    maxRetries: 8,  // LOWERED: mark as exhausted after 8 retries instead of 50
-    targetQuality: 6,  // LOWERED to 6/10
-    retryDelayMs: 30000,  // HALVED from 60000
+    pollIntervalMs: 3000,  // 10x faster - was 30000
+    maxRetries: 5,  // REDUCED: fail faster after 5 retries
+    targetQuality: 5,  // ULTRA LENIENT: 5/10
+    retryDelayMs: 20000,  // REDUCED from 30000
     enabled: true
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 2000,  // AGGRESSIVE: 2.5x faster - was 5000
-    batchSize: 5,  // INCREASED: process 5 emails per cycle (was 3)
-    minQuality: 6,  // LOWERED to 6/10
+    pollIntervalMs: 1500,  // ULTRA FAST: 3.3x faster
+    batchSize: 7,  // INCREASED: process 7 emails per cycle
+    minQuality: 5,  // ULTRA LENIENT: 5/10
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 2000,  // AGGRESSIVE: faster polling
-    minEmailQuality: 6,  // LOWERED to 6/10
-    minResearchQuality: 6,  // LOWERED to 6/10
+    pollIntervalMs: 1500,  // ULTRA FAST
+    minEmailQuality: 5,  // ULTRA LENIENT: 5/10
+    minResearchQuality: 5,  // ULTRA LENIENT: 5/10
     enabled: true
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 5000,  // AGGRESSIVE: 2x faster polling
-    batchSize: 10,  // 2x batch size
-    dailyLimit: 500,  // INCREASED: was 200, now 500 for scale
-    delayBetweenEmailsMs: 500,  // HALVED: was 1000, now 500
+    pollIntervalMs: 3000,  // 1.67x faster polling
+    batchSize: 15,  // 50% more per batch
+    dailyLimit: 1000,  // 2x capacity
+    delayBetweenEmailsMs: 200,  // 2.5x faster sending
     enabled: true
   },
   INBOX: {
     name: 'inbox',
-    pollIntervalMs: 30000,
+    pollIntervalMs: 20000,  // Faster inbox sync
     enabled: true
   },
   LOGO_FINDER: {
     name: 'logo-finder',
-    pollIntervalMs: 45000,
-    batchSize: 5,
+    pollIntervalMs: 30000,  // Faster logo processing
+    batchSize: 10,  // 2x batch size
     enabled: true
   }
 };
