@@ -221,30 +221,11 @@ ${analysis.personalizedHooks?.map((h, i) => `${i + 1}. ${h}`).join('\n')}
 Best Angle: ${analysis.outreachAngle || 'AI automation value'}
 
 ═══════════════════════════════════════
-SENDER'S VALUE PROPOSITION (ONLY use claims backed by research):
+SENDER'S VALUE PROPOSITION:
 ═══════════════════════════════════════
-${(() => {
-  const claims = [];
-  // Only add claims found in actual research data
-  if (analysis.potentialPainPoints?.some(p => p.toLowerCase().includes('automat') || p.toLowerCase().includes('manual') || p.toLowerCase().includes('process'))) {
-    claims.push('- Automate repetitive workflows they're likely struggling with');
-  }
-  if (analysis.potentialPainPoints?.some(p => p.toLowerCase().includes('data') || p.toLowerCase().includes('integration'))) {
-    claims.push('- Connect disparate systems and reduce manual data entry');
-  }
-  if (analysis.recentTriggers?.some(t => t.toLowerCase().includes('grow') || t.toLowerCase().includes('expand') || t.toLowerCase().includes('hiring'))) {
-    claims.push('- Scale operations efficiently as they grow');
-  }
-  if (analysis.competitiveAdvantage) {
-    claims.push('- Build competitive advantage through AI integration');
-  }
-  // Fallback: generic but safe claims
-  if (claims.length === 0) {
-    claims.push('- Help their teams work smarter with AI automation');
-    claims.push('- Reduce manual work on high-volume tasks');
-  }
-  return 'Nick @ Smooth AI Consulting helps companies:\n' + claims.slice(0, 2).join('\n');
-})()}
+Nick @ Smooth AI Consulting helps companies:
+- Automate manual, repetitive processes  
+- Scale operations without proportional cost increases
 
 ═══════════════════════════════════════
 EMAIL REQUIREMENTS (CRITICAL):
