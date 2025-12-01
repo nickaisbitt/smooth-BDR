@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { StrategyNode } from '../types';
-import { X } from 'lucide-react';
+import { StrategyNode, Lead } from '../types';
+import { X, Building2 } from 'lucide-react';
 
 interface Props {
     queue: StrategyNode[];
     active: boolean;
     onAddStrategy: (sector: string, query: string) => void;
+    leads?: Lead[];
 }
 
-export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy }) => {
+export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy, leads }) => {
     const [isAdding, setIsAdding] = useState(false);
     const [newSector, setNewSector] = useState('');
     const [newQuery, setNewQuery] = useState('');
@@ -159,6 +160,45 @@ export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy })
                                     {selectedStrategy.status.toUpperCase()}
                                 </span>
                             </div>
+
+                            {/* Companies Identified */}
+                            {leads && (
+                                <div className="border-t border-slate-200 pt-4">
+                                    <p className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
+                                        <Building2 size={12} />
+                                        Companies Identified
+                                    </p>
+                                    {(() => {
+                                        const matchingLeads = leads.filter(l => 
+                                            l.strategyId === selectedStrategy.id ||
+                                            l.foundVia?.includes(selectedStrategy.sector)
+                                        );
+                                        return matchingLeads.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {matchingLeads.slice(0, 10).map(lead => (
+                                                    <div key={lead.id} className="bg-white border border-slate-100 rounded-lg p-3 hover:border-slate-300 hover:shadow-sm transition-all">
+                                                        <p className="text-xs font-bold text-slate-700">{lead.companyName}</p>
+                                                        <p className="text-[10px] text-slate-500 truncate">{lead.website}</p>
+                                                        <span className={`inline-block mt-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded uppercase ${
+                                                            lead.status === 'QUALIFIED' ? 'bg-green-100 text-green-700' :
+                                                            lead.status === 'CONTACTED' ? 'bg-blue-100 text-blue-700' :
+                                                            lead.status === 'NEW' ? 'bg-slate-100 text-slate-600' :
+                                                            'bg-slate-50 text-slate-500'
+                                                        }`}>
+                                                            {lead.status}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                                {matchingLeads.length > 10 && (
+                                                    <p className="text-xs text-slate-400 text-center pt-2">+{matchingLeads.length - 10} more</p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-slate-400 italic">No companies identified yet</p>
+                                        );
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>

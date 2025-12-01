@@ -155,6 +155,7 @@ export interface Lead {
 
   sourceUrl?: string;
   foundVia?: string;
+  strategyId?: string;
   
   // Enrichment Data
   decisionMaker?: DecisionMaker;

@@ -750,7 +750,7 @@ function App() {
                         </button>
                      </div>
                      <div className="w-full xl:w-80">
-                         <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />
+                         <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} leads={leads} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />
                      </div>
                  </div>
 
