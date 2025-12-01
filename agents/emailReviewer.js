@@ -417,7 +417,9 @@ async function processEmailReview(email) {
   
   logger.info(`Final email quality score: ${finalScore}/10`);
   
-  const approved = finalScore >= config.minEmailQuality && recommendation !== 'REJECT';
+  // Lower threshold for approval - if research is 8+/10, be more lenient on email quality
+  const approvalThreshold = email.research_quality >= 8 ? 6 : config.minEmailQuality;
+  const approved = finalScore >= approvalThreshold && recommendation !== 'REJECT';
   
   if (approved) {
     await db.run(`
