@@ -198,77 +198,33 @@ async function generatePersonalizedEmail(item) {
   const contactName = item.contact_name || analysis.keyPeople?.[0] || 'there';
   const firstName = contactName.split(' ')[0];
   
-  const prompt = `You are a world-class B2B sales email copywriter who writes emails that get 40%+ reply rates. Write an incredibly personalized cold email.
+  // STRICT TEMPLATE-BASED EMAIL GENERATION - NO HALLUCINATIONS
+const hook = analysis.personalizedHooks?.[0] || analysis.recentTriggers?.[0] || 'your growth';
+const painPoint = analysis.potentialPainPoints?.[0] || 'operational efficiency';
 
-═══════════════════════════════════════
-RECIPIENT INTELLIGENCE:
-═══════════════════════════════════════
+const prompt = `Write a SHORT, FACTUAL cold email. Use ONLY the facts provided below. Do NOT add claims, inferences, or projections not explicitly stated.
+
+FACTS ONLY (use these exactly as stated, nothing more):
+Hook: "${hook}"
+Pain Point: "${painPoint}"
 Company: ${item.company_name}
-Contact: ${contactName} (${firstName})
-Industry: ${analysis.industryVertical || 'Unknown'}
-Company Size: ${analysis.companySize || 'Unknown'}
+Contact First Name: ${firstName}
 
-DETAILED RESEARCH (USE SPECIFIC FACTS):
-${analysis.companyOverview}
+TEMPLATE (follow exactly):
+Subject: 1-2 words from the hook, curiosity-driven
+Body: 3 sentences max
+  1. Reference the hook or recent trigger specifically
+  2. Name ONE pain point they likely face
+  3. Ask low-friction question
+  
+CRITICAL RULES:
+- NO percentage claims unless explicitly in research ("saw 40% improvement" is ONLY ok if "40%" is in the facts provided)
+- NO outcome predictions ("could reduce costs" is FORBIDDEN - say "addresses" instead)
+- NO generic phrases ("I hope this finds you well", "I came across", "reaching out")
+- Use ONLY facts from the hook and pain point above
 
-Their Services: ${analysis.keyServices?.join(', ') || 'Not found'}
-Identified Pain Points: ${analysis.potentialPainPoints?.join('; ') || 'Not found'}
-Recent Triggers/Events: ${analysis.recentTriggers?.join('; ') || 'None found'}
-Hiring Insights: ${analysis.hiringInsights || 'None'}
-Competitive Edge: ${analysis.competitiveAdvantage || 'Unknown'}
-
-PERSONALIZED HOOKS (pick the 1-2 most compelling):
-${analysis.personalizedHooks?.map((h, i) => `${i + 1}. ${h}`).join('\n')}
-
-Best Angle: ${analysis.outreachAngle || 'AI automation value'}
-
-═══════════════════════════════════════
-SENDER'S VALUE PROPOSITION:
-═══════════════════════════════════════
-Nick @ Smooth AI Consulting helps companies:
-- Automate manual, repetitive processes  
-- Scale operations without proportional cost increases
-
-═══════════════════════════════════════
-EMAIL REQUIREMENTS (CRITICAL):
-═══════════════════════════════════════
-SUBJECT LINE:
-- Under 50 characters
-- Reference something SPECIFIC (their product, news event, or a number)
-- Create curiosity without being clickbait
-- Examples: "Quick thought on [their recent announcement]", "[Their product name] + AI idea"
-
-OPENING LINE (first sentence):
-- MUST reference a SPECIFIC, VERIFIABLE fact from the research
-- Name drop if you have executive names
-- Reference specific news, numbers, or their exact language
-- NEVER start with "I", "My", "We", or generic intros
-- Good: "Noticed [Company] just expanded into [market] - congrats on the growth."
-- Bad: "I came across your company..." or "I hope this email finds you well"
-
-BODY:
-- Max 100 words total
-- One clear pain point → one clear solution
-- Use their exact industry language
-- ONLY reference verifiable facts from the research (don't make up numbers)
-- Sound like a peer, not a salesperson
-
-CTA:
-- Low commitment, high curiosity
-- Example: "Worth a 15-min chat to see if this applies to [Company]?"
-- NOT: "Would you like to schedule a demo?"
-
-TONE:
-- Conversational, like texting a colleague
-- Confident but not arrogant
-- Zero fluff, zero buzzwords
-- No exclamation marks
-
-Return JSON only:
-{
-  "subject": "Short, specific subject line",
-  "body": "Full email body with line breaks as \\n"
-}`;
+Return valid JSON:
+{"subject": "2-3 words max", "body": "3 sentences, max 60 words"}`;
 
   const response = await openrouter.chat.completions.create({
     model: "meta-llama/llama-3.3-70b-instruct",
@@ -327,11 +283,11 @@ Return JSON only:
 }
 
 async function processEmailGeneration(item) {
-  // Step 1: Check basic quality threshold
-  if (item.research_quality < config.minQuality) {
-    logger.warn(`Skipping ${item.company_name} - research quality ${item.research_quality} below minimum ${config.minQuality}`);
+  // Step 1: Check basic quality threshold - STRICT
+  if (item.research_quality < 8) {  // Only process 8+/10 research
+    logger.warn(`Skipping ${item.company_name} - research quality ${item.research_quality} below minimum 8/10`);
     await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
-      last_error: `Research quality ${item.research_quality} below minimum ${config.minQuality}`
+      last_error: `Research quality ${item.research_quality}/10 below minimum 8/10`
     });
     return { success: false, reason: 'Quality too low' };
   }
