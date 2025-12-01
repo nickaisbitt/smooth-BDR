@@ -481,13 +481,14 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="font-semibold text-gray-900 mb-4">Pipeline Queues</h3>
           <div className="space-y-4">
-            {['prospect', 'research', 'draft'].map((queueName) => {
+            {['prospect', 'research', 'draft', 'email'].map((queueName) => {
               const q = queues[queueName] || { pending: 0, processing: 0, completed: 0, failed: 0 };
               const total = q.pending + q.processing + q.completed + q.failed + (q.low_quality || 0);
               const icons: Record<string, React.ReactNode> = {
                 prospect: <Users className="w-4 h-4" />,
                 research: <Search className="w-4 h-4" />,
-                draft: <FileText className="w-4 h-4" />
+                draft: <FileText className="w-4 h-4" />,
+                email: <Send className="w-4 h-4" />
               };
               
               return (

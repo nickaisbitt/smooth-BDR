@@ -1130,7 +1130,7 @@ app.get('/api/automation/status', async (req, res) => {
 // GET /api/agents/queues - Get queue statistics
 app.get('/api/agents/queues', async (req, res) => {
     try {
-        const tables = ['prospect_queue', 'research_queue', 'draft_queue'];
+        const tables = ['prospect_queue', 'research_queue', 'draft_queue', 'email_queue'];
         const stats = {};
         
         for (const table of tables) {
