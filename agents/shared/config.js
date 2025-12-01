@@ -6,8 +6,8 @@ export const AGENT_CONFIG = {
   },
   PROSPECT_FINDER: {
     name: 'prospect-finder',
-    pollIntervalMs: 30000,
-    batchSize: 5,
+    pollIntervalMs: 20000,  // Faster prospect discovery
+    batchSize: 10,  // 2x more prospects per cycle
     enabled: true
   },
   RESEARCH: {
@@ -42,21 +42,21 @@ export const AGENT_CONFIG = {
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 3000,  // 1.67x faster polling
-    batchSize: 15,  // 50% more per batch
-    dailyLimit: 1000,  // 2x capacity
-    delayBetweenEmailsMs: 200,  // 2.5x faster sending
+    pollIntervalMs: 2000,  // 2.5x faster polling - every 2s
+    batchSize: 20,  // 2x more per batch - send 20 at a time
+    dailyLimit: 1500,  // 3x capacity - max 1500/day
+    delayBetweenEmailsMs: 100,  // 5x faster - 100ms between emails
     enabled: true
   },
   INBOX: {
     name: 'inbox',
-    pollIntervalMs: 20000,  // Faster inbox sync
+    pollIntervalMs: 15000,  // Even faster inbox sync
     enabled: true
   },
   LOGO_FINDER: {
     name: 'logo-finder',
-    pollIntervalMs: 30000,  // Faster logo processing
-    batchSize: 10,  // 2x batch size
+    pollIntervalMs: 25000,  // Faster logo processing
+    batchSize: 15,  // 3x batch size
     enabled: true
   }
 };

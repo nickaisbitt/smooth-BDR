@@ -320,6 +320,9 @@ async function processEmailGeneration(item) {
     domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase().trim();
     // CRITICAL: Remove ALL spaces and special chars from domain, replace with hyphens
     domain = domain.replace(/\s+/g, '-').replace(/[^a-z0-9\.\-]/g, '').replace(/^-+|-+$/g, '');
+    // Strip trailing dots (from company names like "Corp.")
+    domain = domain.replace(/\.+$/, '');
+    // Ensure domain has TLD
     if (!domain.includes('.')) domain += '.com';
     
     // Try to generate from keyPeople names
