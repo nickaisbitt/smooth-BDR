@@ -298,6 +298,34 @@ async function processEmailGeneration(item) {
     : item.research_data;
   const analysis = research.aiAnalysis || {};
   
+  // Step 2.5: EXTRACT OR GENERATE CONTACT EMAIL
+  let contactEmail = item.contact_email;
+  if (!contactEmail) {
+    // Try to generate from keyPeople names
+    const keyPeople = analysis.keyPeople || [];
+    if (keyPeople.length > 0) {
+      const firstPerson = keyPeople[0];
+      // Parse name like "Olivier Pomel, CEO" -> "olivier.pomel@company.com"
+      const nameOnly = firstPerson.split(',')[0].trim().toLowerCase();
+      const nameParts = nameOnly.split(/\s+/);
+      if (nameParts.length >= 1) {
+        // Try common email patterns based on company domain
+        const domain = item.website_url?.replace('https://', '').replace('http://', '').split('/')[0] || 'company.com';
+        if (nameParts.length === 2) {
+          // firstname.lastname@domain.com
+          contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
+        } else if (nameParts.length >= 2) {
+          // firstname.lastname@domain.com (take first two parts)
+          contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
+        } else {
+          // firstnamefirstname@domain.com
+          contactEmail = `${nameParts[0]}@${domain}`;
+        }
+        logger.info(`Generated contact email for ${item.company_name}: ${contactEmail} (from "${firstPerson}")`);
+      }
+    }
+  }
+  
   // Step 3: Validate that hooks have real source citations (lenient for high-quality research)
   const citationValidation = validateHookCitations(analysis.personalizedHooks, research.rawData, item.research_quality);
   
@@ -348,7 +376,7 @@ async function processEmailGeneration(item) {
     WHERE id = ?
   `, [email.subject, email.body, Date.now(), Date.now(), item.id]);
   
-  if (item.contact_email) {
+  if (contactEmail) {
     // Step 6: Queue email with approval_required flag
     await db.run(`
       INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, scheduled_for, status, created_at, research_quality, approval_status)
@@ -356,7 +384,7 @@ async function processEmailGeneration(item) {
     `, [
       item.lead_id || `prospect_${item.prospect_id}`,
       item.company_name,
-      item.contact_email,
+      contactEmail,
       email.subject,
       email.body,
       Date.now(),
@@ -365,10 +393,10 @@ async function processEmailGeneration(item) {
     ]);
     
     await completeQueueItem(db, 'draft_queue', item.id, 'awaiting_approval');
-    logger.info(`Email generated for ${item.company_name} - AWAITING APPROVAL (verified hooks: ${citationValidation.verifiedHooks?.length})`);
+    logger.info(`Email generated for ${item.company_name} - AWAITING APPROVAL (to: ${contactEmail}, verified hooks: ${citationValidation.verifiedHooks?.length})`);
   } else {
     await completeQueueItem(db, 'draft_queue', item.id, 'draft_ready');
-    logger.info(`Email generated for ${item.company_name} (no contact email - saved as draft)`);
+    logger.info(`Email generated for ${item.company_name} (unable to determine contact email - saved as draft)`);
   }
   
   return { success: true, email, verifiedHooks: citationValidation.verifiedHooks?.length };
