@@ -42,10 +42,10 @@ export const AGENT_CONFIG = {
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 800,  // EXTREME SPEED: 20% faster from 1000ms
-    batchSize: 100,  // ULTIMATE: 100 emails per batch
+    pollIntervalMs: 600,  // ULTIMATE SPEED: 33% faster from 800ms
+    batchSize: 150,  // MAXIMUM: 150 emails per batch (50% more)
     dailyLimit: 10000,  // MAXIMUM: 10000/day capacity
-    delayBetweenEmailsMs: 5,  // ABSOLUTE MAX: 5ms between emails (200 emails/sec theoretical)
+    delayBetweenEmailsMs: 3,  // ABSOLUTE MAXIMUM: 3ms between emails (333 emails/sec theoretical)
     enabled: true
   },
   INBOX: {

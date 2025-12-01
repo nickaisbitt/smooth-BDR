@@ -12,21 +12,25 @@ I want the agent to:
 
 ## System Architecture
 The application features a modern full-stack architecture with a React 18 (TypeScript, Vite) frontend and a Node.js (Express) backend. Data is persisted using SQLite. The UI is built with Tailwind CSS for rapid styling and Recharts for data visualization. Key architectural decisions include:
-- **Multi-Agent Architecture**: 6 parallel agents running as separate processes:
-  1. **Prospect Finder Agent**: Discovers and adds new prospects to the pipeline
-  2. **Research Agent**: Conducts initial multi-source research on companies (3 passes)
-  3. **Research Retry Agent**: Continuously retries research until 9/10 quality achieved or data exhausted
-  4. **Email Generator Agent**: Generates personalized emails for leads with 9/10+ research quality
-  5. **Email Sender Agent**: Sends approved emails via SMTP
-  6. **Inbox Agent**: Monitors IMAP inbox and processes replies
-- **Multi-Source Intelligence Research**: An iterative, multi-pass research orchestrator gathers data from 7+ parallel intelligence sources (website scraping, Google News, press releases, executive news, careers pages, web search) per company. Research quality is scored (1-10) and only leads with quality >= 9 proceed to email generation.
-- **Persistent Research Retry System**: If initial research scores below 9/10, the Research Retry Agent automatically picks up the lead and keeps researching with progressive strategies (deep website crawl, Google News deep search, press releases, jobs/careers, executive search, comprehensive web search). Only marks as exhausted after 3+ consecutive rounds with no new data found.
-- **Autonomous BDR System**: A server-side automation scheduler manages background jobs for inbox synchronization, email queue processing, and AI-powered reply analysis (categorizing replies as INTERESTED, NOT_INTERESTED, etc., and generating auto-responses).
-- **Unified Email Configuration**: A single settings interface manages both SMTP (sending) and IMAP (receiving) email configurations, automatically deriving host settings.
-- **Unified Inbox View**: Displays both sent and received emails, with filtering and linking to leads.
-- **CRM Features**: Includes a full sales pipeline with a drag-and-drop Kanban board, deal management (value, probability, close date), and a detailed lead view with multiple contacts, activity timelines, and notes.
-- **AI Integration**: AI calls are proxied through a server-side endpoint for security and leverage Replit AI Integrations (OpenRouter) with the `meta-llama/llama-3.3-70b-instruct` model.
-- **Deployment**: Configured for Replit's autoscale production environment, serving the React build via the Express server.
+- **Multi-Agent Architecture**: 9 parallel agents running as separate processes:
+  1. **COO Agent**: System health monitor (5s polling)
+  2. **Prospect Finder Agent**: Discovers and adds new prospects (3s polling, 50/batch)
+  3. **Research Agent**: Multi-source research on companies (600ms polling, 15 parallel items)
+  4. **Research Retry Agent**: Retry research with fail-fast strategy (1000ms polling, max 1 retry)
+  5. **Email Generator Agent**: Generates personalized emails (600ms polling, 20/batch)
+  6. **Email Reviewer Agent**: Quality review & hallucination detection (600ms polling)
+  7. **Email Sender Agent**: Sends approved emails (800ms polling, 100/batch, 5ms delays)
+  8. **Inbox Agent**: Monitors IMAP inbox for replies (5s polling)
+  9. **Logo Finder Agent**: Enriches prospects with logos (60s polling, 30/batch)
+- **Multi-Source Intelligence Research**: Parallel research orchestrator gathers data from 7+ sources (website scraping, Google News, press releases, executive news, careers pages, web search) with adaptive fallbacks.
+- **Ultra-Aggressive Optimization**: Research quality threshold 3/10, email minimum 3/10, email sender batch 100 emails/cycle, 5ms inter-email delay = **theoretical 200 emails/sec throughput**
+- **Persistent Research Retry System**: Auto-retry with progressive strategies (deep crawl, news deep search, executive search, comprehensive web) with fail-fast philosophy (1 retry max).
+- **Autonomous BDR System**: Server-side automation scheduler for inbox sync, email queue processing, and AI-powered reply analysis.
+- **Unified Email Configuration**: Single interface for SMTP sending and IMAP receiving with auto host derivation.
+- **Unified Inbox View**: Displays sent and received emails with filtering and lead linking.
+- **CRM Features**: Full sales pipeline with Kanban board, deal management (value, probability, close date), and detailed lead view.
+- **AI Integration**: Server-side AI proxy using OpenRouter `meta-llama/llama-3.3-70b-instruct` model with hallucination detection.
+- **Production Deployment**: Configured for Replit autoscale, serving React build via Express.
 
 ## Development Workflow
 The development environment runs three parallel processes using a single workflow command:
