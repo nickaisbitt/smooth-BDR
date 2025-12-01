@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Lead, LeadStatus } from '../types';
 import { generateMailtoLink } from '../services/emailService';
 import { LeadDetailView } from './LeadDetailView';
+import { ResearchDetailView } from './ResearchDetailView';
 
 interface Props {
   leads: Lead[];
@@ -24,6 +25,7 @@ const formatCurrency = (value: number): string => {
 
 export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds, onUpdateLead }) => {
   const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
+  const [selectedResearchLeadId, setSelectedResearchLeadId] = useState<string | null>(null);
 
   const columns = [
     { id: LeadStatus.NEW, label: 'Identified', color: 'bg-slate-100', text: 'text-slate-600' },
@@ -121,15 +123,15 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
 
                                     {/* Research Quality Badge */}
                                     {lead.researchQuality !== undefined && (
-                                        <div className={`text-[10px] font-bold p-1.5 rounded border ${
+                                        <button onClick={() => setSelectedResearchLeadId(lead.id)} className={`text-[10px] font-bold p-1.5 rounded border cursor-pointer hover:shadow-md transition-shadow ${
                                             (lead.researchQuality || 0) >= 8 
-                                                ? 'text-green-600 bg-green-50 border-green-100' 
+                                                ? 'text-green-600 bg-green-50 border-green-100 hover:border-green-300' 
                                                 : (lead.researchQuality || 0) >= 5
-                                                ? 'text-orange-600 bg-orange-50 border-orange-100'
-                                                : 'text-red-600 bg-red-50 border-red-100'
+                                                ? 'text-orange-600 bg-orange-50 border-orange-100 hover:border-orange-300'
+                                                : 'text-red-600 bg-red-50 border-red-100 hover:border-red-300'
                                         }`}>
                                             Research: {lead.researchQuality}/10 {(lead.researchQuality || 0) >= 8 ? '✓' : (lead.researchQuality || 0) >= 5 ? '⚠️' : '✗'}
-                                        </div>
+                                        </button>
                                     )}
 
                                     {/* Decision Maker */}
@@ -217,6 +219,20 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
               />
             </div>
           </div>
+        )}
+
+        {/* Research Detail Modal */}
+        {selectedResearchLeadId && (
+          (() => {
+            const lead = leads.find(l => l.id === selectedResearchLeadId);
+            return lead && lead.research ? (
+              <ResearchDetailView 
+                research={lead.research}
+                companyName={lead.companyName}
+                onClose={() => setSelectedResearchLeadId(null)}
+              />
+            ) : null;
+          })()
         )}
     </div>
   );

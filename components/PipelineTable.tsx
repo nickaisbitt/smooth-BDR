@@ -4,6 +4,7 @@ import { Lead, LeadStatus, EmailDraft } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMailtoLink } from '../services/emailService';
 import { LeadDetailView } from './LeadDetailView';
+import { ResearchDetailView } from './ResearchDetailView';
 
 interface Props {
   leads: Lead[];
@@ -115,6 +116,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
   
   // Detail View State
   const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
+  const [selectedResearchLeadId, setSelectedResearchLeadId] = useState<string | null>(null);
 
   // Manual Add State
   const [manualCompany, setManualCompany] = useState('');
@@ -319,15 +321,15 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                     {/* Column 2.5: Research Quality */}
                     <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0 hidden md:table-cell">
                         {lead.researchQuality !== undefined ? (
-                            <div className={`text-xs font-bold p-2 rounded border inline-block ${
+                            <button onClick={() => setSelectedResearchLeadId(lead.id)} className={`text-xs font-bold p-2 rounded border inline-block cursor-pointer hover:shadow-md transition-shadow ${
                                 (lead.researchQuality || 0) >= 8 
-                                    ? 'text-green-600 bg-green-50 border-green-100' 
+                                    ? 'text-green-600 bg-green-50 border-green-100 hover:border-green-300' 
                                     : (lead.researchQuality || 0) >= 5
-                                    ? 'text-orange-600 bg-orange-50 border-orange-100'
-                                    : 'text-red-600 bg-red-50 border-red-100'
+                                    ? 'text-orange-600 bg-orange-50 border-orange-100 hover:border-orange-300'
+                                    : 'text-red-600 bg-red-50 border-red-100 hover:border-red-300'
                             }`}>
                                 {lead.researchQuality}/10 {(lead.researchQuality || 0) >= 8 ? '✓' : (lead.researchQuality || 0) >= 5 ? '⚠️' : '✗'}
-                            </div>
+                            </button>
                         ) : (
                             <span className="text-slate-300 text-[10px]">-</span>
                         )}
@@ -414,6 +416,20 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
             />
           </div>
         </div>
+      )}
+
+      {/* Research Detail Modal */}
+      {selectedResearchLeadId && (
+        (() => {
+          const lead = leads.find(l => l.id === selectedResearchLeadId);
+          return lead && lead.research ? (
+            <ResearchDetailView 
+              research={lead.research}
+              companyName={lead.companyName}
+              onClose={() => setSelectedResearchLeadId(null)}
+            />
+          ) : null;
+        })()
       )}
     </div>
   );
