@@ -61,6 +61,7 @@ function App() {
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
+  const [agentStatuses, setAgentStatuses] = useState<any[]>([]);
   
   // CIRCUIT BREAKER STATE
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
@@ -98,18 +99,20 @@ function App() {
   useEffect(() => {
     const fetchAgentData = async () => {
       try {
-        const [logsRes, statusRes] = await Promise.all([
+        const [logsRes, statusRes, agentsRes] = await Promise.all([
           fetch('/api/agents/logs?limit=50'),
-          fetch('/api/automation/status')
+          fetch('/api/automation/status'),
+          fetch('/api/agents/status')
         ]);
         
         const logsData = await logsRes.json();
         const statusData = await statusRes.json();
+        const agentsData = await agentsRes.json();
         
         if (logsData.logs && logsData.logs.length > 0) {
           const formattedLogs: AgentLog[] = logsData.logs.map((log: any) => ({
-            id: log.id || String(log.timestamp),
-            timestamp: log.timestamp,
+            id: log.id || String(log.created_at),
+            timestamp: log.created_at || log.timestamp || Date.now(),
             message: log.message,
             type: log.level === 'error' ? 'error' : log.level === 'warn' ? 'warning' : log.level === 'success' ? 'success' : 'info'
           }));
@@ -118,6 +121,10 @@ function App() {
         
         if (statusData.enabled !== undefined) {
           setIsGrowthEngineActive(statusData.enabled);
+        }
+        
+        if (agentsData.agents) {
+          setAgentStatuses(agentsData.agents);
         }
       } catch (error) {
         console.error('Failed to fetch agent data:', error);
@@ -751,6 +758,56 @@ function App() {
                         >
                             {isGrowthEngineActive ? '⚡ GROWTH ENGINE RUNNING' : 'START GROWTH ENGINE'}
                         </button>
+                        
+                        {/* Agent Activity Panel */}
+                        {agentStatuses.length > 0 && (
+                          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 mt-2">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Agent Activity</h3>
+                              <span className="text-xs text-slate-500">
+                                {agentStatuses.filter(a => a.health === 'healthy').length}/{agentStatuses.length} Active
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                              {agentStatuses.map((agent) => (
+                                <div 
+                                  key={agent.name}
+                                  className={`p-2 rounded-lg border text-xs ${
+                                    agent.health === 'healthy' 
+                                      ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' 
+                                      : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <div className={`w-2 h-2 rounded-full ${agent.health === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300 capitalize truncate">
+                                      {agent.name.replace('-', ' ')}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                    {agent.current_item ? (
+                                      <span className="text-blue-600 dark:text-blue-400">
+                                        {(() => {
+                                          try {
+                                            const item = JSON.parse(agent.current_item);
+                                            return item.company || item.name || 'Processing...';
+                                          } catch {
+                                            return agent.current_item.substring(0, 20);
+                                          }
+                                        })()}
+                                      </span>
+                                    ) : (
+                                      <span>{agent.processed > 0 ? `${agent.processed} done` : 'Waiting...'}</span>
+                                    )}
+                                  </div>
+                                  <div className="text-[9px] text-slate-400 mt-0.5">
+                                    {agent.last_heartbeat ? new Date(agent.last_heartbeat).toLocaleTimeString() : 'N/A'}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                      </div>
                      <div className="w-full xl:w-80">
                          <StrategyQueue queue={strategyQueue} active={isGrowthEngineActive} leads={leads} onAddStrategy={(s,q) => setStrategyQueue(prev => [{id: uuidv4(), sector:s, query:q, rationale:'Manual', status:'pending'}, ...prev])} />
