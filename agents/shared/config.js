@@ -12,8 +12,8 @@ export const AGENT_CONFIG = {
   },
   RESEARCH: {
     name: 'research',
-    pollIntervalMs: 1000,  // MAXIMUM SPEED: 1.5x faster
-    batchSize: 8,  // 60% more parallel: 5→8 concurrent research items
+    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
+    batchSize: 10,  // 25% more parallel: 8→10 concurrent research items
     maxPasses: 1,  // FAIL FAST: only 1 pass to unlock flow
     targetQuality: 4,  // SUPER LENIENT: 4/10 to accept all
     enabled: true
@@ -28,24 +28,24 @@ export const AGENT_CONFIG = {
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 1000,  // MAXIMUM SPEED: 1.5x faster
-    batchSize: 10,  // 43% more per cycle
+    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
+    batchSize: 15,  // 50% more per cycle
     minQuality: 4,  // SUPER LENIENT: 4/10
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 1000,  // MAXIMUM SPEED
+    pollIntervalMs: 800,  // LIGHTNING FAST: 25% faster
     minEmailQuality: 4,  // SUPER LENIENT: 4/10
     minResearchQuality: 4,  // SUPER LENIENT: 4/10
     enabled: true
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 1500,  // MAXIMUM SPEED: 33% faster
-    batchSize: 30,  // 50% more per batch
-    dailyLimit: 2000,  // UNLIMITED: max 2000/day
-    delayBetweenEmailsMs: 50,  // MAXIMUM SPEED: 2x faster
+    pollIntervalMs: 1200,  // ULTRA MAXIMUM: 25% faster polling
+    batchSize: 50,  // MASSIVE: 67% more per batch - send 50 at once
+    dailyLimit: 5000,  // UNLIMITED SCALE: max 5000/day
+    delayBetweenEmailsMs: 25,  // EXTREME SPEED: 4x faster sending (25ms between emails)
     enabled: true
   },
   INBOX: {
