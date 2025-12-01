@@ -109,7 +109,7 @@ function App() {
         const statusData = await statusRes.json();
         const agentsData = await agentsRes.json();
         
-        if (logsData.logs && logsData.logs.length > 0) {
+        if (logsData.logs) {
           const formattedLogs: AgentLog[] = logsData.logs.map((log: any) => ({
             id: log.id || String(log.created_at),
             timestamp: log.created_at || log.timestamp || Date.now(),
@@ -751,7 +751,7 @@ function App() {
 
                  <div className="flex flex-col xl:flex-row gap-6 h-auto min-h-[400px]">
                      <div className="flex-1 flex flex-col gap-2">
-                        <AgentTerminal logs={agentLogs.length > 0 ? agentLogs : logs} active={isGrowthEngineActive} />
+                        <AgentTerminal logs={isGrowthEngineActive ? agentLogs : logs} active={isGrowthEngineActive} />
                         <button 
                             onClick={handleToggleGrowthEngine} 
                             className={`w-full py-3 text-xs font-bold rounded-lg shadow-sm transition-all active:scale-95 ${isGrowthEngineActive ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
