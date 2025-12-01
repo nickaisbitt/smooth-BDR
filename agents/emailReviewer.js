@@ -523,13 +523,13 @@ async function reviewPendingEmails() {
     // Dynamic polling: Fast when processing items, slower when empty
     if (processedCount > 0 && processedCount === batchSize) {
       // Queue still has items, poll faster
-      config.pollInterval = 3000;
+      config.pollInterval = 1500;
     } else if (processedCount === 0) {
       // No items processed, poll slower
-      config.pollInterval = 8000;
-    } else {
-      // Partially processed, normal interval
       config.pollInterval = 5000;
+    } else {
+      // Partially processed, aggressive interval
+      config.pollInterval = 2000;
     }
     
   } catch (error) {

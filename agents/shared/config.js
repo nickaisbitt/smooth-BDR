@@ -12,32 +12,32 @@ export const AGENT_CONFIG = {
   },
   RESEARCH: {
     name: 'research',
-    pollIntervalMs: 3000,  // 3.3x faster - was 10000
-    batchSize: 3,  // BATCH PROCESSING: process 3 research items per cycle
+    pollIntervalMs: 2000,  // AGGRESSIVE: 5x faster - was 10000
+    batchSize: 5,  // PARALLEL: process 5 research items concurrently per cycle
     maxPasses: 3,
-    targetQuality: 7,
+    targetQuality: 6,  // LOWERED to 6/10 to unlock more items
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
-    pollIntervalMs: 10000,  // 3x faster - was 30000
-    maxRetries: 10,
-    targetQuality: 7,
-    retryDelayMs: 60000,
+    pollIntervalMs: 5000,  // 6x faster - was 30000
+    maxRetries: 8,  // LOWERED: mark as exhausted after 8 retries instead of 50
+    targetQuality: 6,  // LOWERED to 6/10
+    retryDelayMs: 30000,  // HALVED from 60000
     enabled: true
   },
   EMAIL_GENERATOR: {
     name: 'email-generator',
-    pollIntervalMs: 3000,  // 1.67x faster - was 5000
-    batchSize: 3,  // BATCH PROCESSING: process 3 emails per cycle (was 1)
-    minQuality: 7,
+    pollIntervalMs: 2000,  // AGGRESSIVE: 2.5x faster - was 5000
+    batchSize: 5,  // INCREASED: process 5 emails per cycle (was 3)
+    minQuality: 6,  // LOWERED to 6/10
     enabled: true
   },
   EMAIL_REVIEWER: {
     name: 'email-reviewer',
-    pollIntervalMs: 3000,
-    minEmailQuality: 7,
-    minResearchQuality: 7,  // LOWERED from 8 to 7
+    pollIntervalMs: 2000,  // AGGRESSIVE: faster polling
+    minEmailQuality: 6,  // LOWERED to 6/10
+    minResearchQuality: 6,  // LOWERED to 6/10
     enabled: true
   },
   EMAIL_SENDER: {

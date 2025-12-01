@@ -297,11 +297,11 @@ Return valid JSON:
 }
 
 async function processEmailGeneration(item) {
-  // Step 1: Check basic quality threshold - ACCEPT 7+/10 RESEARCH
-  if (item.research_quality < 7) {  // Only process 7+/10 research (lowered from 8)
-    logger.warn(`Skipping ${item.company_name} - research quality ${item.research_quality} below minimum 7/10`);
+  // Step 1: Check basic quality threshold - ACCEPT 6+/10 RESEARCH
+  if (item.research_quality < 6) {  // Only process 6+/10 research
+    logger.warn(`Skipping ${item.company_name} - research quality ${item.research_quality} below minimum 6/10`);
     await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
-      last_error: `Research quality ${item.research_quality}/10 below minimum 7/10`
+      last_error: `Research quality ${item.research_quality}/10 below minimum 6/10`
     });
     return { success: false, reason: 'Quality too low' };
   }

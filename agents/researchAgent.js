@@ -78,31 +78,38 @@ async function processResearch() {
       return;
     }
     
-    // BATCH PROCESSING: Process up to 3 research items per cycle
-    let processed = 0;
+    // PARALLEL BATCH PROCESSING: Fetch all items first, then process in parallel
+    const items = [];
     for (let i = 0; i < config.batchSize; i++) {
-      if (!isRunning) break;
-      
       const item = await acquireQueueItem(db, 'research_queue', config.name);
-      if (!item) break;  // No more items in queue
-      
-      heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
-      
-      try {
-        await processResearchItem(item);
-        heartbeat.incrementProcessed();
-        processed++;
-      } catch (error) {
-        logger.error(`Research failed for ${item.company_name}`, { error: error.message });
-        heartbeat.incrementErrors();
-        await failQueueItem(db, 'research_queue', item.id, error.message);
-      }
-      
-      heartbeat.clearCurrentItem();
+      if (!item) break;
+      items.push(item);
     }
     
+    if (items.length === 0) return;
+    
+    // Process all items in PARALLEL using Promise.all
+    const results = await Promise.all(
+      items.map(async (item) => {
+        heartbeat.setCurrentItem({ id: item.id, company: item.company_name });
+        try {
+          await processResearchItem(item);
+          heartbeat.incrementProcessed();
+          heartbeat.clearCurrentItem();
+          return { success: true };
+        } catch (error) {
+          logger.error(`Research failed for ${item.company_name}`, { error: error.message });
+          heartbeat.incrementErrors();
+          await failQueueItem(db, 'research_queue', item.id, error.message);
+          heartbeat.clearCurrentItem();
+          return { success: false };
+        }
+      })
+    );
+    
+    const processed = results.filter(r => r.success).length;
     if (processed > 0) {
-      logger.info(`Processed ${processed} research items this cycle`);
+      logger.info(`⚡ Processed ${processed} research items in PARALLEL this cycle`);
     }
     
   } catch (error) {
