@@ -1,10 +1,11 @@
 
 import React, { useState } from 'react';
-import { Lead, LeadStatus, EmailDraft } from '../types';
+import { Lead, LeadStatus, EmailDraft, Contact } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMailtoLink } from '../services/emailService';
 import { LeadDetailView } from './LeadDetailView';
 import { ResearchDetailView } from './ResearchDetailView';
+import { ContactDetailView } from './ContactDetailView';
 
 interface Props {
   leads: Lead[];
@@ -117,6 +118,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
   // Detail View State
   const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
   const [selectedResearchLeadId, setSelectedResearchLeadId] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<{contact: Contact, lead: Lead} | null>(null);
 
   // Manual Add State
   const [manualCompany, setManualCompany] = useState('');
@@ -338,8 +340,8 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                     {/* Column 3: Decision Maker */}
                     <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0">
                         {lead.decisionMaker ? (
-                            <button onClick={() => setSelectedDetailLeadId(lead.id)} className="text-left bg-white/50 p-1.5 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-colors inline-block md:block w-full">
-                                <p className="text-xs font-bold text-slate-700 hover:text-blue-600">{lead.decisionMaker.name}</p>
+                            <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, ...lead.decisionMaker, phone: undefined, isPrimary: true}, lead})} className="text-left bg-white/50 p-1.5 rounded-lg border border-slate-100 hover:border-purple-300 hover:bg-purple-50 transition-colors inline-block md:block w-full">
+                                <p className="text-xs font-bold text-slate-700 hover:text-purple-600">{lead.decisionMaker.name}</p>
                                 <p className="text-[10px] text-slate-400 truncate">{lead.decisionMaker.role}</p>
                             </button>
                         ) : lead.status !== LeadStatus.NEW && onHunt ? (
@@ -435,6 +437,30 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
             />
           ) : null;
         })()
+      )}
+
+      {/* Contact Detail Modal */}
+      {selectedContact && (
+        <ContactDetailView 
+          contact={selectedContact.contact}
+          lead={selectedContact.lead}
+          onClose={() => setSelectedContact(null)}
+          onViewCompany={(lead) => {
+            setSelectedContact(null);
+            setSelectedDetailLeadId(lead.id);
+          }}
+          onUpdate={(updatedContact) => {
+            if (onUpdateLead && selectedContact) {
+              const updatedLead = {
+                ...selectedContact.lead,
+                decisionMaker: updatedContact.isPrimary ? updatedContact : selectedContact.lead.decisionMaker,
+                contacts: selectedContact.lead.contacts?.map(c => c.id === updatedContact.id ? updatedContact : c) || [updatedContact]
+              };
+              onUpdateLead(updatedLead);
+              setSelectedContact({...selectedContact, contact: updatedContact});
+            }
+          }}
+        />
       )}
     </div>
   );

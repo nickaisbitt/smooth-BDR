@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
-import { Lead, LeadStatus } from '../types';
+import { Lead, LeadStatus, Contact } from '../types';
 import { generateMailtoLink } from '../services/emailService';
 import { LeadDetailView } from './LeadDetailView';
 import { ResearchDetailView } from './ResearchDetailView';
+import { ContactDetailView } from './ContactDetailView';
 
 interface Props {
   leads: Lead[];
@@ -26,6 +27,7 @@ const formatCurrency = (value: number): string => {
 export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContacted, onDeleteLead, analyzingIds, onUpdateLead }) => {
   const [selectedDetailLeadId, setSelectedDetailLeadId] = useState<string | null>(null);
   const [selectedResearchLeadId, setSelectedResearchLeadId] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<{contact: Contact, lead: Lead} | null>(null);
 
   const columns = [
     { id: LeadStatus.NEW, label: 'Identified', color: 'bg-slate-100', text: 'text-slate-600' },
@@ -136,12 +138,12 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
 
                                     {/* Decision Maker */}
                                     {lead.decisionMaker && (
-                                        <button onClick={() => setSelectedDetailLeadId(lead.id)} className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100 hover:bg-purple-100 hover:border-blue-300 transition-colors w-full text-left">
+                                        <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, ...lead.decisionMaker, phone: undefined, isPrimary: true}, lead})} className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100 hover:bg-purple-100 hover:border-purple-300 transition-colors w-full text-left">
                                             <div className="w-4 h-4 rounded-full bg-purple-200 flex items-center justify-center text-[8px] text-purple-700 font-bold">
                                                 {lead.decisionMaker.name[0]}
                                             </div>
                                             <div className="overflow-hidden">
-                                                <p className="text-[10px] font-bold text-purple-900 truncate hover:text-blue-600">{lead.decisionMaker.name}</p>
+                                                <p className="text-[10px] font-bold text-purple-900 truncate hover:text-purple-700">{lead.decisionMaker.name}</p>
                                                 <p className="text-[8px] text-purple-600 truncate">{lead.decisionMaker.role}</p>
                                             </div>
                                         </button>
@@ -238,6 +240,30 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
               />
             ) : null;
           })()
+        )}
+
+        {/* Contact Detail Modal */}
+        {selectedContact && (
+          <ContactDetailView 
+            contact={selectedContact.contact}
+            lead={selectedContact.lead}
+            onClose={() => setSelectedContact(null)}
+            onViewCompany={(lead) => {
+              setSelectedContact(null);
+              setSelectedDetailLeadId(lead.id);
+            }}
+            onUpdate={(updatedContact) => {
+              if (onUpdateLead && selectedContact) {
+                const updatedLead = {
+                  ...selectedContact.lead,
+                  decisionMaker: updatedContact.isPrimary ? updatedContact : selectedContact.lead.decisionMaker,
+                  contacts: selectedContact.lead.contacts?.map(c => c.id === updatedContact.id ? updatedContact : c) || [updatedContact]
+                };
+                onUpdateLead(updatedLead);
+                setSelectedContact({...selectedContact, contact: updatedContact});
+              }
+            }}
+          />
         )}
     </div>
   );
