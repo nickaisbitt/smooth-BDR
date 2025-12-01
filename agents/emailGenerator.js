@@ -198,33 +198,37 @@ async function generatePersonalizedEmail(item) {
   const contactName = item.contact_name || analysis.keyPeople?.[0] || 'there';
   const firstName = contactName.split(' ')[0];
   
-  // STRICT TEMPLATE-BASED EMAIL GENERATION - NO HALLUCINATIONS
+  // EXPANDED TEMPLATE-BASED EMAIL GENERATION - EVIDENCE-BASED, NOT HALLUCINATIONS
 const hook = analysis.personalizedHooks?.[0] || analysis.recentTriggers?.[0] || 'your growth';
 const painPoint = analysis.potentialPainPoints?.[0] || 'operational efficiency';
+const company = analysis.companyOverview || 'strong market position';
+const keyPerson = analysis.keyPeople?.[0] || firstName;
 
-const prompt = `Write a SHORT, FACTUAL cold email. Use ONLY the facts provided below. Do NOT add claims, inferences, or projections not explicitly stated.
+const prompt = `Write a COMPELLING, FACT-BASED cold email using ONLY information explicitly stated below. NO inferences, projections, or assumptions.
 
-FACTS ONLY (use these exactly as stated, nothing more):
-Hook: "${hook}"
-Pain Point: "${painPoint}"
-Company: ${item.company_name}
-Contact First Name: ${firstName}
+RESEARCH FACTS (stated exactly - use these only):
+- Hook/Trigger: "${hook}"
+- Pain Point: "${painPoint}"
+- Company Background: "${company}"
+- Contact: ${keyPerson}
 
-TEMPLATE (follow exactly):
-Subject: 1-2 words from the hook, curiosity-driven
-Body: 3 sentences max
-  1. Reference the hook or recent trigger specifically
-  2. Name ONE pain point they likely face
-  3. Ask low-friction question
-  
+STRUCTURE (must follow):
+Subject: 3-5 words, specific to the company/hook
+Body: 4 paragraphs, 150-180 words total
+  1. OPEN WITH SPECIFICITY: Reference the exact hook, trigger, or research finding. No generic phrases. Example: "I noticed ${item.company_name} recently expanded..."
+  2. SHOW RESEARCH: Demonstrate you know the company. Use ONE specific fact from research (market position, recent news, growth, etc.)
+  3. CONNECT PAIN POINT: State the pain point explicitly tied to what you just mentioned. Example: "This likely means you're..."
+  4. VALUE & CTA: One sentence on how to discuss further. One specific, low-friction ask. Example: "Worth a 15-minute call?"
+
 CRITICAL RULES:
-- NO percentage claims unless explicitly in research ("saw 40% improvement" is ONLY ok if "40%" is in the facts provided)
-- NO outcome predictions ("could reduce costs" is FORBIDDEN - say "addresses" instead)
-- NO generic phrases ("I hope this finds you well", "I came across", "reaching out")
-- Use ONLY facts from the hook and pain point above
+✗ NO assumptions ("likely faces", "probably struggles") - only state if research explicitly says it
+✗ NO generic openers ("I hope this finds you well", "I came across your company")
+✗ NO outcome claims unless data proves it ("could save 40%" = FORBIDDEN unless "40%" is in research)
+✗ NO buzzwords (leverage, synergy, revolutionary, best-in-class, cutting-edge, etc.)
+✗ Each claim must trace back to the facts above
 
-Return valid JSON:
-{"subject": "2-3 words max", "body": "3 sentences, max 60 words"}`;
+Return valid JSON ONLY:
+{"subject": "3-5 words specific", "body": "4 paragraphs, cite research, 150-180 words"}`;
 
   const response = await openrouter.chat.completions.create({
     model: "meta-llama/llama-3.3-70b-instruct",
