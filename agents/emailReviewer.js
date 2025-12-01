@@ -474,38 +474,63 @@ async function reviewPendingEmails() {
       return;
     }
     
-    const pendingEmail = await db.get(`
+    // BATCH PROCESSING: Review up to 5 emails per cycle
+    const batchSize = 5;
+    const pendingEmails = await db.all(`
       SELECT * FROM email_queue 
       WHERE status = 'pending_approval' 
         AND (approval_status IS NULL OR approval_status = 'needs_review')
       ORDER BY created_at ASC
-      LIMIT 1
-    `);
+      LIMIT ?
+    `, [batchSize]);
     
-    if (!pendingEmail) return;
-    
-    heartbeat.setCurrentItem({ id: pendingEmail.id, company: pendingEmail.lead_name });
-    
-    try {
-      const result = await processEmailReview(pendingEmail);
-      
-      if (result.approved) {
-        heartbeat.incrementProcessed();
-      } else {
-        heartbeat.incrementErrors();
-      }
-    } catch (error) {
-      logger.error(`Email review failed for ${pendingEmail.lead_name}`, { error: error.message });
-      heartbeat.incrementErrors();
-      
-      await db.run(`
-        UPDATE email_queue 
-        SET last_error = ?, approval_status = 'review_error'
-        WHERE id = ?
-      `, [error.message, pendingEmail.id]);
+    if (pendingEmails.length === 0) {
+      // Dynamic polling: slower when no work
+      config.pollInterval = 8000;
+      return;
     }
     
-    heartbeat.clearCurrentItem();
+    let processedCount = 0;
+    
+    for (const pendingEmail of pendingEmails) {
+      if (!isRunning) break;
+      
+      heartbeat.setCurrentItem({ id: pendingEmail.id, company: pendingEmail.lead_name });
+      
+      try {
+        const result = await processEmailReview(pendingEmail);
+        
+        if (result.approved) {
+          heartbeat.incrementProcessed();
+        } else {
+          heartbeat.incrementErrors();
+        }
+        processedCount++;
+      } catch (error) {
+        logger.error(`Email review failed for ${pendingEmail.lead_name}`, { error: error.message });
+        heartbeat.incrementErrors();
+        
+        await db.run(`
+          UPDATE email_queue 
+          SET last_error = ?, approval_status = 'review_error'
+          WHERE id = ?
+        `, [error.message, pendingEmail.id]);
+      }
+      
+      heartbeat.clearCurrentItem();
+    }
+    
+    // Dynamic polling: Fast when processing items, slower when empty
+    if (processedCount > 0 && processedCount === batchSize) {
+      // Queue still has items, poll faster
+      config.pollInterval = 3000;
+    } else if (processedCount === 0) {
+      // No items processed, poll slower
+      config.pollInterval = 8000;
+    } else {
+      // Partially processed, normal interval
+      config.pollInterval = 5000;
+    }
     
   } catch (error) {
     logger.error('Email review cycle failed', { error: error.message });
