@@ -1088,12 +1088,6 @@ app.post('/api/automation/toggle', async (req, res) => {
     
     try {
         await db.run(`UPDATE automation_state SET is_running = ?, updated_at = ? WHERE id = 1`, [enabled ? 1 : 0, Date.now()]);
-        
-        await db.run(`
-            INSERT INTO agent_logs (agent_name, level, message, timestamp)
-            VALUES ('system', 'info', ?, ?)
-        `, [`SYSTEM: Growth Engine ${enabled ? 'STARTED' : 'STOPPED'}`, Date.now()]);
-        
         res.json({ success: true, enabled });
     } catch (error) {
         res.status(500).json({ error: error.message });
