@@ -130,28 +130,22 @@ function App() {
   }, []);
 
   const handleToggleGrowthEngine = async () => {
-    console.log('🔘 Button clicked! Current state:', isGrowthEngineActive);
     try {
-      console.log('📤 Sending toggle request with enabled:', !isGrowthEngineActive);
+      const newState = !isGrowthEngineActive;
       const res = await fetch('/api/automation/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !isGrowthEngineActive })
+        body: JSON.stringify({ enabled: newState })
       });
-      console.log('📨 Response status:', res.status);
       const data = await res.json();
-      console.log('📥 Response data:', data);
-      if (data.success) {
-        console.log('✅ Setting active to:', data.enabled);
+      if (res.ok && data.enabled !== undefined) {
         setIsGrowthEngineActive(data.enabled);
         addLog(data.enabled ? '🚀 Growth Engine Started' : '⏹️ Growth Engine Stopped', data.enabled ? 'success' : 'info');
       } else {
-        console.log('❌ Response not successful:', data);
-        addLog('Failed to toggle Growth Engine: ' + (data.error || 'unknown error'), 'error');
+        addLog('Failed to toggle: ' + (data.error || 'server error'), 'error');
       }
     } catch (error) {
-      console.error('🚨 Fetch error:', error);
-      addLog('Failed to toggle Growth Engine: ' + (error instanceof Error ? error.message : String(error)), 'error');
+      addLog('Error: ' + (error instanceof Error ? error.message : 'unknown'), 'error');
     }
   };
 

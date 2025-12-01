@@ -1,0 +1,56 @@
+A form field element should have an id or name attribute
+A form field element has neither an id nor a name attribute. This might prevent the browser from correctly autofilling the form.
+
+To fix this issue, add a unique id or name attribute to a form field. This is not strictly needed, but still recommended even if you have an autocomplete attribute on the same element.
+
+22 resources
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Violating node
+Learn more: The form input element
+Content Security Policy blocks inline execution of scripts and stylesheets
+The Content Security Policy (CSP) prevents cross-site scripting attacks by blocking inline execution of scripts and style sheets.
+
+To solve this, move all inline scripts (e.g. onclick=[JS code]) and styles into external files.
+
+⚠️ Allowing inline execution comes at the risk of script injection via injection of HTML script elements. If you absolutely must, you can allow inline script and styles by:
+
+adding unsafe-inline as a source to the CSP header
+adding the hash or nonce of the inline script to your CSP header.
+1 directive
+Directive	Element	Source location	Status
+script-src-attr		10490cef-1dc1-4d78-b….replit.dev:3000/:1	blocked
+Learn more: Content Security Policy - Inline Code
+Content Security Policy of your site blocks some resources
+Some resources are blocked because their origin is not listed in your site's Content Security Policy (CSP). Your site's CSP is allowlist-based, so resources must be listed in the allowlist in order to be accessed.
+
+A site's Content Security Policy is set either via an HTTP header (recommended), or via a meta HTML tag.
+
+To fix this issue do one of the following:
+
+(Recommended) If you're using an allowlist for 'script-src', consider switching from an allowlist CSP to a strict CSP, because strict CSPs are more robust against XSS. See how to set a strict CSP.
+Or carefully check that all of the blocked resources are trustworthy; if they are, include their sources in the CSP of your site. ⚠️Never add a source you don't trust to your site's CSP. If you don't trust the source, consider hosting resources on your own site instead.
+2 directives
+Resource	Status	Directive	Source location
+https://10490cef-1dc1-4d78-bad2-b6973e9a5829-00-3vphql2at65xt.worf.replit.dev:3000/__replco/static/devtools/injected.js	blocked	script-src-elem	10490cef-1dc1-4d78-b….replit.dev:3000/:0
+https://replit.com/public/js/beacon.js	blocked	script-src-elem	10490cef-1dc1-4d78-b…2F&id=%3Arfj%3A:142
+Learn more: Content Security Policy - Source Allowlists
