@@ -340,7 +340,7 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                     {/* Column 3: Decision Maker */}
                     <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0">
                         {lead.decisionMaker ? (
-                            <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, ...lead.decisionMaker, phone: undefined, isPrimary: true}, lead})} className="text-left bg-white/50 p-1.5 rounded-lg border border-slate-100 hover:border-purple-300 hover:bg-purple-50 transition-colors inline-block md:block w-full">
+                            <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, name: lead.decisionMaker?.name || '', role: lead.decisionMaker?.role || '', email: lead.decisionMaker?.email, linkedinUrl: lead.decisionMaker?.linkedinUrl, isPrimary: true}, lead})} className="text-left bg-white/50 p-1.5 rounded-lg border border-slate-100 hover:border-purple-300 hover:bg-purple-50 transition-colors inline-block md:block w-full">
                                 <p className="text-xs font-bold text-slate-700 hover:text-purple-600">{lead.decisionMaker.name}</p>
                                 <p className="text-[10px] text-slate-400 truncate">{lead.decisionMaker.role}</p>
                             </button>

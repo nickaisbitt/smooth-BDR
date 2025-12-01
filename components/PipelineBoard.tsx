@@ -138,7 +138,7 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
 
                                     {/* Decision Maker */}
                                     {lead.decisionMaker && (
-                                        <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, ...lead.decisionMaker, phone: undefined, isPrimary: true}, lead})} className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100 hover:bg-purple-100 hover:border-purple-300 transition-colors w-full text-left">
+                                        <button onClick={() => setSelectedContact({contact: {id: `dm-${lead.id}`, name: lead.decisionMaker?.name || '', role: lead.decisionMaker?.role || '', email: lead.decisionMaker?.email, linkedinUrl: lead.decisionMaker?.linkedinUrl, isPrimary: true}, lead})} className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100 hover:bg-purple-100 hover:border-purple-300 transition-colors w-full text-left">
                                             <div className="w-4 h-4 rounded-full bg-purple-200 flex items-center justify-center text-[8px] text-purple-700 font-bold">
                                                 {lead.decisionMaker.name[0]}
                                             </div>
