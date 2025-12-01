@@ -1099,12 +1099,11 @@ app.get('/api/automation/status', async (req, res) => {
     try {
         const state = await db.get('SELECT is_running, emails_sent_today, last_reset_date FROM automation_state WHERE id = 1');
         res.json({ 
-            success: true, 
             enabled: state?.is_running === 1,
             emailsSentToday: state?.emails_sent_today || 0
         });
     } catch (error) {
-        res.json({ success: true, enabled: false, emailsSentToday: 0 });
+        res.json({ enabled: false, emailsSentToday: 0 });
     }
 });
 
