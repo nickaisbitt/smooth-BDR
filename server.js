@@ -1094,19 +1094,6 @@ app.post('/api/automation/toggle', async (req, res) => {
     }
 });
 
-// GET /api/automation/status - Get master automation status
-app.get('/api/automation/status', async (req, res) => {
-    try {
-        const state = await db.get('SELECT is_running, emails_sent_today, last_reset_date FROM automation_state WHERE id = 1');
-        res.json({ 
-            enabled: state?.is_running === 1,
-            emailsSentToday: state?.emails_sent_today || 0
-        });
-    } catch (error) {
-        res.json({ enabled: false, emailsSentToday: 0 });
-    }
-});
-
 // GET /api/agents/queues - Get queue statistics
 app.get('/api/agents/queues', async (req, res) => {
     try {

@@ -389,6 +389,7 @@ export async function getAutomationStats(db) {
   `);
   
   return {
+    enabled: state?.is_running === 1,
     isRunning: state?.is_running === 1,
     emailsSentToday: state?.emails_sent_today || 0,
     dailyLimit: state?.daily_limit || 50,

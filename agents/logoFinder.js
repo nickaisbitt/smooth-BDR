@@ -57,9 +57,9 @@ async function processLeads() {
     }
     
     const leads = await db.all(`
-      SELECT id, companyName, website FROM leads 
-      WHERE (logoUrl IS NULL OR logoUrl = '') 
-      AND status IN ('QUALIFIED', 'CONTACTED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'WON')
+      SELECT id, company_name as companyName, website_url as website FROM prospect_queue 
+      WHERE (logo_url IS NULL OR logo_url = '') 
+      AND status IN ('completed', 'processing', 'pending')
       LIMIT ?
     `, [config.batchSize]);
     
@@ -78,8 +78,8 @@ async function processLeads() {
         const logoUrl = await findLogo(lead.companyName, lead.website);
         
         if (logoUrl) {
-          await db.run('UPDATE leads SET logoUrl = ? WHERE id = ?', [logoUrl, lead.id]);
-          logger.info(`Updated logo for lead: ${lead.companyName}`);
+          await db.run('UPDATE prospect_queue SET logo_url = ? WHERE id = ?', [logoUrl, lead.id]);
+          logger.info(`Updated logo for prospect: ${lead.companyName}`);
         }
         
         heartbeat.incrementProcessed();

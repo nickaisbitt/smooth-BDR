@@ -35,7 +35,8 @@ export async function initAgentTables(db) {
       attempts INTEGER DEFAULT 0,
       last_error TEXT,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER
+      updated_at INTEGER,
+      logo_url TEXT
     );
     
     CREATE TABLE IF NOT EXISTS research_queue (
@@ -84,6 +85,7 @@ export async function initAgentTables(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER,
       generated_at INTEGER,
+      unverified_hooks TEXT,
       FOREIGN KEY (research_id) REFERENCES research_queue(id),
       FOREIGN KEY (prospect_id) REFERENCES prospect_queue(id)
     );
@@ -154,6 +156,16 @@ export async function initAgentTables(db) {
   } catch (e) { /* column exists */ }
   try {
     await db.run(`ALTER TABLE research_queue ADD COLUMN last_retry_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
+  // Add logo_url column to prospect_queue if it doesn't exist
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN logo_url TEXT`);
+  } catch (e) { /* column exists */ }
+  
+  // Add unverified_hooks column to draft_queue if it doesn't exist
+  try {
+    await db.run(`ALTER TABLE draft_queue ADD COLUMN unverified_hooks TEXT`);
   } catch (e) { /* column exists */ }
   
   console.log("✅ Agent tables initialized");
