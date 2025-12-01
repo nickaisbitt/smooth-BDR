@@ -21,13 +21,14 @@ const openrouter = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY
 });
 
+const sharedConfig = AGENT_CONFIG.RESEARCH_RETRY;
 const config = {
-  name: 'research-retry',
-  pollIntervalMs: 30000,
-  targetQuality: 9,
+  name: sharedConfig.name,
+  pollIntervalMs: sharedConfig.pollIntervalMs,
+  targetQuality: sharedConfig.targetQuality,
   maxRetries: 50,
   consecutiveNoDataLimit: 3,
-  retryDelayMs: 60000
+  retryDelayMs: sharedConfig.retryDelayMs
 };
 
 const logger = createLogger(config.name);

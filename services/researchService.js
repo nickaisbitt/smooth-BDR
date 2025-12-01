@@ -1169,26 +1169,32 @@ OUR SERVICE (what we're selling):
 ${serviceProfile || 'AI automation solutions for business operations'}
 
 ═══════════════════════════════════════════
-SCORING CRITERIA (BE STRICT):
-- Score 9-10: EXCELLENT - Has real executive names, specific numbers (employee count, revenue hints), recent news/announcements, AND specific services/products
-- Score 7-8: GOOD - Has some specifics but missing key details like people names or recent triggers
-- Score 5-6: BASIC - Generic company info, no specifics
-- Score 1-4: POOR - Very little useful data
+SCORING CRITERIA (realistic assessment):
+- Score 9-10: EXCELLENT - Has multiple verified data points: company website content + news/press releases + Wikipedia/public info
+- Score 7-8: GOOD - Has company website data + at least one external source (news, SEC filings, or job listings)
+- Score 5-6: BASIC - Only website data, limited external validation
+- Score 1-4: POOR - Scraped data is sparse or failed
 
 Return a JSON object with these fields:
 {
-  "companyOverview": "Detailed 3-4 sentence summary with SPECIFIC details",
+  "companyOverview": "Detailed 3-4 sentence summary citing SPECIFIC facts (e.g., 'Founded in 2015, headquartered in Houston, 500+ employees per LinkedIn')",
   "industryVertical": "Their specific industry/niche",
-  "companySize": "Estimate based on hiring activity, office locations, team size hints",
-  "keyServices": ["SPECIFIC services from website, not generic"],
-  "potentialPainPoints": ["SPECIFIC pain points based on their actual business"],
-  "recentTriggers": ["ACTUAL news, hires, or events - use press releases and job postings"],
-  "personalizedHooks": ["5 SPECIFIC hooks using real names, real news, real data"],
-  "keyPeople": ["ACTUAL names and roles from team page"],
-  "hiringInsights": "What their job openings tell us about their needs",
-  "competitiveAdvantage": "What makes them unique",
-  "outreachAngle": "The SPECIFIC best angle based on real research data",
-  "researchQuality": "Score 1-10 - BE HONEST about data quality",
+  "companySize": "Estimate with source (e.g., '~2,000 employees based on job listings', '$500M+ revenue per SEC filing')",
+  "keyServices": ["SPECIFIC services from website - quote actual service names"],
+  "potentialPainPoints": ["SPECIFIC pain points with reasoning (e.g., 'Scaling logistics - hiring 15 operations roles')"],
+  "recentTriggers": ["SPECIFIC events with dates/sources (e.g., 'Acquired ABC Corp in Oct 2024 per press release')"],
+  "personalizedHooks": [
+    "HOOK 1: [Cite specific source] Example: 'Your recent expansion into the Midwest (announced Nov 2024) suggests you're scaling operations rapidly'",
+    "HOOK 2: [Reference specific role/person] Example: 'With John Smith joining as CTO last month, I imagine AI automation is now a priority'",
+    "HOOK 3: [Quote from their website] Example: 'Your focus on \"seamless logistics\" aligns with what our AI solutions deliver'",
+    "HOOK 4: [Reference job posting insight] Example: 'I noticed you're hiring 10 data analysts - we could automate 40% of that workflow'",
+    "HOOK 5: [Industry-specific] Example: 'Given the new FDA regulations affecting medical device companies like yours...'"
+  ],
+  "keyPeople": ["Name - Title (source: LinkedIn/website/news)"],
+  "hiringInsights": "Specific insights from job listings with numbers",
+  "competitiveAdvantage": "What makes them unique - quote from their messaging",
+  "outreachAngle": "The BEST angle citing specific evidence to support it",
+  "researchQuality": "Score 1-10 based on criteria above",
   "missingData": ["What data would help improve this research"]
 }
 

@@ -10,14 +10,14 @@ export const AGENT_CONFIG = {
     pollIntervalMs: 10000,
     batchSize: 1,
     maxPasses: 3,
-    targetQuality: 9,
+    targetQuality: 8,
     enabled: true
   },
   RESEARCH_RETRY: {
     name: 'research-retry',
     pollIntervalMs: 30000,
     maxRetries: 10,
-    targetQuality: 9,
+    targetQuality: 8,
     retryDelayMs: 60000,
     enabled: true
   },
@@ -25,7 +25,7 @@ export const AGENT_CONFIG = {
     name: 'email-generator',
     pollIntervalMs: 15000,
     batchSize: 1,
-    minQuality: 9,
+    minQuality: 8,
     enabled: true
   },
   EMAIL_SENDER: {

@@ -30,45 +30,76 @@ async function generatePersonalizedEmail(item) {
   const contactName = item.contact_name || analysis.keyPeople?.[0] || 'there';
   const firstName = contactName.split(' ')[0];
   
-  const prompt = `You are an expert B2B sales email copywriter. Write a highly personalized cold email based on this research.
+  const prompt = `You are a world-class B2B sales email copywriter who writes emails that get 40%+ reply rates. Write an incredibly personalized cold email.
 
-RECIPIENT INFO:
-- Company: ${item.company_name}
-- Contact: ${contactName}
-- Industry: ${analysis.industryVertical || 'Unknown'}
+═══════════════════════════════════════
+RECIPIENT INTELLIGENCE:
+═══════════════════════════════════════
+Company: ${item.company_name}
+Contact: ${contactName} (${firstName})
+Industry: ${analysis.industryVertical || 'Unknown'}
+Company Size: ${analysis.companySize || 'Unknown'}
 
-RESEARCH FINDINGS (USE THESE SPECIFICALLY):
+DETAILED RESEARCH (USE SPECIFIC FACTS):
 ${analysis.companyOverview}
 
-Key Services: ${analysis.keyServices?.join(', ') || 'Not found'}
-Pain Points: ${analysis.potentialPainPoints?.join(', ') || 'Not found'}
-Recent Triggers: ${analysis.recentTriggers?.join(', ') || 'None found'}
+Their Services: ${analysis.keyServices?.join(', ') || 'Not found'}
+Identified Pain Points: ${analysis.potentialPainPoints?.join('; ') || 'Not found'}
+Recent Triggers/Events: ${analysis.recentTriggers?.join('; ') || 'None found'}
+Hiring Insights: ${analysis.hiringInsights || 'None'}
+Competitive Edge: ${analysis.competitiveAdvantage || 'Unknown'}
 
-PERSONALIZED HOOKS TO USE:
+PERSONALIZED HOOKS (pick the 1-2 most compelling):
 ${analysis.personalizedHooks?.map((h, i) => `${i + 1}. ${h}`).join('\n')}
 
-Best Outreach Angle: ${analysis.outreachAngle || 'General AI automation'}
+Best Angle: ${analysis.outreachAngle || 'AI automation value'}
 
-OUR OFFERING:
-Smooth AI Consulting helps businesses implement AI automation to:
-- Reduce operational costs by 40-60%
-- Automate repetitive tasks
-- Build custom AI solutions
+═══════════════════════════════════════
+SENDER'S VALUE PROPOSITION:
+═══════════════════════════════════════
+Nick @ Smooth AI Consulting helps companies:
+- Cut operational costs 40-60% through intelligent automation
+- Eliminate manual data entry and repetitive workflows
+- Build custom AI agents that work 24/7
 
-SENDER:
-Nick from Smooth AI Consulting
+═══════════════════════════════════════
+EMAIL REQUIREMENTS (CRITICAL):
+═══════════════════════════════════════
+SUBJECT LINE:
+- Under 50 characters
+- Reference something SPECIFIC (their product, news event, or a number)
+- Create curiosity without being clickbait
+- Examples: "Quick thought on [their recent announcement]", "[Their product name] + AI idea"
 
-REQUIREMENTS:
-1. Subject line must be personalized (mention something specific about their company)
-2. Opening line MUST reference a specific finding from the research (recent news, specific service, etc.)
-3. Keep it under 150 words
-4. End with a soft CTA (quick chat, not a hard sell)
-5. Sound human, not salesy
-6. NO generic phrases like "I hope this email finds you well" or "I came across your company"
+OPENING LINE (first sentence):
+- MUST reference a SPECIFIC, VERIFIABLE fact from the research
+- Name drop if you have executive names
+- Reference specific news, numbers, or their exact language
+- NEVER start with "I", "My", "We", or generic intros
+- Good: "Noticed [Company] just expanded into [market] - congrats on the growth."
+- Bad: "I came across your company..." or "I hope this email finds you well"
+
+BODY:
+- Max 100 words total
+- One clear pain point → one clear solution
+- Use their exact industry language
+- Include a specific number (our clients see X% improvement)
+- Sound like a peer, not a salesperson
+
+CTA:
+- Low commitment, high curiosity
+- Example: "Worth a 15-min chat to see if this applies to [Company]?"
+- NOT: "Would you like to schedule a demo?"
+
+TONE:
+- Conversational, like texting a colleague
+- Confident but not arrogant
+- Zero fluff, zero buzzwords
+- No exclamation marks
 
 Return JSON only:
 {
-  "subject": "Personalized subject line",
+  "subject": "Short, specific subject line",
   "body": "Full email body with line breaks as \\n"
 }`;
 
