@@ -233,6 +233,18 @@ async function analyzeWithDeepContext(companyName, websiteUrl, existingData, new
       `[${p.path}]: ${p.title}\n${p.content.slice(0, 800)}`
     ).join('\n\n');
     
+    const keyPeople = Array.isArray(existingData?.aiAnalysis?.keyPeople) 
+      ? existingData.aiAnalysis.keyPeople.join(', ')
+      : (typeof existingData?.aiAnalysis?.keyPeople === 'string' ? existingData.aiAnalysis.keyPeople : 'None found');
+    
+    const keyServices = Array.isArray(existingData?.aiAnalysis?.keyServices)
+      ? existingData.aiAnalysis.keyServices.join(', ')
+      : (typeof existingData?.aiAnalysis?.keyServices === 'string' ? existingData.aiAnalysis.keyServices : 'None found');
+    
+    const missingData = Array.isArray(existingData?.aiAnalysis?.missingData)
+      ? existingData.aiAnalysis.missingData.join(', ')
+      : (typeof existingData?.aiAnalysis?.missingData === 'string' ? existingData.aiAnalysis.missingData : 'Unknown');
+
     const prompt = `You are an expert B2B researcher. This is DEEP RETRY #${retryCount} for ${companyName}. Previous research scored below 9/10.
 
 COMPANY: ${companyName}
@@ -243,10 +255,10 @@ PREVIOUS RESEARCH DATA:
 ═══════════════════════════════════════════
 ${existingData?.aiAnalysis?.companyOverview || 'No previous overview'}
 
-Previous Key People: ${existingData?.aiAnalysis?.keyPeople?.join(', ') || 'None found'}
-Previous Services: ${existingData?.aiAnalysis?.keyServices?.join(', ') || 'None found'}
+Previous Key People: ${keyPeople}
+Previous Services: ${keyServices}
 Previous Quality: ${existingData?.researchQuality || 0}/10
-Missing Data: ${existingData?.aiAnalysis?.missingData?.join(', ') || 'Unknown'}
+Missing Data: ${missingData}
 
 ═══════════════════════════════════════════
 NEW DEEP SEARCH RESULTS (${allSearchResults.length} total):

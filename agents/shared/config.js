@@ -42,10 +42,10 @@ export const AGENT_CONFIG = {
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 10000,  // 6x faster - check every 10s instead of 60s
-    batchSize: 5,
-    dailyLimit: 200,
-    delayBetweenEmailsMs: 1000,  // 3x faster - 1s between emails instead of 3s
+    pollIntervalMs: 5000,  // AGGRESSIVE: 2x faster polling
+    batchSize: 10,  // 2x batch size
+    dailyLimit: 500,  // INCREASED: was 200, now 500 for scale
+    delayBetweenEmailsMs: 500,  // HALVED: was 1000, now 500
     enabled: true
   },
   INBOX: {
