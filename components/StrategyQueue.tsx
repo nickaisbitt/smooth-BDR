@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StrategyNode } from '../types';
+import { X } from 'lucide-react';
 
 interface Props {
     queue: StrategyNode[];
@@ -11,6 +12,7 @@ export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy })
     const [isAdding, setIsAdding] = useState(false);
     const [newSector, setNewSector] = useState('');
     const [newQuery, setNewQuery] = useState('');
+    const [selectedStrategy, setSelectedStrategy] = useState<StrategyNode | null>(null);
 
     const activeStrategy = queue.find(n => n.status === 'active');
     const pendingStrategies = queue.filter(n => n.status === 'pending');
@@ -41,7 +43,7 @@ export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy })
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
                 {/* Active Strategy */}
                 {activeStrategy && (
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 relative overflow-hidden group transition-all">
+                    <div onClick={() => setSelectedStrategy(activeStrategy)} className="bg-purple-50 border border-purple-200 rounded-lg p-3 relative overflow-hidden group transition-all cursor-pointer hover:shadow-md hover:border-purple-300">
                         <div className="absolute top-0 right-0 p-1">
                             <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-ping"></div>
                         </div>
@@ -56,7 +58,7 @@ export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy })
                     <div className="space-y-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-2">Up Next</p>
                         {pendingStrategies.map(node => (
-                            <div key={node.id} className="bg-slate-50 border border-slate-100 rounded-lg p-3 opacity-90">
+                            <div key={node.id} onClick={() => setSelectedStrategy(node)} className="bg-slate-50 border border-slate-100 rounded-lg p-3 opacity-90 cursor-pointer hover:opacity-100 hover:border-slate-300 hover:shadow-sm transition-all">
                                 <div className="flex justify-between items-start">
                                     <div className="flex-1">
                                          <p className="font-semibold text-slate-700 text-xs">{node.sector}</p>
@@ -115,6 +117,52 @@ export const StrategyQueue: React.FC<Props> = ({ queue, active, onAddStrategy })
                      </div>
                 )}
             </div>
+
+            {/* Strategy Detail Modal */}
+            {selectedStrategy && (
+                <>
+                    <div 
+                        className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+                        onClick={() => setSelectedStrategy(null)}
+                    />
+                    <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 overflow-hidden flex flex-col animate-slideIn">
+                        <div className="p-6 border-b border-slate-200 bg-slate-50 flex justify-between items-start shrink-0">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                                    {selectedStrategy.status === 'active' ? '🎯 Active Campaign' : selectedStrategy.status === 'completed' ? '✅ Completed' : '⏳ Queued'}
+                                </p>
+                                <h2 className="text-xl font-bold text-slate-800">{selectedStrategy.sector}</h2>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedStrategy(null)}
+                                className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Search Query</p>
+                                <p className="text-sm text-slate-700">{selectedStrategy.query}</p>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Rationale</p>
+                                <p className="text-sm text-slate-700">{selectedStrategy.rationale}</p>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                                <p className="text-xs font-bold text-blue-600 uppercase mb-2">Status</p>
+                                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                                    selectedStrategy.status === 'active' ? 'bg-purple-100 text-purple-700' :
+                                    selectedStrategy.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                    'bg-slate-100 text-slate-700'
+                                }`}>
+                                    {selectedStrategy.status.toUpperCase()}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
