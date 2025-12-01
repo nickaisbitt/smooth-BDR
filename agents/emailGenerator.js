@@ -301,27 +301,37 @@ async function processEmailGeneration(item) {
   // Step 2.5: EXTRACT OR GENERATE CONTACT EMAIL
   let contactEmail = item.contact_email;
   if (!contactEmail) {
-    // Try to generate from keyPeople names
+    // Try to generate from keyPeople names + company domain
     const keyPeople = analysis.keyPeople || [];
-    if (keyPeople.length > 0) {
+    if (keyPeople && keyPeople.length > 0) {
       const firstPerson = keyPeople[0];
-      // Parse name like "Olivier Pomel, CEO" -> "olivier.pomel@company.com"
-      const nameOnly = firstPerson.split(',')[0].trim().toLowerCase();
-      const nameParts = nameOnly.split(/\s+/);
-      if (nameParts.length >= 1) {
-        // Try common email patterns based on company domain
-        const domain = item.website_url?.replace('https://', '').replace('http://', '').split('/')[0] || 'company.com';
-        if (nameParts.length === 2) {
-          // firstname.lastname@domain.com
-          contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
-        } else if (nameParts.length >= 2) {
-          // firstname.lastname@domain.com (take first two parts)
-          contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
-        } else {
-          // firstnamefirstname@domain.com
-          contactEmail = `${nameParts[0]}@${domain}`;
+      if (firstPerson && typeof firstPerson === 'string' && firstPerson.length > 0) {
+        try {
+          // Parse name like "Olivier Pomel, CEO" -> "olivier.pomel@company.com"
+          const nameOnly = firstPerson.split(',')[0].trim().toLowerCase();
+          const nameParts = nameOnly.split(/\s+/).filter(p => p.length > 0);
+          
+          // Extract domain from company name or website
+          let domain = item.website_url || item.company_name || 'company.com';
+          domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+          // Ensure domain has proper extension
+          if (!domain.includes('.')) {
+            domain = domain + '.com';
+          }
+          
+          // Generate email in common pattern
+          if (nameParts.length >= 2) {
+            contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
+          } else if (nameParts.length === 1) {
+            contactEmail = `${nameParts[0]}@${domain}`;
+          }
+          
+          if (contactEmail) {
+            logger.info(`✉️ Generated contact email for ${item.company_name}: ${contactEmail} (from "${firstPerson}")`);
+          }
+        } catch (e) {
+          logger.warn(`Failed to generate contact email: ${e.message}`);
         }
-        logger.info(`Generated contact email for ${item.company_name}: ${contactEmail} (from "${firstPerson}")`);
       }
     }
   }
