@@ -28,7 +28,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node server.js & node agents/supervisor.js & npm run dev & wait"
+args = "bash start-all.sh"
 waitForPort = 5000
 
 [[ports]]
@@ -38,6 +38,10 @@ externalPort = 3000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 42313
+externalPort = 3001
 
 [deployment]
 deploymentTarget = "autoscale"
