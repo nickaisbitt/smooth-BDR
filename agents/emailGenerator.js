@@ -318,21 +318,22 @@ async function processEmailGeneration(item) {
     // Extract domain from website or company name
     let domain = item.website_url || item.company_name || '';
     domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase().trim();
+    // CRITICAL: Remove ALL spaces and special chars from domain, replace with hyphens
+    domain = domain.replace(/\s+/g, '-').replace(/[^a-z0-9\.\-]/g, '').replace(/^-+|-+$/g, '');
     if (!domain.includes('.')) domain += '.com';
     
     // Try to generate from keyPeople names
     const keyPeople = analysis.keyPeople || [];
-    logger.info(`DEBUG: keyPeople found: ${keyPeople.length} people, domain: ${domain}`);
     
     if (keyPeople && keyPeople.length > 0) {
       const firstPerson = keyPeople[0];
-      logger.info(`DEBUG: First person: ${JSON.stringify(firstPerson)}`);
       
       if (firstPerson && typeof firstPerson === 'string' && firstPerson.length > 0) {
         try {
           const nameOnly = firstPerson.split(',')[0].trim().toLowerCase();
-          const nameParts = nameOnly.split(/\s+/).filter(p => p.length > 0);
-          logger.info(`DEBUG: Name parts: ${JSON.stringify(nameParts)}`);
+          // Remove "Dr.", titles, and special chars
+          const cleanName = nameOnly.replace(/^(dr\.|mr\.|ms\.|mrs\.|prof\.|prof\s+)/i, '').trim();
+          const nameParts = cleanName.split(/\s+/).filter(p => p.length > 0 && /^[a-z]+$/.test(p));
           
           if (nameParts.length >= 2) {
             contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
@@ -341,7 +342,7 @@ async function processEmailGeneration(item) {
           }
           
           if (contactEmail) {
-            logger.info(`✅ GENERATED EMAIL: ${contactEmail} (from "${firstPerson}")`);
+            logger.info(`✅ GENERATED EMAIL: ${contactEmail}`);
           }
         } catch (e) {
           logger.warn(`Email generation error: ${e.message}`);
