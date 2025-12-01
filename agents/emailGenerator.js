@@ -106,52 +106,6 @@ function validateHookCitations(hooks, rawData, researchQuality = 8) {
   };
 }
 
-// Validate that personalization hooks contain actual source citations
-function validateHookCitations(hooks, rawData) {
-  if (!hooks || !Array.isArray(hooks) || hooks.length === 0) {
-    return { valid: false, reason: 'No personalization hooks found', verifiedHooks: [] };
-  }
-  
-  const verifiedHooks = [];
-  const unverifiedHooks = [];
-  
-  for (const hook of hooks) {
-    if (typeof hook !== 'string') continue;
-    
-    // Check if hook contains citation patterns
-    const hasCitation = CITATION_PATTERNS.some(pattern => pattern.test(hook));
-    
-    // Check if hook contains specific data that matches raw research
-    const hasSpecificData = /\d+%|\$\d+|\d+\s+(employees?|roles?|positions?)/i.test(hook);
-    
-    // Check if hook references verifiable sources
-    const hasSourceReference = /(website|linkedin|careers?\s*page|press\s*release|news|job\s*(posting|listing)|sec\s*filing)/i.test(hook);
-    
-    if (hasCitation || (hasSpecificData && hasSourceReference)) {
-      verifiedHooks.push(hook);
-    } else {
-      unverifiedHooks.push(hook);
-    }
-  }
-  
-  // Require at least 1 verified hook
-  if (verifiedHooks.length >= 1) {
-    return { 
-      valid: true, 
-      verifiedHooks,
-      unverifiedHooks,
-      reason: `${verifiedHooks.length} of ${hooks.length} hooks verified with citations`
-    };
-  }
-  
-  return { 
-    valid: false, 
-    verifiedHooks,
-    unverifiedHooks,
-    reason: `Only ${verifiedHooks.length} of ${hooks.length} hooks have source citations. Need at least 1 verified hook.`
-  };
-}
-
 // Extract all URLs from raw research data for verification
 function extractSourceUrls(rawData) {
   if (!rawData) return new Set();
