@@ -783,7 +783,8 @@ function App() {
                               return updated;
                             });
                           });
-                        }} 
+                        }}
+                        onMarkContacted={(l) => setLeads(prev => prev.map(p => p.id === l.id ? {...p, status: LeadStatus.CONTACTED, lastContactedAt: Date.now()} : p))}
                         onUpdateLead={handleUpdateLead}
                         onDeleteLead={handleDeleteLead}
                     />
