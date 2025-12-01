@@ -310,6 +310,23 @@ export const PipelineTable: React.FC<Props> = ({ leads, onAnalyze, onHunt, onMar
                         )}
                     </td>
 
+                    {/* Column 2.5: Research Quality */}
+                    <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0 hidden md:table-cell">
+                        {lead.researchQuality !== undefined ? (
+                            <div className={`text-xs font-bold p-2 rounded border inline-block ${
+                                (lead.researchQuality || 0) >= 8 
+                                    ? 'text-green-600 bg-green-50 border-green-100' 
+                                    : (lead.researchQuality || 0) >= 5
+                                    ? 'text-orange-600 bg-orange-50 border-orange-100'
+                                    : 'text-red-600 bg-red-50 border-red-100'
+                            }`}>
+                                {lead.researchQuality}/10 {(lead.researchQuality || 0) >= 8 ? '✓' : (lead.researchQuality || 0) >= 5 ? '⚠️' : '✗'}
+                            </div>
+                        ) : (
+                            <span className="text-slate-300 text-[10px]">-</span>
+                        )}
+                    </td>
+
                     {/* Column 3: Decision Maker */}
                     <td className="md:px-6 md:py-4 align-top mt-2 md:mt-0">
                         {lead.decisionMaker ? (

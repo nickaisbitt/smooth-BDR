@@ -115,6 +115,19 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
                                         </div>
                                     )}
 
+                                    {/* Research Quality Badge */}
+                                    {lead.researchQuality !== undefined && (
+                                        <div className={`text-[10px] font-bold p-1.5 rounded border ${
+                                            (lead.researchQuality || 0) >= 8 
+                                                ? 'text-green-600 bg-green-50 border-green-100' 
+                                                : (lead.researchQuality || 0) >= 5
+                                                ? 'text-orange-600 bg-orange-50 border-orange-100'
+                                                : 'text-red-600 bg-red-50 border-red-100'
+                                        }`}>
+                                            Research: {lead.researchQuality}/10 {(lead.researchQuality || 0) >= 8 ? '✓' : (lead.researchQuality || 0) >= 5 ? '⚠️' : '✗'}
+                                        </div>
+                                    )}
+
                                     {/* Decision Maker */}
                                     {lead.decisionMaker && (
                                         <div className="flex items-center gap-2 bg-purple-50 p-1.5 rounded border border-purple-100">
