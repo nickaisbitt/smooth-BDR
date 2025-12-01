@@ -312,6 +312,24 @@ async function processEmailGeneration(item) {
     : item.research_data;
   const analysis = research.aiAnalysis || {};
   
+  // CRITICAL VALIDATION: Ensure company_name matches research data company
+  const researchCompany = analysis.companyName || research.company_name || '';
+  const itemCompany = (item.company_name || '').trim().toLowerCase();
+  const researchCompanyLower = researchCompany.trim().toLowerCase();
+  
+  // Check for exact match or if research company is contained in item company
+  const companyMatch = itemCompany === researchCompanyLower || 
+                       itemCompany.includes(researchCompanyLower) ||
+                       researchCompanyLower.includes(itemCompany);
+  
+  if (!companyMatch && researchCompany && itemCompany) {
+    logger.warn(`MISMATCH DETECTED: Email is for "${item.company_name}" but research is for "${researchCompany}" - SKIPPING to prevent hallucinations`);
+    await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
+      last_error: `Company name mismatch: email="${item.company_name}" vs research="${researchCompany}"`
+    });
+    return { success: false, reason: 'Company mismatch - data integrity issue' };
+  }
+  
   // Step 2.5: EXTRACT OR GENERATE CONTACT EMAIL WITH FALLBACK
   let contactEmail = item.contact_email;
   if (!contactEmail) {

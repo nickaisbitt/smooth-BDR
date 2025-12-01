@@ -18,7 +18,9 @@ I want the agent to:
 - **Prospect Finder Validation**: Added data validation to skip placeholder prospects and invalid URLs before research pipeline
 - **Data Migration**: Successfully migrated 57 pending emails from draft_queue to email_queue with valid contact emails
 - **Email Reviewer Batch Optimization**: Increased batch size to 50 emails/cycle for faster review throughput
-- **Email Sender Rate Limit Fix**: Adjusted to 100ms delay, 50/batch for sustainable 10 emails/sec (respects Hostinger SMTP limits)
+- **Email Sender Rate Limit Fix**: Adjusted to 250ms delay, 25/batch for sustainable 4 emails/sec (respects strict Hostinger SMTP limits)
+- **Email Generator Company Validation**: Added critical check to prevent mismatched company/research data from causing hallucinations
+- **Data Cleanup**: Deleted 113 rejected emails and reset 8 failed emails for retry with corrected logic
 - **Data Quality Cleanup**: Removed malformed emails with mismatched research data and short bodies
 - **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at sustainable throughput
 
