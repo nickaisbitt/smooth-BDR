@@ -42,10 +42,10 @@ export const AGENT_CONFIG = {
   },
   EMAIL_SENDER: {
     name: 'email-sender',
-    pollIntervalMs: 300,  // LIGHTNING FAST: 2x speed for final throughput push
-    batchSize: 200,  // ABSOLUTE MAXIMUM: 200 emails per batch
-    dailyLimit: 10000,  // MAXIMUM: 10000/day capacity
-    delayBetweenEmailsMs: 1,  // EXTREME: 1ms between emails (1000 emails/sec theoretical)
+    pollIntervalMs: 600,  // Standard polling: respect SMTP rate limits
+    batchSize: 50,  // Moderate batch: avoid rate limiting
+    dailyLimit: 300,  // Conservative: ~1 email per 5 minutes to avoid Hostinger rate limit
+    delayBetweenEmailsMs: 100,  // Safe delay: 100ms between emails = ~10 emails/sec = sustainable
     enabled: true
   },
   INBOX: {

@@ -13,14 +13,14 @@ I want the agent to:
 - Maintain a clear and organized code structure, adhering to established conventions.
 
 ## Recent Optimizations (Dec 1, 2025)
-- **Email Reviewer Threshold Fix**: Changed hardcoded 5/10 approval threshold to use config.minEmailQuality (3/10) for ultra-aggressive flow
-- **Email Generator Quality Check**: Removed hardcoded 6/10 threshold, now uses config.minQuality (3/10) for consistent lenient processing
+- **Email Reviewer Threshold Fix**: Changed hardcoded 5/10 approval threshold to use config.minEmailQuality (3/10) for aggressive flow
+- **Email Generator Quality Check**: Removed hardcoded 6/10 threshold, now uses config.minQuality (3/10) for consistent processing
 - **Prospect Finder Validation**: Added data validation to skip placeholder prospects and invalid URLs before research pipeline
 - **Data Migration**: Successfully migrated 57 pending emails from draft_queue to email_queue with valid contact emails
 - **Email Reviewer Batch Optimization**: Increased batch size to 50 emails/cycle for faster review throughput
-- **Email Sender Speed Boost**: Increased polling to 2x speed (300ms), batch size to 200/cycle, delay to 1ms = 1000 emails/sec theoretical
+- **Email Sender Rate Limit Fix**: Adjusted to 100ms delay, 50/batch for sustainable 10 emails/sec (respects Hostinger SMTP limits)
 - **Data Quality Cleanup**: Removed malformed emails with mismatched research data and short bodies
-- **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at maximum throughput
+- **Pipeline Flow**: All bottlenecks removed - emails now flow from research → generation → review → sending at sustainable throughput
 
 ## System Architecture
 The application features a modern full-stack architecture with a React 18 (TypeScript, Vite) frontend and a Node.js (Express) backend. Data is persisted using SQLite. The UI is built with Tailwind CSS for rapid styling and Recharts for data visualization. Key architectural decisions include:
@@ -31,11 +31,11 @@ The application features a modern full-stack architecture with a React 18 (TypeS
   4. **Research Retry Agent**: Retry research with fail-fast strategy (1000ms polling, max 1 retry)
   5. **Email Generator Agent**: Generates personalized emails (600ms polling, 20/batch, 3/10 config min quality)
   6. **Email Reviewer Agent**: Quality review & hallucination detection (600ms polling, 3/10 approval threshold - NOW ACTIVE)
-  7. **Email Sender Agent**: Sends approved emails (600ms polling, 150/batch, 3ms delays = 333 emails/sec theoretical)
+  7. **Email Sender Agent**: Sends approved emails (600ms polling, 50/batch, 100ms delays = 10 emails/sec sustainable)
   8. **Inbox Agent**: Monitors IMAP inbox for replies (5s polling)
   9. **Logo Finder Agent**: Enriches prospects with logos (60s polling, 30/batch)
 - **Multi-Source Intelligence Research**: Parallel research orchestrator gathers data from 7+ sources (website scraping, Google News, press releases, executive news, careers pages, web search) with adaptive fallbacks.
-- **Ultra-Aggressive Optimization**: Email reviewer 3/10 minimum (50/batch), email generator 3/10 minimum, email sender 200/batch with 1ms delays = **1000 emails/sec theoretical throughput**
+- **Sustainable Optimization**: Email reviewer 3/10 minimum, email generator 3/10 minimum, email sender 50/batch with 100ms delays = **10 emails/sec sustainable throughput** (respects Hostinger SMTP rate limits)
 - **Persistent Research Retry System**: Auto-retry with progressive strategies (deep crawl, news deep search, executive search, comprehensive web) with fail-fast philosophy (1 retry max).
 - **Autonomous BDR System**: Server-side automation scheduler for inbox sync, email queue processing, and AI-powered reply analysis.
 - **Unified Email Configuration**: Single interface for SMTP sending and IMAP receiving with auto host derivation.
