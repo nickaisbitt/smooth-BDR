@@ -298,28 +298,28 @@ async function processEmailGeneration(item) {
     : item.research_data;
   const analysis = research.aiAnalysis || {};
   
-  // Step 2.5: EXTRACT OR GENERATE CONTACT EMAIL
+  // Step 2.5: EXTRACT OR GENERATE CONTACT EMAIL WITH FALLBACK
   let contactEmail = item.contact_email;
   if (!contactEmail) {
-    // Try to generate from keyPeople names + company domain
+    // Extract domain from website or company name
+    let domain = item.website_url || item.company_name || '';
+    domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase().trim();
+    if (!domain.includes('.')) domain += '.com';
+    
+    // Try to generate from keyPeople names
     const keyPeople = analysis.keyPeople || [];
+    logger.info(`DEBUG: keyPeople found: ${keyPeople.length} people, domain: ${domain}`);
+    
     if (keyPeople && keyPeople.length > 0) {
       const firstPerson = keyPeople[0];
+      logger.info(`DEBUG: First person: ${JSON.stringify(firstPerson)}`);
+      
       if (firstPerson && typeof firstPerson === 'string' && firstPerson.length > 0) {
         try {
-          // Parse name like "Olivier Pomel, CEO" -> "olivier.pomel@company.com"
           const nameOnly = firstPerson.split(',')[0].trim().toLowerCase();
           const nameParts = nameOnly.split(/\s+/).filter(p => p.length > 0);
+          logger.info(`DEBUG: Name parts: ${JSON.stringify(nameParts)}`);
           
-          // Extract domain from company name or website
-          let domain = item.website_url || item.company_name || 'company.com';
-          domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
-          // Ensure domain has proper extension
-          if (!domain.includes('.')) {
-            domain = domain + '.com';
-          }
-          
-          // Generate email in common pattern
           if (nameParts.length >= 2) {
             contactEmail = `${nameParts[0]}.${nameParts[1]}@${domain}`;
           } else if (nameParts.length === 1) {
@@ -327,12 +327,18 @@ async function processEmailGeneration(item) {
           }
           
           if (contactEmail) {
-            logger.info(`✉️ Generated contact email for ${item.company_name}: ${contactEmail} (from "${firstPerson}")`);
+            logger.info(`✅ GENERATED EMAIL: ${contactEmail} (from "${firstPerson}")`);
           }
         } catch (e) {
-          logger.warn(`Failed to generate contact email: ${e.message}`);
+          logger.warn(`Email generation error: ${e.message}`);
         }
       }
+    }
+    
+    // FALLBACK: If no specific person found, use generic patterns
+    if (!contactEmail && domain && domain !== 'company.com') {
+      contactEmail = `info@${domain}`;
+      logger.info(`✅ FALLBACK EMAIL: ${contactEmail}`);
     }
   }
   
