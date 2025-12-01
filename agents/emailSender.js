@@ -38,15 +38,15 @@ async function checkDailyLimit() {
   
   if (state && state.last_reset_date !== today) {
     await db.run(
-      'UPDATE automation_state SET emails_sent_today = 0, last_reset_date = ?, updated_at = ? WHERE id = 1',
-      [today, Date.now()]
+      'UPDATE automation_state SET emails_sent_today = 0, last_reset_date = ?, daily_limit = ?, updated_at = ? WHERE id = 1',
+      [today, config.dailyLimit, Date.now()]
     );
-    return { emailsSentToday: 0, dailyLimit: state.daily_limit || config.dailyLimit };
+    return { emailsSentToday: 0, dailyLimit: config.dailyLimit };
   }
   
   return {
     emailsSentToday: state?.emails_sent_today || 0,
-    dailyLimit: state?.daily_limit || config.dailyLimit
+    dailyLimit: config.dailyLimit  // Always use config, not stale database value
   };
 }
 
