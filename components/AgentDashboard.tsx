@@ -69,6 +69,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ total: number; message: string } | null>(null);
+  const [selectedActivityLog, setSelectedActivityLog] = useState<AgentLog | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -620,7 +621,11 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
               ) : (
                 <div className="space-y-2">
                   {agentLogs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm">
+                    <div 
+                      key={log.id} 
+                      onClick={() => setSelectedActivityLog(log)}
+                      className="flex items-start gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm cursor-pointer transition-colors group"
+                    >
                       <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
                         log.level === 'error' 
                           ? 'bg-red-500' 
@@ -632,7 +637,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                       }`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                             {log.message}
                           </span>
                           <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -651,6 +656,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                           {formatDateTime(log.created_at)}
                         </div>
                       </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0 mt-0.5" />
                     </div>
                   ))}
                 </div>
@@ -685,6 +691,83 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                     Enable Agent
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedActivityLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${
+                  selectedActivityLog.level === 'error' 
+                    ? 'bg-red-500' 
+                    : selectedActivityLog.level === 'success' || selectedActivityLog.level === 'info' && selectedActivityLog.message.includes('complete')
+                    ? 'bg-green-500'
+                    : selectedActivityLog.level === 'warn'
+                    ? 'bg-yellow-500'
+                    : 'bg-blue-500'
+                }`} />
+                <h3 className="text-lg font-semibold text-gray-900">Activity Details</h3>
+              </div>
+              <button
+                onClick={() => setSelectedActivityLog(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 uppercase">Message</label>
+                <p className="text-gray-900 mt-1 break-words">{selectedActivityLog.message}</p>
+              </div>
+
+              {selectedActivityLog.details && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase">Details</label>
+                  <p className="text-gray-700 mt-1 break-words whitespace-pre-wrap">{selectedActivityLog.details}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-200">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Level</div>
+                  <span className={`inline-block text-xs font-medium px-2 py-1 rounded ${
+                    selectedActivityLog.level === 'error' ? 'bg-red-100 text-red-700' :
+                    selectedActivityLog.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
+                    selectedActivityLog.level === 'success' ? 'bg-green-100 text-green-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {selectedActivityLog.level}
+                  </span>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Agent</div>
+                  <div className="text-sm font-medium text-gray-900 truncate capitalize">{selectedActivityLog.agent_name?.replace('-', ' ')}</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Time</div>
+                  <div className="text-sm font-medium text-gray-900">{formatTime(selectedActivityLog.created_at)}</div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">Full Timestamp</div>
+                <div className="text-sm text-gray-700">{formatDateTime(selectedActivityLog.created_at)}</div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2 justify-end">
+              <button
+                onClick={() => setSelectedActivityLog(null)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
