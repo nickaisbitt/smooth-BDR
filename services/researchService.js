@@ -970,16 +970,24 @@ export function formatResearchForEmail(research) {
   
   const a = research.aiAnalysis;
   
+  // Helper to safely convert to array and join
+  const safeJoin = (val, sep = ', ') => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    if (Array.isArray(val)) return val.join(sep);
+    return String(val);
+  };
+  
   return {
-    companyOverview: a.companyOverview,
-    industry: a.industryVertical,
-    services: a.keyServices?.join(', '),
-    painPoints: a.potentialPainPoints,
-    triggers: a.recentTriggers,
-    hooks: a.personalizedHooks,
-    keyPeople: a.keyPeople,
-    bestAngle: a.outreachAngle,
-    quality: research.researchQuality
+    companyOverview: a.companyOverview || '',
+    industry: a.industryVertical || '',
+    services: safeJoin(a.keyServices),
+    painPoints: Array.isArray(a.potentialPainPoints) ? a.potentialPainPoints : [a.potentialPainPoints || ''],
+    triggers: Array.isArray(a.recentTriggers) ? a.recentTriggers : [a.recentTriggers || ''],
+    hooks: Array.isArray(a.personalizedHooks) ? a.personalizedHooks : [a.personalizedHooks || ''],
+    keyPeople: Array.isArray(a.keyPeople) ? a.keyPeople : [a.keyPeople || ''],
+    bestAngle: a.outreachAngle || '',
+    quality: research.researchQuality || 0
   };
 }
 
