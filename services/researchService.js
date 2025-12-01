@@ -8,7 +8,7 @@ const openrouter = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY
 });
 
-const RESEARCH_TIMEOUT = 20000;
+const RESEARCH_TIMEOUT = 8000;
 
 const axiosInstance = axios.create({
   timeout: RESEARCH_TIMEOUT,
@@ -240,7 +240,7 @@ export async function searchExecutives(companyName) {
 export async function searchWikipedia(companyName) {
   try {
     const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(companyName)}&format=json&origin=*`;
-    const response = await axiosInstance.get(searchUrl, { timeout: 30000 });
+    const response = await axiosInstance.get(searchUrl, { timeout: 8000 });
     
     if (response.data?.query?.search?.length > 0) {
       const topResult = response.data.query.search[0];
@@ -248,7 +248,7 @@ export async function searchWikipedia(companyName) {
       
       // Fetch the actual page content
       const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(topResult.title)}&prop=extracts&exintro=true&explaintext=true&format=json&origin=*`;
-      const contentResponse = await axiosInstance.get(contentUrl, { timeout: 30000 });
+      const contentResponse = await axiosInstance.get(contentUrl, { timeout: 8000 });
       
       const pages = contentResponse.data?.query?.pages || {};
       const pageContent = Object.values(pages)[0]?.extract || '';
@@ -271,7 +271,7 @@ export async function searchWikipedia(companyName) {
 export async function searchYahooFinance(companyName) {
   try {
     const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(companyName)}&quotesCount=3&newsCount=0`;
-    const response = await axiosInstance.get(searchUrl, { timeout: 30000 });
+    const response = await axiosInstance.get(searchUrl, { timeout: 8000 });
     
     const quotes = response.data?.quotes || [];
     if (quotes.length > 0) {
@@ -303,7 +303,7 @@ export async function searchIndustryNews(companyName) {
     const allNews = [];
     for (const url of sources) {
       try {
-        const response = await fetchWithTimeout(url, 15000);
+        const response = await fetchWithTimeout(url, 8000);
         if (response.ok) {
           const xml = await response.text();
           const $ = cheerio.load(xml, { xmlMode: true });
@@ -330,7 +330,7 @@ async function bingSearch(query, maxResults = 3) {
   try {
     const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
     const response = await axiosInstance.get(searchUrl, {
-      timeout: 15000,
+      timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
@@ -363,7 +363,7 @@ async function googleScrape(query, maxResults = 3) {
   try {
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=5`;
     const response = await axiosInstance.get(searchUrl, {
-      timeout: 15000,
+      timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -410,7 +410,7 @@ export async function searchReddit(companyName, maxResults = 5) {
       try {
         const searchUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(companyName)}&sort=relevance&t=year&limit=3`;
         const response = await axiosInstance.get(searchUrl, {
-          timeout: 10000,
+          timeout: 8000,
           headers: {
             'User-Agent': 'SmoothAI-ResearchBot/1.0 (Company Research)'
           }
@@ -453,7 +453,7 @@ export async function searchSECFilings(companyName) {
     const searchUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(companyName)}&dateRange=custom&startdt=2023-01-01&enddt=2025-12-31&forms=10-K,10-Q,8-K&from=0&size=5`;
     
     const response = await axiosInstance.get(searchUrl, {
-      timeout: 15000,
+      timeout: 8000,
       headers: {
         'User-Agent': 'SmoothAI Research (contact@smoothaiconsultancy.com)',
         'Accept': 'application/json'
@@ -486,7 +486,7 @@ export async function webSearch(query, maxResults = 5) {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const response = await axiosInstance.get(searchUrl, {
-      timeout: 30000,
+      timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -573,7 +573,7 @@ export async function webSearch(query, maxResults = 5) {
 // Fetch and extract content from a URL
 async function fetchAndExtract(url, maxChars = 3000) {
   try {
-    const response = await fetchWithTimeout(url, 30000);
+    const response = await fetchWithTimeout(url, 8000);
     if (!response.ok) {
       return { success: false, error: `HTTP ${response.status}` };
     }
