@@ -225,11 +225,16 @@ export const PipelineBoard: React.FC<Props> = ({ leads, onAnalyze, onMarkContact
         {selectedResearchLeadId && (
           (() => {
             const lead = leads.find(l => l.id === selectedResearchLeadId);
-            return lead && lead.research ? (
+            return lead ? (
               <ResearchDetailView 
-                research={lead.research}
+                research={lead.research || null}
                 companyName={lead.companyName}
+                website={lead.website}
+                lead={lead}
                 onClose={() => setSelectedResearchLeadId(null)}
+                onLeadUpdate={(updatedLead) => {
+                  if (onUpdateLead) onUpdateLead(updatedLead);
+                }}
               />
             ) : null;
           })()
