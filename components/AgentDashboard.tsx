@@ -70,6 +70,8 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ total: number; message: string } | null>(null);
   const [selectedActivityLog, setSelectedActivityLog] = useState<AgentLog | null>(null);
+  const [activityDraft, setActivityDraft] = useState<any>(null);
+  const [loadingDraft, setLoadingDraft] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {

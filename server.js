@@ -1427,6 +1427,29 @@ app.get('/api/agents/pipeline', async (req, res) => {
     }
 });
 
+// GET /api/agents/draft/:companyName - Get draft email by company name
+app.get('/api/agents/draft/:companyName', async (req, res) => {
+    const { companyName } = req.params;
+    
+    try {
+        const draft = await db.get(`
+            SELECT id, company_name, email_subject, email_body, research_quality, created_at 
+            FROM draft_queue 
+            WHERE company_name = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        `, [decodeURIComponent(companyName)]);
+        
+        if (draft) {
+            res.json({ success: true, draft });
+        } else {
+            res.json({ success: false, draft: null, message: "Draft not found" });
+        }
+    } catch (error) {
+        res.json({ success: false, draft: null, error: error.message });
+    }
+});
+
 // POST /api/research/generate-email - Generate email with research data
 app.post('/api/research/generate-email', async (req, res) => {
     const { lead, research, serviceProfile } = req.body;
