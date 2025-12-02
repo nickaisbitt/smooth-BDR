@@ -4601,6 +4601,165 @@ app.get('/api/analytics/best-send-window', async (req, res) => {
     }
 });
 
+// POST /api/follow-up-sequences/create - Create automated follow-up sequence for a prospect
+app.post('/api/follow-up-sequences/create', async (req, res) => {
+    try {
+        const { lead_id, sequence_name, initial_email_id, first_sent_at } = req.body;
+        
+        if (!lead_id) {
+            return res.status(400).json({ error: 'lead_id required' });
+        }
+        
+        // Calculate follow-up schedule: 3 days, 7 days, 14 days
+        const firstSent = first_sent_at || Date.now();
+        const followUp1 = firstSent + (3 * 24 * 60 * 60 * 1000);
+        const followUp2 = firstSent + (7 * 24 * 60 * 60 * 1000);
+        const followUp3 = firstSent + (14 * 24 * 60 * 60 * 1000);
+        
+        const existing = await db.get(`SELECT id FROM follow_up_sequences WHERE lead_id = ?`, [lead_id]);
+        
+        if (existing) {
+            await db.run(
+                `UPDATE follow_up_sequences SET follow_up_1_scheduled = ?, follow_up_2_scheduled = ?, follow_up_3_scheduled = ? WHERE lead_id = ?`,
+                [followUp1, followUp2, followUp3, lead_id]
+            );
+        } else {
+            await db.run(
+                `INSERT INTO follow_up_sequences (lead_id, sequence_name, initial_email_id, first_sent_at, follow_up_1_scheduled, follow_up_2_scheduled, follow_up_3_scheduled, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [lead_id, sequence_name || 'default', initial_email_id, firstSent, followUp1, followUp2, followUp3, Date.now()]
+            );
+        }
+        
+        res.json({ 
+            sequence_created: true, 
+            follow_up_1_at: new Date(followUp1).toISOString().split('T')[0],
+            follow_up_2_at: new Date(followUp2).toISOString().split('T')[0],
+            follow_up_3_at: new Date(followUp3).toISOString().split('T')[0]
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/follow-up-sequences/due - Get follow-ups due to send
+app.get('/api/follow-up-sequences/due', async (req, res) => {
+    try {
+        const now = Date.now();
+        
+        const dueFollowUps = await db.all(`
+            SELECT 
+                fs.lead_id,
+                pq.company_name,
+                pq.contact_email,
+                pq.contact_name,
+                fs.sequence_name,
+                CASE 
+                    WHEN fs.follow_up_1_scheduled <= ? AND fs.follow_up_1_sent IS NULL THEN 1
+                    WHEN fs.follow_up_2_scheduled <= ? AND fs.follow_up_2_sent IS NULL THEN 2
+                    WHEN fs.follow_up_3_scheduled <= ? AND fs.follow_up_3_sent IS NULL THEN 3
+                    ELSE NULL
+                END as followup_number,
+                CASE 
+                    WHEN fs.follow_up_1_scheduled <= ? AND fs.follow_up_1_sent IS NULL THEN fs.follow_up_1_scheduled
+                    WHEN fs.follow_up_2_scheduled <= ? AND fs.follow_up_2_sent IS NULL THEN fs.follow_up_2_scheduled
+                    WHEN fs.follow_up_3_scheduled <= ? AND fs.follow_up_3_sent IS NULL THEN fs.follow_up_3_scheduled
+                END as due_at
+            FROM follow_up_sequences fs
+            JOIN prospect_queue pq ON fs.lead_id = pq.id
+            WHERE fs.sequence_status = 'active'
+            AND (
+                (fs.follow_up_1_scheduled <= ? AND fs.follow_up_1_sent IS NULL) OR
+                (fs.follow_up_2_scheduled <= ? AND fs.follow_up_2_sent IS NULL) OR
+                (fs.follow_up_3_scheduled <= ? AND fs.follow_up_3_sent IS NULL)
+            )
+            ORDER BY due_at ASC
+        `, [now, now, now, now, now, now, now, now, now]);
+        
+        res.json({
+            followUpsDue: {
+                total_due: dueFollowUps.length,
+                follow_ups: dueFollowUps.map(f => ({
+                    lead_id: f.lead_id,
+                    company: f.company_name,
+                    contact: f.contact_name,
+                    email: f.contact_email,
+                    sequence: f.sequence_name,
+                    follow_up_number: f.followup_number,
+                    due_at: new Date(f.due_at).toISOString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ followUpsDue: { total_due: 0 } });
+    }
+});
+
+// POST /api/follow-up-sequences/:leadId/send - Mark follow-up as sent
+app.post('/api/follow-up-sequences/:leadId/send', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { followup_number } = req.body;
+        
+        if (!followup_number || ![1, 2, 3].includes(followup_number)) {
+            return res.status(400).json({ error: 'followup_number must be 1, 2, or 3' });
+        }
+        
+        const column = `follow_up_${followup_number}_sent`;
+        await db.run(
+            `UPDATE follow_up_sequences SET ${column} = ? WHERE lead_id = ?`,
+            [Date.now(), leadId]
+        );
+        
+        res.json({ sent: true, followup_number });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/follow-up-sequences/stats - Follow-up campaign effectiveness
+app.get('/api/follow-up-sequences/stats', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_sequences,
+                SUM(CASE WHEN follow_up_1_sent IS NOT NULL THEN 1 ELSE 0 END) as sent_followup_1,
+                SUM(CASE WHEN follow_up_2_sent IS NOT NULL THEN 1 ELSE 0 END) as sent_followup_2,
+                SUM(CASE WHEN follow_up_3_sent IS NOT NULL THEN 1 ELSE 0 END) as sent_followup_3
+            FROM follow_up_sequences
+            WHERE sequence_status = 'active'
+        `);
+        
+        res.json({
+            followUpStats: {
+                total_active_sequences: stats.total_sequences || 0,
+                followup_1_sent: stats.sent_followup_1 || 0,
+                followup_2_sent: stats.sent_followup_2 || 0,
+                followup_3_sent: stats.sent_followup_3 || 0,
+                engagement_strategy: '📧 3-email sequence: day 3, day 7, day 14 for non-responders'
+            }
+        });
+    } catch (error) {
+        res.json({ followUpStats: {} });
+    }
+});
+
+// PUT /api/follow-up-sequences/:leadId/complete - Mark sequence as complete
+app.put('/api/follow-up-sequences/:leadId/complete', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        await db.run(
+            `UPDATE follow_up_sequences SET sequence_status = 'completed' WHERE lead_id = ?`,
+            [leadId]
+        );
+        
+        res.json({ completed: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

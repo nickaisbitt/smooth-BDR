@@ -404,6 +404,26 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_send_times_lead ON email_send_times(lead_id);
   CREATE INDEX IF NOT EXISTS idx_send_times_hour ON email_send_times(sent_hour);
   
+  CREATE TABLE IF NOT EXISTS follow_up_sequences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id TEXT NOT NULL UNIQUE,
+    sequence_name TEXT,
+    initial_email_id TEXT,
+    first_sent_at INTEGER,
+    follow_up_1_scheduled INTEGER,
+    follow_up_1_sent INTEGER,
+    follow_up_2_scheduled INTEGER,
+    follow_up_2_sent INTEGER,
+    follow_up_3_scheduled INTEGER,
+    follow_up_3_sent INTEGER,
+    sequence_status TEXT DEFAULT 'active',
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_followup_lead ON follow_up_sequences(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_followup_status ON follow_up_sequences(sequence_status);
+  
   console.log("✅ Agent tables initialized");
 }
 
