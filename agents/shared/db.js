@@ -288,6 +288,38 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN tier_calculated_at INTEGER`);
   } catch (e) { /* column exists */ }
   
+  // Create email template library table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_name TEXT NOT NULL UNIQUE,
+      template_type TEXT DEFAULT 'initial',
+      subject_line TEXT NOT NULL,
+      body_text TEXT NOT NULL,
+      tags TEXT DEFAULT '[]',
+      target_industries TEXT DEFAULT '[]',
+      target_company_sizes TEXT DEFAULT '[]',
+      target_tiers TEXT DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER
+    );
+    
+    CREATE TABLE IF NOT EXISTS template_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER,
+      email_id INTEGER,
+      lead_id TEXT,
+      sent_at INTEGER,
+      replied INTEGER DEFAULT 0,
+      reply_sentiment TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (template_id) REFERENCES email_templates(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_template_usage_template ON template_usage(template_id);
+    CREATE INDEX IF NOT EXISTS idx_template_usage_lead ON template_usage(lead_id);
+  `);
+  
   console.log("✅ Agent tables initialized");
 }
 

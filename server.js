@@ -3690,6 +3690,224 @@ app.post('/api/prospects/bulk-operations-by-tier', async (req, res) => {
     }
 });
 
+// POST /api/templates/create - Create a new email template
+app.post('/api/templates/create', async (req, res) => {
+    try {
+        const { template_name, template_type, subject_line, body_text, tags, target_industries, target_company_sizes, target_tiers } = req.body;
+        
+        if (!template_name || !subject_line || !body_text) {
+            return res.status(400).json({ error: 'template_name, subject_line, and body_text required' });
+        }
+        
+        await db.run(
+            `INSERT INTO email_templates (template_name, template_type, subject_line, body_text, tags, target_industries, target_company_sizes, target_tiers, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [template_name, template_type || 'initial', subject_line, body_text, JSON.stringify(tags || []),
+             JSON.stringify(target_industries || []), JSON.stringify(target_company_sizes || []),
+             JSON.stringify(target_tiers || []), Date.now(), Date.now()]
+        );
+        
+        res.json({ created: true, template_name, message: 'Template created successfully' });
+    } catch (error) {
+        if (error.message.includes('UNIQUE')) {
+            return res.status(400).json({ error: 'Template name already exists' });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/templates/library - List all email templates
+app.get('/api/templates/library', async (req, res) => {
+    try {
+        const templates = await db.all(`
+            SELECT 
+                id,
+                template_name,
+                template_type,
+                subject_line,
+                body_text,
+                tags,
+                target_industries,
+                target_company_sizes,
+                target_tiers,
+                created_at
+            FROM email_templates
+            ORDER BY created_at DESC
+            LIMIT 100
+        `);
+        
+        res.json({
+            templates: templates.map(t => ({
+                id: t.id,
+                name: t.template_name,
+                type: t.template_type,
+                subject: t.subject_line?.substring(0, 50),
+                tags: JSON.parse(t.tags || '[]'),
+                industries: JSON.parse(t.target_industries || '[]'),
+                sizes: JSON.parse(t.target_company_sizes || '[]'),
+                tiers: JSON.parse(t.target_tiers || '[]'),
+                created: new Date(t.created_at).toLocaleDateString()
+            })),
+            total: templates.length
+        });
+    } catch (error) {
+        res.json({ templates: [], total: 0 });
+    }
+});
+
+// GET /api/templates/:id/details - Get full template details
+app.get('/api/templates/:id/details', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const template = await db.get(
+            `SELECT * FROM email_templates WHERE id = ?`,
+            [id]
+        );
+        
+        if (!template) {
+            return res.status(404).json({ error: 'Template not found' });
+        }
+        
+        res.json({
+            template: {
+                id: template.id,
+                name: template.template_name,
+                type: template.template_type,
+                subject: template.subject_line,
+                body: template.body_text,
+                tags: JSON.parse(template.tags || '[]'),
+                industries: JSON.parse(template.target_industries || '[]'),
+                sizes: JSON.parse(template.target_company_sizes || '[]'),
+                tiers: JSON.parse(template.target_tiers || '[]')
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/templates/performance - Analytics on template performance
+app.get('/api/templates/performance', async (req, res) => {
+    try {
+        const performance = await db.all(`
+            SELECT 
+                et.id,
+                et.template_name,
+                COUNT(tu.id) as uses,
+                SUM(CASE WHEN tu.replied = 1 THEN 1 ELSE 0 END) as replies,
+                SUM(CASE WHEN tu.reply_sentiment = 'positive' THEN 1 ELSE 0 END) as positive_replies,
+                COUNT(DISTINCT tu.lead_id) as unique_prospects
+            FROM email_templates et
+            LEFT JOIN template_usage tu ON et.id = tu.template_id
+            GROUP BY et.id
+            ORDER BY COUNT(tu.id) DESC
+        `);
+        
+        const templateMetrics = performance.map(p => {
+            const replyRate = p.uses > 0 ? Math.round((p.replies / p.uses) * 100) : 0;
+            const positiveRate = p.replies > 0 ? Math.round((p.positive_replies / p.replies) * 100) : 0;
+            return {
+                template: p.template_name,
+                uses: p.uses || 0,
+                replies: p.replies || 0,
+                reply_rate: `${replyRate}%`,
+                positive_replies: p.positive_replies || 0,
+                positive_rate: `${positiveRate}%`,
+                unique_prospects: p.unique_prospects || 0,
+                effectiveness: replyRate > 20 ? '✅ Highly effective' : replyRate > 10 ? '→ Good' : '⚠️ Needs improvement'
+            };
+        });
+        
+        res.json({
+            templatePerformance: {
+                total_templates: performance.length,
+                metrics: templateMetrics.slice(0, 10),
+                top_template: templateMetrics[0] || null
+            }
+        });
+    } catch (error) {
+        res.json({ templatePerformance: { total_templates: 0, metrics: [] } });
+    }
+});
+
+// GET /api/templates/recommend - Get best templates for a prospect segment
+app.get('/api/templates/recommend', async (req, res) => {
+    try {
+        const { tier, industry, company_size } = req.query;
+        
+        const recommendations = await db.all(`
+            SELECT 
+                et.id,
+                et.template_name,
+                et.template_type,
+                COUNT(tu.id) as uses,
+                SUM(CASE WHEN tu.replied = 1 THEN 1 ELSE 0 END) as replies
+            FROM email_templates et
+            LEFT JOIN template_usage tu ON et.id = tu.template_id
+            WHERE 1=1
+                ${tier ? `AND et.target_tiers LIKE '%${tier}%'` : ''}
+                ${industry ? `AND et.target_industries LIKE '%${industry}%'` : ''}
+                ${company_size ? `AND et.target_company_sizes LIKE '%${company_size}%'` : ''}
+            GROUP BY et.id
+            ORDER BY CASE WHEN replies > 0 THEN CAST(replies AS REAL) / COUNT(tu.id) ELSE 0 END DESC
+            LIMIT 5
+        `);
+        
+        res.json({
+            recommendations: recommendations.map(r => ({
+                id: r.id,
+                template: r.template_name,
+                type: r.template_type,
+                uses: r.uses || 0,
+                reply_rate: r.uses > 0 ? Math.round(((r.replies || 0) / r.uses) * 100) : 0
+            })),
+            filters: { tier, industry, company_size }
+        });
+    } catch (error) {
+        res.json({ recommendations: [] });
+    }
+});
+
+// POST /api/templates/link-usage - Track which template was used in an email
+app.post('/api/templates/link-usage', async (req, res) => {
+    try {
+        const { template_id, email_id, lead_id } = req.body;
+        
+        if (!template_id || !email_id) {
+            return res.status(400).json({ error: 'template_id and email_id required' });
+        }
+        
+        await db.run(
+            `INSERT INTO template_usage (template_id, email_id, lead_id, sent_at, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [template_id, email_id, lead_id, Date.now(), Date.now()]
+        );
+        
+        res.json({ tracked: true, message: 'Template usage tracked' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /api/templates/:id/update - Update an email template
+app.put('/api/templates/:id/update', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { subject_line, body_text, tags, target_industries, target_company_sizes, target_tiers } = req.body;
+        
+        await db.run(
+            `UPDATE email_templates SET subject_line = ?, body_text = ?, tags = ?, target_industries = ?, target_company_sizes = ?, target_tiers = ?, updated_at = ?
+             WHERE id = ?`,
+            [subject_line, body_text, JSON.stringify(tags || []), JSON.stringify(target_industries || []),
+             JSON.stringify(target_company_sizes || []), JSON.stringify(target_tiers || []), Date.now(), id]
+        );
+        
+        res.json({ updated: true, message: 'Template updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
