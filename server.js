@@ -882,26 +882,46 @@ app.get('/api/automation/replies', async (req, res) => {
     }
 });
 
-// POST /api/automation/process-replies - Manually trigger reply processing
+// POST /api/automation/process-replies - Manually trigger reply processing (IDEMPOTENT)
 app.post('/api/automation/process-replies', async (req, res) => {
     try {
+        const fingerprint = deduplicator.generateFingerprint('POST', '/api/automation/process-replies', {});
+        const cached = deduplicator.getCachedResponse(fingerprint);
+        if (cached && !cached.isPending) {
+            return res.json({ ...cached, isDuplicate: true });
+        }
+        
+        deduplicator.markProcessing(fingerprint);
         const processed = await processUnanalyzedReplies(db, null);
-        res.json({ success: true, processed });
+        const response = { success: true, processed };
+        deduplicator.cacheResponse(fingerprint, response, 30000);
+        invalidationHooks.onReplyReceived();
+        res.json(response);
     } catch (error) {
         console.error("Process Replies Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// POST /api/automation/send-queued - Manually trigger sending queued emails
+// POST /api/automation/send-queued - Manually trigger sending queued emails (IDEMPOTENT)
 app.post('/api/automation/send-queued', async (req, res) => {
     if (!cachedSmtpConfig || !cachedSmtpConfig.host) {
         return res.status(400).json({ error: "SMTP not configured" });
     }
     
     try {
+        const fingerprint = deduplicator.generateFingerprint('POST', '/api/automation/send-queued', {});
+        const cached = deduplicator.getCachedResponse(fingerprint);
+        if (cached && !cached.isPending) {
+            return res.json({ ...cached, isDuplicate: true });
+        }
+        
+        deduplicator.markProcessing(fingerprint);
         const result = await processPendingEmails(db, cachedSmtpConfig, nodemailer);
-        res.json({ success: true, ...result });
+        const response = { success: true, ...result };
+        deduplicator.cacheResponse(fingerprint, response, 30000);
+        invalidationHooks.onEmailSent();
+        res.json(response);
     } catch (error) {
         console.error("Send Queued Error:", error);
         res.status(500).json({ error: error.message });
