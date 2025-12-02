@@ -10,6 +10,10 @@ const openrouter = new OpenAI({
 
 const RESEARCH_TIMEOUT = 4000;  // Reduced from 8s for faster fallbacks
 
+// IN-FLIGHT REQUEST DEDUPLICATION - Prevent duplicate parallel research calls
+const inFlightRequests = new Map(); // company_name -> Promise
+const requestMetrics = { deduped: 0, total: 0 };
+
 const axiosInstance = axios.create({
   timeout: RESEARCH_TIMEOUT,
   headers: {
