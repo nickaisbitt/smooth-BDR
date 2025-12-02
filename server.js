@@ -30,6 +30,7 @@ import {
   scrapeWebsite
 } from './services/researchService.js';
 import queryCache from './services/queryCache.js';
+import invalidationHooks from './services/cacheInvalidation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -981,6 +982,7 @@ app.post('/api/automation/approve-email/:id', async (req, res) => {
         
         await logAutomation(db, 'EMAIL_APPROVED_SENT', `Manually reviewed & sent: ${updatedEmail.subject} to ${updatedEmail.to_email}`, { leadName: updatedEmail.lead_name, approvedBy: 'manual_review' });
         
+        invalidationHooks.onEmailSent();
         res.json({ success: true, message: 'Email approved and sent successfully' });
     } catch (error) {
         console.error("Approve Email Error:", error);
@@ -1016,6 +1018,7 @@ app.post('/api/automation/retry-failed', async (req, res) => {
             `UPDATE email_queue SET status = 'pending', attempts = 0, last_error = NULL WHERE status = 'failed'`
         );
         const count = await db.get('SELECT changes() as count');
+        invalidationHooks.onEmailReviewed();
         res.json({ success: true, retriedCount: count?.count || 0 });
     } catch (error) {
         console.error("Retry Failed Error:", error);
