@@ -52,7 +52,7 @@ export const AGENT_CONFIG = {
     name: 'logo-finder',
     pollIntervalMs: 60000,  // BACKGROUND: slower to preserve resources
     batchSize: 30,  // INCREASED batch when it runs
-    enabled: true
+    enabled: false  // Disabled: lower priority enrichment, can be enabled on-demand
   }
 };
 
