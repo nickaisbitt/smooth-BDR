@@ -552,6 +552,20 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_rep_activity_rep ON rep_activity_metrics(rep_id);
   CREATE INDEX IF NOT EXISTS idx_rep_activity_period ON rep_activity_metrics(period_date);
   
+  CREATE TABLE IF NOT EXISTS engagement_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL,
+    signal_type TEXT,
+    signal_value INTEGER DEFAULT 0,
+    event_data TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_engagement_lead ON engagement_signals(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_engagement_type ON engagement_signals(signal_type);
+  CREATE INDEX IF NOT EXISTS idx_engagement_created ON engagement_signals(created_at);
+  
   console.log("✅ Agent tables initialized");
 }
 

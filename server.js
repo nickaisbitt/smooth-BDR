@@ -5985,6 +5985,173 @@ app.get('/api/analytics/activity-trends', async (req, res) => {
     }
 });
 
+// POST /api/engagement/track-signal - Track prospect engagement signals
+app.post('/api/engagement/track-signal', async (req, res) => {
+    try {
+        const { lead_id, signal_type, signal_value, event_data } = req.body;
+        
+        // Signal types: email_opened, email_clicked, email_replied, meeting_scheduled, meeting_attended, reply_positive
+        const signalWeights = {
+            'email_opened': 5,
+            'email_clicked': 15,
+            'email_replied': 25,
+            'reply_positive': 40,
+            'meeting_scheduled': 30,
+            'meeting_attended': 50
+        };
+        
+        const weight = signalWeights[signal_type] || signal_value || 0;
+        
+        await db.run(`
+            INSERT INTO engagement_signals (lead_id, signal_type, signal_value, event_data, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `, [lead_id, signal_type, weight, event_data || '', Date.now()]);
+        
+        res.json({ success: true, signal_weight: weight });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/engagement/hot-leads - Identify hot leads with high engagement
+app.get('/api/engagement/hot-leads', async (req, res) => {
+    try {
+        const pastWeek = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        
+        const hotLeads = await db.all(`
+            SELECT 
+                pq.id,
+                pq.prospect_name,
+                pq.company_name,
+                pq.email,
+                SUM(es.signal_value) as engagement_score,
+                COUNT(es.id) as signal_count,
+                GROUP_CONCAT(DISTINCT es.signal_type) as signals,
+                MAX(es.created_at) as last_engagement,
+                CASE 
+                    WHEN SUM(es.signal_value) >= 100 THEN '🔥 HOT'
+                    WHEN SUM(es.signal_value) >= 50 THEN '⚡ WARM'
+                    WHEN SUM(es.signal_value) >= 20 THEN '🌡️ COOL'
+                    ELSE '❄️ COLD'
+                END as temperature
+            FROM prospect_queue pq
+            LEFT JOIN engagement_signals es ON pq.id = es.lead_id AND es.created_at > ?
+            GROUP BY pq.id
+            HAVING SUM(es.signal_value) > 0
+            ORDER BY engagement_score DESC
+            LIMIT 50
+        `, [pastWeek]);
+        
+        res.json({
+            hotLeads: {
+                total_engaged: hotLeads.length,
+                leads: hotLeads.map(l => ({
+                    id: l.id,
+                    name: l.prospect_name,
+                    company: l.company_name,
+                    email: l.email,
+                    engagement_score: l.engagement_score || 0,
+                    temperature: l.temperature,
+                    signals: (l.signals || '').split(',').filter(s => s),
+                    last_engagement: new Date(l.last_engagement || 0).toLocaleDateString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ hotLeads: { total_engaged: 0, leads: [] } });
+    }
+});
+
+// GET /api/engagement/signal-summary - Engagement metrics and next steps
+app.get('/api/engagement/signal-summary', async (req, res) => {
+    try {
+        const past30Days = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        const summary = await db.get(`
+            SELECT 
+                COUNT(DISTINCT CASE WHEN signal_type = 'email_opened' THEN lead_id END) as opens,
+                COUNT(DISTINCT CASE WHEN signal_type = 'email_clicked' THEN lead_id END) as clicks,
+                COUNT(DISTINCT CASE WHEN signal_type = 'email_replied' THEN lead_id END) as replies,
+                COUNT(DISTINCT CASE WHEN signal_type = 'reply_positive' THEN lead_id END) as positive_replies,
+                COUNT(DISTINCT CASE WHEN signal_type = 'meeting_scheduled' THEN lead_id END) as meetings_scheduled,
+                COUNT(DISTINCT CASE WHEN signal_type = 'meeting_attended' THEN lead_id END) as meetings_attended,
+                AVG(CASE WHEN signal_value > 0 THEN signal_value ELSE NULL END) as avg_engagement_score
+            FROM engagement_signals
+            WHERE created_at > ?
+        `, [past30Days]);
+        
+        const totalProspects = await db.get(`SELECT COUNT(DISTINCT id) as total FROM prospect_queue WHERE created_at > ?`, [past30Days]);
+        
+        const engagementRate = totalProspects.total > 0 ? Math.round(((summary.opens || 0) / totalProspects.total) * 100) : 0;
+        
+        res.json({
+            engagementSummary: {
+                engagement_rate: `${engagementRate}%`,
+                last_30_days: {
+                    email_opens: summary.opens || 0,
+                    email_clicks: summary.clicks || 0,
+                    email_replies: summary.replies || 0,
+                    positive_replies: summary.positive_replies || 0,
+                    meetings_scheduled: summary.meetings_scheduled || 0,
+                    meetings_attended: summary.meetings_attended || 0
+                },
+                avg_engagement_score: Math.round(summary.avg_engagement_score || 0),
+                health_indicator: engagementRate >= 30 ? '🟢 Strong engagement' : engagementRate >= 15 ? '🟡 Moderate engagement' : '🔴 Low engagement'
+            }
+        });
+    } catch (error) {
+        res.json({ engagementSummary: {} });
+    }
+});
+
+// GET /api/engagement/recommended-actions - AI-powered next steps for hot leads
+app.get('/api/engagement/recommended-actions', async (req, res) => {
+    try {
+        const actions = await db.all(`
+            SELECT 
+                pq.id,
+                pq.prospect_name,
+                pq.email,
+                SUM(CASE WHEN es.signal_type = 'email_replied' THEN 1 ELSE 0 END) as reply_count,
+                SUM(CASE WHEN es.signal_type = 'email_clicked' THEN 1 ELSE 0 END) as click_count,
+                SUM(CASE WHEN es.signal_type = 'meeting_attended' THEN 1 ELSE 0 END) as meeting_count,
+                MAX(es.created_at) as last_activity,
+                CASE 
+                    WHEN SUM(CASE WHEN es.signal_type = 'reply_positive' THEN 1 ELSE 0 END) > 0 THEN '📞 Call Now'
+                    WHEN SUM(CASE WHEN es.signal_type = 'email_replied' THEN 1 ELSE 0 END) > 0 THEN '📧 Send personalized follow-up'
+                    WHEN SUM(CASE WHEN es.signal_type = 'email_clicked' THEN 1 ELSE 0 END) > 0 THEN '📍 Send meeting request'
+                    WHEN SUM(CASE WHEN es.signal_type = 'email_opened' THEN 1 ELSE 0 END) > 0 THEN '📨 Send second email'
+                    ELSE '👁️ Review & reach out'
+                END as recommended_action
+            FROM prospect_queue pq
+            LEFT JOIN engagement_signals es ON pq.id = es.lead_id AND es.created_at > ?
+            GROUP BY pq.id
+            HAVING SUM(es.signal_value) > 20
+            ORDER BY last_activity DESC
+            LIMIT 30
+        `, [Date.now() - (7 * 24 * 60 * 60 * 1000)]);
+        
+        res.json({
+            recommendedActions: {
+                urgent_count: actions.filter(a => a.recommended_action === '📞 Call Now').length,
+                actions: actions.map(a => ({
+                    id: a.id,
+                    prospect: a.prospect_name,
+                    email: a.email,
+                    action: a.recommended_action,
+                    engagement: {
+                        replies: a.reply_count || 0,
+                        clicks: a.click_count || 0,
+                        meetings: a.meeting_count || 0
+                    }
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ recommendedActions: { urgent_count: 0, actions: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
