@@ -177,10 +177,11 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
     if (selectedAgent && agents.length > 0) {
       const agent = agents.find(a => a.name === selectedAgent);
       if (agent) {
-        handleAgentClick(agent);
+        setSelectedAgentObj(agent);
+        fetchAgentLogs(agent.name);
       }
     }
-  }, [selectedAgent, agents, handleAgentClick]);
+  }, [selectedAgent, agents, fetchAgentLogs]);
 
   const fetchAgentLogs = useCallback(async (agentName: string) => {
     setLoadingLogs(true);
@@ -633,13 +634,13 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
         </div>
       )}
 
-      {selectedAgent && (
+      {selectedAgentObj && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${ selectedAgentObj?.health === 'healthy' && selectedAgent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
-                  {getAgentIcon(selectedAgent.name)}
+                <div className={`p-2 rounded-lg ${ selectedAgentObj?.health === 'healthy' && selectedAgentObj?.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                  {getAgentIcon(selectedAgentObj?.name || '')}
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 capitalize">
@@ -680,8 +681,8 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
                 </div>
               </div>
               <div className="mt-3 flex gap-4 text-xs text-gray-500">
-                <span>Started: {formatDateTime(selectedAgent.started_at)}</span>
-                <span>Last heartbeat: {formatDateTime(selectedAgent.last_heartbeat)}</span>
+                <span>Started: {formatDateTime(selectedAgentObj?.started_at)}</span>
+                <span>Last heartbeat: {formatDateTime(selectedAgentObj?.last_heartbeat)}</span>
                 { selectedAgentObj?.current_item && (
                   <span className="text-blue-600">Working on: { selectedAgentObj?.current_item}</span>
                 )}
@@ -748,17 +749,17 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
 
             <div className="p-4 border-t border-gray-200 flex justify-between items-center">
               <button
-                onClick={() => fetchAgentLogs(selectedAgent.name)}
+                onClick={() => fetchAgentLogs(selectedAgentObj?.name || '')}
                 className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <RefreshCw className={`w-4 h-4 ${loadingLogs ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); toggleAgent(selectedAgent.name, !!selectedAgent.enabled); }}
-                disabled={toggling === selectedAgent.name}
+                onClick={(e) => { e.stopPropagation(); toggleAgent(selectedAgentObj?.name || '', !!selectedAgentObj?.enabled); }}
+                disabled={toggling === selectedAgentObj?.name}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                  selectedAgent.enabled 
+                  selectedAgentObj?.enabled 
                     ? 'bg-red-50 text-red-600 hover:bg-red-100' 
                     : 'bg-green-50 text-green-600 hover:bg-green-100'
                 }`}
