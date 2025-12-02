@@ -424,6 +424,23 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_followup_lead ON follow_up_sequences(lead_id);
   CREATE INDEX IF NOT EXISTS idx_followup_status ON follow_up_sequences(sequence_status);
   
+  CREATE TABLE IF NOT EXISTS deal_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id TEXT NOT NULL UNIQUE,
+    outcome TEXT,
+    close_reason TEXT,
+    competitor_lost_to TEXT,
+    competitor_pricing TEXT,
+    competitor_features TEXT,
+    close_date INTEGER,
+    closed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_outcome_status ON deal_outcomes(outcome);
+  CREATE INDEX IF NOT EXISTS idx_outcome_competitor ON deal_outcomes(competitor_lost_to);
+  
   console.log("✅ Agent tables initialized");
 }
 

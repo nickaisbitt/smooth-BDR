@@ -4760,6 +4760,178 @@ app.put('/api/follow-up-sequences/:leadId/complete', async (req, res) => {
     }
 });
 
+// POST /api/deals/:leadId/close-outcome - Record deal outcome (won/lost) with details
+app.post('/api/deals/:leadId/close-outcome', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { outcome, close_reason, competitor_lost_to, competitor_pricing, competitor_features } = req.body;
+        
+        if (!outcome || !['won', 'lost'].includes(outcome)) {
+            return res.status(400).json({ error: 'outcome must be "won" or "lost"' });
+        }
+        
+        await db.run(
+            `INSERT INTO deal_outcomes (lead_id, outcome, close_reason, competitor_lost_to, competitor_pricing, competitor_features, closed_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [leadId, outcome, close_reason || null, competitor_lost_to || null, competitor_pricing || null, competitor_features || null, Date.now(), Date.now()]
+        );
+        
+        res.json({ recorded: true, outcome, competitor: competitor_lost_to });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/win-loss-summary - Overall win/loss analysis
+app.get('/api/analytics/win-loss-summary', async (req, res) => {
+    try {
+        const summary = await db.get(`
+            SELECT 
+                COUNT(*) as total_closed,
+                SUM(CASE WHEN outcome = 'won' THEN 1 ELSE 0 END) as deals_won,
+                SUM(CASE WHEN outcome = 'lost' THEN 1 ELSE 0 END) as deals_lost
+            FROM deal_outcomes
+        `);
+        
+        const total = summary.total_closed || 0;
+        const won = summary.deals_won || 0;
+        const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
+        
+        res.json({
+            winLossSummary: {
+                total_closed_deals: total,
+                deals_won: won,
+                deals_lost: total - won,
+                win_rate: `${winRate}%`,
+                performance: winRate >= 70 ? '⭐ Excellent' : winRate >= 50 ? '✅ Good' : winRate >= 30 ? '⚠️ Fair' : '❌ Needs improvement'
+            }
+        });
+    } catch (error) {
+        res.json({ winLossSummary: {} });
+    }
+});
+
+// GET /api/analytics/competitor-analysis - Win/loss vs competitors
+app.get('/api/analytics/competitor-analysis', async (req, res) => {
+    try {
+        const competitors = await db.all(`
+            SELECT 
+                competitor_lost_to,
+                COUNT(*) as times_lost,
+                COUNT(DISTINCT close_reason) as reasons_cited
+            FROM deal_outcomes
+            WHERE outcome = 'lost' AND competitor_lost_to IS NOT NULL
+            GROUP BY competitor_lost_to
+            ORDER BY times_lost DESC
+            LIMIT 20
+        `);
+        
+        res.json({
+            competitorAnalysis: {
+                top_competitors: competitors.map(c => ({
+                    competitor: c.competitor_lost_to,
+                    losses: c.times_lost,
+                    reason_count: c.reasons_cited
+                })),
+                total_competitive_losses: competitors.reduce((sum, c) => sum + c.times_lost, 0)
+            }
+        });
+    } catch (error) {
+        res.json({ competitorAnalysis: { top_competitors: [] } });
+    }
+});
+
+// GET /api/analytics/loss-reasons - Why deals are lost
+app.get('/api/analytics/loss-reasons', async (req, res) => {
+    try {
+        const reasons = await db.all(`
+            SELECT 
+                close_reason,
+                COUNT(*) as count
+            FROM deal_outcomes
+            WHERE outcome = 'lost' AND close_reason IS NOT NULL
+            GROUP BY close_reason
+            ORDER BY count DESC
+            LIMIT 15
+        `);
+        
+        res.json({
+            lossReasons: {
+                total_losses: reasons.reduce((sum, r) => sum + r.count, 0),
+                reasons: reasons.map(r => ({
+                    reason: r.close_reason,
+                    count: r.count,
+                    percent: Math.round((r.count / reasons.reduce((s, x) => s + x.count, 0)) * 100)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ lossReasons: {} });
+    }
+});
+
+// GET /api/analytics/win-loss-by-source - Win rate by lead source
+app.get('/api/analytics/win-loss-by-source', async (req, res) => {
+    try {
+        const sources = await db.all(`
+            SELECT 
+                pq.lead_source,
+                COUNT(DISTINCT pq.id) as total_deals,
+                SUM(CASE WHEN do.outcome = 'won' THEN 1 ELSE 0 END) as won,
+                SUM(CASE WHEN do.outcome = 'lost' THEN 1 ELSE 0 END) as lost
+            FROM prospect_queue pq
+            LEFT JOIN deal_outcomes do ON pq.id = do.lead_id
+            WHERE do.id IS NOT NULL
+            GROUP BY pq.lead_source
+            ORDER BY total_deals DESC
+        `);
+        
+        res.json({
+            sourceWinLoss: {
+                sources: sources.map(s => ({
+                    source: s.lead_source,
+                    total: s.total_deals,
+                    won: s.won || 0,
+                    lost: s.lost || 0,
+                    win_rate: s.total_deals > 0 ? Math.round(((s.won || 0) / s.total_deals) * 100) : 0
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ sourceWinLoss: { sources: [] } });
+    }
+});
+
+// GET /api/analytics/win-loss-by-industry - Win rate by industry vertical
+app.get('/api/analytics/win-loss-by-industry', async (req, res) => {
+    try {
+        const industries = await db.all(`
+            SELECT 
+                pq.industry,
+                COUNT(DISTINCT pq.id) as total_deals,
+                SUM(CASE WHEN do.outcome = 'won' THEN 1 ELSE 0 END) as won
+            FROM prospect_queue pq
+            LEFT JOIN deal_outcomes do ON pq.id = do.lead_id
+            WHERE do.id IS NOT NULL AND pq.industry IS NOT NULL
+            GROUP BY pq.industry
+            ORDER BY total_deals DESC
+        `);
+        
+        res.json({
+            industryWinLoss: {
+                industries: industries.map(i => ({
+                    industry: i.industry,
+                    deals: i.total_deals,
+                    won: i.won || 0,
+                    win_rate: i.total_deals > 0 ? Math.round(((i.won || 0) / i.total_deals) * 100) : 0
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ industryWinLoss: { industries: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
