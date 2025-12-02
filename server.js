@@ -5819,6 +5819,172 @@ app.get('/api/analytics/executive-summary', async (req, res) => {
     }
 });
 
+// GET /api/analytics/rep-performance - Individual rep activity and performance
+app.get('/api/analytics/rep-performance', async (req, res) => {
+    try {
+        const reps = await db.all(`
+            SELECT 
+                COALESCE(last_activity_by, 'unassigned') as rep,
+                COUNT(DISTINCT id) as prospects_touched,
+                (SELECT COUNT(*) FROM email_sends WHERE created_by = COALESCE(pq.last_activity_by, 'system')) as emails_sent,
+                (SELECT COUNT(*) FROM prospect_meetings WHERE lead_id IN (SELECT id FROM prospect_queue WHERE last_activity_by = COALESCE(pq.last_activity_by, 'system'))) as meetings_held,
+                (SELECT COUNT(DISTINCT lead_id) FROM deal_outcomes WHERE outcome = 'won' AND lead_id IN (SELECT id FROM prospect_queue WHERE last_activity_by = COALESCE(pq.last_activity_by, 'system'))) as deals_won,
+                (SELECT SUM(deal_value) FROM deal_pipeline WHERE closed_status = 'won' AND lead_id IN (SELECT id FROM prospect_queue WHERE last_activity_by = COALESCE(pq.last_activity_by, 'system'))) as revenue_generated
+            FROM prospect_queue pq
+            GROUP BY COALESCE(last_activity_by, 'unassigned')
+            ORDER BY deals_won DESC
+        `);
+        
+        res.json({
+            repPerformance: {
+                total_reps: reps.length,
+                reps: reps.map(r => ({
+                    rep: r.rep,
+                    prospects_engaged: r.prospects_touched,
+                    emails_sent: r.emails_sent || 0,
+                    meetings_held: r.meetings_held || 0,
+                    deals_won: r.deals_won || 0,
+                    revenue_generated: Math.round(r.revenue_generated || 0),
+                    productivity_score: Math.round(((r.emails_sent || 0) + (r.meetings_held || 0) * 2 + (r.deals_won || 0) * 5) / Math.max(r.prospects_touched, 1) * 100) || 0
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ repPerformance: { total_reps: 0 } });
+    }
+});
+
+// GET /api/analytics/team-activity - Team-wide activity dashboard
+app.get('/api/analytics/team-activity', async (req, res) => {
+    try {
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        const summary = await db.get(`
+            SELECT 
+                COUNT(DISTINCT CASE WHEN created_at > ? THEN id ELSE NULL END) as new_prospects_30d,
+                (SELECT COUNT(*) FROM email_sends WHERE created_at > ?) as emails_sent_30d,
+                (SELECT COUNT(*) FROM prospect_meetings WHERE created_at > ?) as meetings_scheduled_30d,
+                (SELECT COUNT(*) FROM prospect_meetings WHERE meeting_status = 'completed' AND completed_at > ?) as meetings_completed_30d,
+                (SELECT COUNT(*) FROM deal_outcomes WHERE outcome = 'won' AND closed_at > ?) as deals_closed_30d
+            FROM prospect_queue
+        `, [thirtyDaysAgo, thirtyDaysAgo, thirtyDaysAgo, thirtyDaysAgo, thirtyDaysAgo]);
+        
+        const dailyAvg = {
+            prospects: Math.round((summary.new_prospects_30d || 0) / 30),
+            emails: Math.round((summary.emails_sent_30d || 0) / 30),
+            meetings: Math.round((summary.meetings_scheduled_30d || 0) / 30)
+        };
+        
+        res.json({
+            teamActivity: {
+                last_30_days: {
+                    new_prospects: summary.new_prospects_30d || 0,
+                    emails_sent: summary.emails_sent_30d || 0,
+                    meetings_scheduled: summary.meetings_scheduled_30d || 0,
+                    meetings_completed: summary.meetings_completed_30d || 0,
+                    deals_won: summary.deals_closed_30d || 0
+                },
+                daily_average: dailyAvg,
+                momentum: summary.deals_closed_30d > 5 ? '🚀 Strong' : summary.emails_sent_30d > 50 ? '📈 Growing' : '⏳ Building'
+            }
+        });
+    } catch (error) {
+        res.json({ teamActivity: {} });
+    }
+});
+
+// GET /api/analytics/activity-vs-targets - Compare activity to targets
+app.get('/api/analytics/activity-vs-targets', async (req, res) => {
+    try {
+        const targets = {
+            daily_emails: 10,
+            weekly_calls: 5,
+            weekly_meetings: 3,
+            monthly_deals: 2
+        };
+        
+        const thisMonth = await db.get(`
+            SELECT 
+                COUNT(*) as total_prospects,
+                (SELECT COUNT(*) FROM email_sends WHERE created_at > ?) as emails_this_month,
+                (SELECT COUNT(*) FROM prospect_meetings WHERE created_at > ?) as meetings_this_month,
+                (SELECT COUNT(*) FROM deal_outcomes WHERE outcome = 'won' AND closed_at > ?) as deals_this_month
+            FROM prospect_queue
+            WHERE created_at > ?
+        `, [
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
+        ]);
+        
+        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        const daysPassed = new Date().getDate();
+        
+        const emailTarget = targets.daily_emails * daysPassed;
+        const meetingTarget = targets.weekly_meetings * (daysPassed / 7);
+        const dealTarget = targets.monthly_deals;
+        
+        res.json({
+            activityTargets: {
+                emails: {
+                    target: emailTarget,
+                    actual: thisMonth.emails_this_month || 0,
+                    percent: emailTarget > 0 ? Math.round(((thisMonth.emails_this_month || 0) / emailTarget) * 100) : 0,
+                    status: (thisMonth.emails_this_month || 0) >= emailTarget ? '✅ On track' : '⚠️ Below target'
+                },
+                meetings: {
+                    target: Math.round(meetingTarget),
+                    actual: thisMonth.meetings_this_month || 0,
+                    percent: meetingTarget > 0 ? Math.round(((thisMonth.meetings_this_month || 0) / meetingTarget) * 100) : 0,
+                    status: (thisMonth.meetings_this_month || 0) >= meetingTarget ? '✅ On track' : '⚠️ Below target'
+                },
+                deals: {
+                    target: dealTarget,
+                    actual: thisMonth.deals_this_month || 0,
+                    percent: dealTarget > 0 ? Math.round(((thisMonth.deals_this_month || 0) / dealTarget) * 100) : 0,
+                    status: (thisMonth.deals_this_month || 0) >= dealTarget ? '✅ On track' : '⚠️ Behind'
+                }
+            }
+        });
+    } catch (error) {
+        res.json({ activityTargets: {} });
+    }
+});
+
+// GET /api/analytics/activity-trends - Activity trends over time
+app.get('/api/analytics/activity-trends', async (req, res) => {
+    try {
+        const weeks = [];
+        for (let i = 4; i >= 0; i--) {
+            const weekStart = new Date(Date.now() - (i * 7 * 24 * 60 * 60 * 1000));
+            const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+            
+            const weekData = await db.get(`
+                SELECT 
+                    (SELECT COUNT(*) FROM email_sends WHERE created_at >= ? AND created_at < ?) as emails,
+                    (SELECT COUNT(*) FROM prospect_meetings WHERE created_at >= ? AND created_at < ?) as meetings,
+                    (SELECT COUNT(*) FROM deal_outcomes WHERE outcome = 'won' AND closed_at >= ? AND closed_at < ?) as deals
+            `, [weekStart.getTime(), weekEnd.getTime(), weekStart.getTime(), weekEnd.getTime(), weekStart.getTime(), weekEnd.getTime()]);
+            
+            weeks.push({
+                week: `Week of ${weekStart.toISOString().split('T')[0]}`,
+                emails: weekData.emails || 0,
+                meetings: weekData.meetings || 0,
+                deals: weekData.deals || 0
+            });
+        }
+        
+        res.json({
+            activityTrends: {
+                last_5_weeks: weeks
+            }
+        });
+    } catch (error) {
+        res.json({ activityTrends: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

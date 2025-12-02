@@ -528,6 +528,30 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_forecast_month ON revenue_forecasts(forecast_month);
   CREATE INDEX IF NOT EXISTS idx_forecast_date ON revenue_forecasts(forecast_date);
   
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN assigned_to TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN last_activity_by TEXT`);
+  } catch (e) { /* column exists */ }
+  
+  CREATE TABLE IF NOT EXISTS rep_activity_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rep_id TEXT NOT NULL UNIQUE,
+    rep_name TEXT,
+    period_date INTEGER,
+    emails_sent INTEGER DEFAULT 0,
+    calls_made INTEGER DEFAULT 0,
+    meetings_scheduled INTEGER DEFAULT 0,
+    meetings_completed INTEGER DEFAULT 0,
+    deals_won INTEGER DEFAULT 0,
+    revenue_generated REAL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_rep_activity_rep ON rep_activity_metrics(rep_id);
+  CREATE INDEX IF NOT EXISTS idx_rep_activity_period ON rep_activity_metrics(period_date);
+  
   console.log("✅ Agent tables initialized");
 }
 
