@@ -29,6 +29,7 @@ import {
   formatResearchForEmail,
   scrapeWebsite
 } from './services/researchService.js';
+import queryCache from './services/queryCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1075,9 +1076,15 @@ app.post('/api/research/scrape', async (req, res) => {
 
 // ============ AGENT SYSTEM API ENDPOINTS ============
 
-// GET /api/agents/status - Get status of all agents
+// GET /api/agents/status - Get status of all agents (CACHED 10s)
 app.get('/api/agents/status', async (req, res) => {
     try {
+        const cacheKey = 'agents:status:all';
+        const cached = queryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const agents = await db.all(`
             SELECT 
                 s.agent_name as name,
@@ -1100,7 +1107,9 @@ app.get('/api/agents/status', async (req, res) => {
         
         const automationState = await db.get('SELECT is_running FROM automation_state WHERE id = 1');
         
-        res.json({ success: true, agents, masterEnabled: automationState?.is_running === 1 });
+        const result = { success: true, agents, masterEnabled: automationState?.is_running === 1 };
+        queryCache.set(cacheKey, result, 10000);
+        res.json(result);
     } catch (error) {
         res.json({ success: true, agents: [], masterEnabled: false });
     }
@@ -1552,9 +1561,15 @@ Return ONLY valid JSON.`;
     }
 });
 
-// GET /api/metrics - Real-time pipeline metrics
+// GET /api/metrics - Real-time pipeline metrics (CACHED 5s)
 app.get('/api/metrics', async (req, res) => {
     try {
+        const cacheKey = 'metrics:pipeline:full';
+        const cached = queryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const stats = await Promise.all([
             db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'sent'`),
             db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'`),
@@ -1568,7 +1583,7 @@ app.get('/api/metrics', async (req, res) => {
             db.get(`SELECT SUM(CASE WHEN approval_status = 'approved' THEN 1 ELSE 0 END) as approved FROM email_queue WHERE status = 'sent'`)
         ]);
         
-        res.json({
+        const result = {
             pipeline: {
                 sent: stats[0]?.count || 0,
                 pending: stats[1]?.count || 0,
@@ -1587,16 +1602,25 @@ app.get('/api/metrics', async (req, res) => {
                 avg_research_quality: Math.round((stats[8]?.avg_quality || 0) * 10) / 10,
                 approved_emails: stats[9]?.approved || 0
             }
-        });
+        };
+
+        queryCache.set(cacheKey, result, 5000);
+        res.json(result);
     } catch (error) {
         console.error("Metrics Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// GET /api/leads/engagement-stats - Engagement scoring for top leads
+// GET /api/leads/engagement-stats - Engagement scoring for top leads (CACHED 10s)
 app.get('/api/leads/engagement-stats', async (req, res) => {
     try {
+        const cacheKey = 'engagement:topLeads:full';
+        const cached = queryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const engagedLeads = await db.all(`
             SELECT DISTINCT
                 el.to_email as email,
@@ -1617,7 +1641,7 @@ app.get('/api/leads/engagement-stats', async (req, res) => {
             LIMIT 10
         `);
 
-        res.json({
+        const result = {
             topEngagedLeads: engagedLeads.map(lead => ({
                 id: lead.id || 'unknown',
                 companyName: lead.companyName || 'Unknown',
@@ -1627,7 +1651,10 @@ app.get('/api/leads/engagement-stats', async (req, res) => {
                 replies_received: lead.replies_received || 0,
                 last_activity: lead.last_activity || null
             }))
-        });
+        };
+
+        queryCache.set(cacheKey, result, 10000);
+        res.json(result);
     } catch (error) {
         console.error("Engagement Stats Error:", error);
         res.json({ topEngagedLeads: [] });
