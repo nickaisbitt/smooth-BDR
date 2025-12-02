@@ -6544,6 +6544,201 @@ app.get('/api/alerts/auto-generate', async (req, res) => {
     }
 });
 
+// POST /api/webhooks/create - Create webhook for alerts
+app.post('/api/webhooks/create', async (req, res) => {
+    try {
+        const { name, webhook_url, webhook_type, trigger_on } = req.body;
+        
+        // webhook_type: 'slack', 'teams', 'custom'
+        // trigger_on: comma-separated alert types (hot_lead,stuck_deal,missed_followup)
+        
+        await db.run(`
+            INSERT INTO webhooks (name, webhook_url, webhook_type, trigger_on, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, [name, webhook_url, webhook_type, trigger_on || 'hot_lead,stuck_deal', 1, Date.now()]);
+        
+        res.json({ success: true, message: 'Webhook created' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/webhooks/list - List all webhooks
+app.get('/api/webhooks/list', async (req, res) => {
+    try {
+        const webhooks = await db.all(`
+            SELECT * FROM webhooks ORDER BY created_at DESC
+        `);
+        
+        res.json({
+            webhooks: webhooks.map(w => ({
+                id: w.id,
+                name: w.name,
+                type: w.webhook_type,
+                url: w.webhook_url,
+                active: w.is_active === 1,
+                triggers: w.trigger_on.split(',')
+            }))
+        });
+    } catch (error) {
+        res.json({ webhooks: [] });
+    }
+});
+
+// POST /api/webhooks/test - Test webhook
+app.post('/api/webhooks/test', async (req, res) => {
+    try {
+        const { webhook_id } = req.body;
+        const webhook = await db.get(`SELECT * FROM webhooks WHERE id = ?`, [webhook_id]);
+        
+        if (!webhook) {
+            return res.status(404).json({ error: 'Webhook not found' });
+        }
+        
+        const testPayload = {
+            type: 'test',
+            title: '🧪 Test Alert',
+            message: 'This is a test notification',
+            timestamp: new Date().toISOString()
+        };
+        
+        let formatted;
+        if (webhook.webhook_type === 'slack') {
+            formatted = {
+                text: 'Test Alert from Smooth AI AutoBDR',
+                blocks: [
+                    {
+                        type: 'section',
+                        text: {
+                            type: 'mrkdwn',
+                            text: '*🧪 Test Alert*\nThis is a test notification from Smooth AI AutoBDR'
+                        }
+                    }
+                ]
+            };
+        } else {
+            formatted = testPayload;
+        }
+        
+        await fetch(webhook.webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formatted)
+        }).catch(e => console.error('Webhook test failed:', e.message));
+        
+        res.json({ success: true, message: 'Test notification sent' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/webhooks/:id - Delete webhook
+app.delete('/api/webhooks/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.run(`DELETE FROM webhooks WHERE id = ?`, [id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Internal helper: Send alert to webhooks
+async function sendAlertToWebhooks(alertData) {
+    try {
+        const webhooks = await db.all(`
+            SELECT * FROM webhooks 
+            WHERE is_active = 1 
+            AND (trigger_on LIKE ? OR trigger_on LIKE ?)
+        `, [`%${alertData.alert_type}%`, '%all%']);
+        
+        for (const webhook of webhooks) {
+            let formatted;
+            if (webhook.webhook_type === 'slack') {
+                const color = alertData.severity === 'critical' ? 'danger' : alertData.severity === 'high' ? 'warning' : 'good';
+                formatted = {
+                    text: alertData.title,
+                    blocks: [
+                        {
+                            type: 'section',
+                            text: {
+                                type: 'mrkdwn',
+                                text: `*${alertData.title}*\n${alertData.description}\n\n_${alertData.action_recommended}_`
+                            }
+                        },
+                        {
+                            type: 'context',
+                            elements: [
+                                {
+                                    type: 'mrkdwn',
+                                    text: `Severity: *${alertData.severity}* | Type: ${alertData.alert_type}`
+                                }
+                            ]
+                        }
+                    ]
+                };
+            } else if (webhook.webhook_type === 'teams') {
+                formatted = {
+                    @type: 'MessageCard',
+                    @context: 'https://schema.org/extensions',
+                    summary: alertData.title,
+                    themeColor: alertData.severity === 'critical' ? 'ff0000' : alertData.severity === 'high' ? 'ff9800' : '00ff00',
+                    sections: [
+                        {
+                            activityTitle: alertData.title,
+                            activitySubtitle: alertData.description,
+                            facts: [
+                                { name: 'Severity', value: alertData.severity },
+                                { name: 'Type', value: alertData.alert_type }
+                            ],
+                            text: alertData.action_recommended
+                        }
+                    ]
+                };
+            } else {
+                formatted = alertData;
+            }
+            
+            fetch(webhook.webhook_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formatted)
+            }).catch(e => console.error(`Webhook ${webhook.name} failed:`, e.message));
+        }
+    } catch (error) {
+        console.error('Error sending webhooks:', error.message);
+    }
+}
+
+// GET /api/webhooks/stats - Webhook usage stats
+app.get('/api/webhooks/stats', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_webhooks,
+                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
+                SUM(CASE WHEN webhook_type = 'slack' THEN 1 ELSE 0 END) as slack_count,
+                SUM(CASE WHEN webhook_type = 'teams' THEN 1 ELSE 0 END) as teams_count,
+                SUM(CASE WHEN webhook_type = 'custom' THEN 1 ELSE 0 END) as custom_count
+            FROM webhooks
+        `);
+        
+        res.json({
+            webhookStats: {
+                total: stats.total_webhooks || 0,
+                active: stats.active || 0,
+                by_platform: {
+                    slack: stats.slack_count || 0,
+                    teams: stats.teams_count || 0,
+                    custom: stats.custom_count || 0
+                }
+            }
+        });
+    } catch (error) {
+        res.json({ webhookStats: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

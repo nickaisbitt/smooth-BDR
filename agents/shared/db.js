@@ -605,6 +605,18 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_alert_read ON system_alerts(is_read);
   CREATE INDEX IF NOT EXISTS idx_alert_created ON system_alerts(created_at);
   
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    webhook_url TEXT NOT NULL,
+    webhook_type TEXT,
+    is_active INTEGER DEFAULT 1,
+    trigger_on TEXT,
+    created_at INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_webhook_active ON webhooks(is_active);
+  
   console.log("✅ Agent tables initialized");
 }
 
