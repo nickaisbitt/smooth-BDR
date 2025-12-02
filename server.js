@@ -33,6 +33,7 @@ import queryCache from './services/queryCache.js';
 import invalidationHooks from './services/cacheInvalidation.js';
 import deduplicator from './services/requestDeduplication.js';
 import telemetry from './services/telemetry.js';
+import circuitBreaker from './services/circuitBreaker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -918,7 +919,7 @@ app.post('/api/automation/process-replies', async (req, res) => {
     }
 });
 
-// POST /api/automation/send-queued - Manually trigger sending queued emails (IDEMPOTENT)
+// POST /api/automation/send-queued - Manually trigger sending queued emails (IDEMPOTENT + CIRCUIT BREAKER)
 app.post('/api/automation/send-queued', async (req, res) => {
     if (!cachedSmtpConfig || !cachedSmtpConfig.host) {
         return res.status(400).json({ error: "SMTP not configured" });
@@ -932,7 +933,9 @@ app.post('/api/automation/send-queued', async (req, res) => {
         }
         
         deduplicator.markProcessing(fingerprint);
-        const result = await processPendingEmails(db, cachedSmtpConfig, nodemailer);
+        const result = await circuitBreaker.execute('email-sender', async () => {
+            return await processPendingEmails(db, cachedSmtpConfig, nodemailer);
+        }, { failureThreshold: 5, timeout: 60000 });
         const response = { success: true, ...result };
         deduplicator.cacheResponse(fingerprint, response, 30000);
         invalidationHooks.onEmailSent();
@@ -1064,7 +1067,7 @@ app.post('/api/automation/retry-failed', async (req, res) => {
 
 // ============ RESEARCH API ENDPOINTS ============
 
-// POST /api/research/conduct - Conduct full research on a company (with iterative improvement)
+// POST /api/research/conduct - Conduct full research on a company (with iterative improvement + CIRCUIT BREAKER)
 app.post('/api/research/conduct', async (req, res) => {
     const { companyName, websiteUrl, serviceProfile, targetQuality = 9, maxAttempts = 3 } = req.body;
     
@@ -1075,8 +1078,10 @@ app.post('/api/research/conduct', async (req, res) => {
     try {
         console.log(`🔍 API: Starting iterative research for ${companyName} (target: ${targetQuality}/10, max ${maxAttempts} attempts)`);
         
-        // Use iterative research that keeps trying until quality >= 9 or max attempts reached
-        const research = await conductIterativeResearch(companyName, websiteUrl, serviceProfile, targetQuality, maxAttempts);
+        // Use circuit breaker to prevent cascading research service failures
+        const research = await circuitBreaker.execute('research-service', async () => {
+            return await conductIterativeResearch(companyName, websiteUrl, serviceProfile, targetQuality, maxAttempts);
+        }, { failureThreshold: 5, timeout: 60000 });
         
         const formatted = formatResearchForEmail(research);
         
@@ -1157,6 +1162,25 @@ app.get('/api/telemetry/errors', async (req, res) => {
         });
     } catch (error) {
         console.error("Telemetry Errors Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/telemetry/circuit-breakers - Circuit breaker status and recovery state
+app.get('/api/telemetry/circuit-breakers', async (req, res) => {
+    try {
+        const status = circuitBreaker.getStatus();
+        res.json({
+            circuitBreakers: status,
+            summary: {
+                total: Object.keys(status).length,
+                closed: Object.values(status).filter(s => s.state === 'closed').length,
+                open: Object.values(status).filter(s => s.state === 'open').length,
+                halfOpen: Object.values(status).filter(s => s.state === 'half-open').length
+            }
+        });
+    } catch (error) {
+        console.error("Circuit Breaker Status Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
