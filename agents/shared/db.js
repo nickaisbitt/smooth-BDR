@@ -318,6 +318,26 @@ export async function initAgentTables(db) {
     
     CREATE INDEX IF NOT EXISTS idx_template_usage_template ON template_usage(template_id);
     CREATE INDEX IF NOT EXISTS idx_template_usage_lead ON template_usage(lead_id);
+    
+    CREATE TABLE IF NOT EXISTS deal_pipeline (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL UNIQUE,
+      company_name TEXT,
+      deal_value REAL DEFAULT 0,
+      deal_stage TEXT DEFAULT 'initial',
+      deal_probability INTEGER DEFAULT 0,
+      close_date INTEGER,
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER,
+      closed_at INTEGER,
+      closed_status TEXT,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_deal_pipeline_stage ON deal_pipeline(deal_stage);
+    CREATE INDEX IF NOT EXISTS idx_deal_pipeline_probability ON deal_pipeline(deal_probability);
+    CREATE INDEX IF NOT EXISTS idx_deal_pipeline_close_date ON deal_pipeline(close_date);
   `);
   
   console.log("✅ Agent tables initialized");

@@ -3908,6 +3908,217 @@ app.put('/api/templates/:id/update', async (req, res) => {
     }
 });
 
+// POST /api/deals/create - Create or update a deal in the pipeline
+app.post('/api/deals/create', async (req, res) => {
+    try {
+        const { lead_id, company_name, deal_value, deal_stage, deal_probability, close_date, notes } = req.body;
+        
+        if (!lead_id || !deal_value) {
+            return res.status(400).json({ error: 'lead_id and deal_value required' });
+        }
+        
+        // Check if deal exists
+        const existing = await db.get(`SELECT id FROM deal_pipeline WHERE lead_id = ?`, [lead_id]);
+        
+        if (existing) {
+            await db.run(
+                `UPDATE deal_pipeline SET deal_value = ?, deal_stage = ?, deal_probability = ?, close_date = ?, notes = ?, updated_at = ? WHERE lead_id = ?`,
+                [deal_value, deal_stage || 'initial', deal_probability || 0, close_date, notes, Date.now(), lead_id]
+            );
+        } else {
+            await db.run(
+                `INSERT INTO deal_pipeline (lead_id, company_name, deal_value, deal_stage, deal_probability, close_date, notes, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [lead_id, company_name, deal_value, deal_stage || 'initial', deal_probability || 0, close_date, notes, Date.now(), Date.now()]
+            );
+        }
+        
+        res.json({ created: true, deal_value, stage: deal_stage, probability: deal_probability });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/deals/pipeline - Full deal pipeline with values and stages
+app.get('/api/deals/pipeline', async (req, res) => {
+    try {
+        const deals = await db.all(`
+            SELECT 
+                deal_stage,
+                COUNT(*) as deal_count,
+                SUM(deal_value * deal_probability / 100) as weighted_value,
+                AVG(deal_probability) as avg_probability,
+                SUM(deal_value) as total_value
+            FROM deal_pipeline
+            WHERE closed_status IS NULL
+            GROUP BY deal_stage
+            ORDER BY CASE 
+                WHEN deal_stage = 'initial' THEN 1
+                WHEN deal_stage = 'contacted' THEN 2
+                WHEN deal_stage = 'interested' THEN 3
+                WHEN deal_stage = 'qualified' THEN 4
+                WHEN deal_stage = 'proposal' THEN 5
+                ELSE 6
+            END
+        `);
+        
+        const totalPipeline = deals.reduce((sum, d) => sum + (d.total_value || 0), 0);
+        const totalWeightedPipeline = deals.reduce((sum, d) => sum + (d.weighted_value || 0), 0);
+        
+        res.json({
+            pipelineMetrics: {
+                total_deals: deals.reduce((sum, d) => sum + d.deal_count, 0),
+                total_pipeline_value: Math.round(totalPipeline),
+                weighted_pipeline_value: Math.round(totalWeightedPipeline),
+                by_stage: deals.map(d => ({
+                    stage: d.deal_stage,
+                    count: d.deal_count,
+                    total_value: Math.round(d.total_value || 0),
+                    weighted_value: Math.round(d.weighted_value || 0),
+                    avg_probability: Math.round(d.avg_probability || 0)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ pipelineMetrics: { total_deals: 0, total_pipeline_value: 0 } });
+    }
+});
+
+// GET /api/deals/forecast - Revenue forecast by close date (30/60/90 days)
+app.get('/api/deals/forecast', async (req, res) => {
+    try {
+        const now = Date.now();
+        const thirtyDays = now + (30 * 24 * 60 * 60 * 1000);
+        const sixtyDays = now + (60 * 24 * 60 * 60 * 1000);
+        const ninetyDays = now + (90 * 24 * 60 * 60 * 1000);
+        
+        const forecast = await db.all(`
+            SELECT 
+                CASE 
+                    WHEN close_date <= ? THEN '30_days'
+                    WHEN close_date <= ? THEN '60_days'
+                    WHEN close_date <= ? THEN '90_days'
+                    ELSE 'beyond_90'
+                END as window,
+                COUNT(*) as deal_count,
+                SUM(deal_value * deal_probability / 100) as weighted_revenue
+            FROM deal_pipeline
+            WHERE closed_status IS NULL AND close_date IS NOT NULL
+            GROUP BY window
+        `, [thirtyDays, sixtyDays, ninetyDays]);
+        
+        const forecastData = {
+            forecast_30_days: forecast.find(f => f.window === '30_days')?.weighted_revenue || 0,
+            forecast_60_days: forecast.find(f => f.window === '60_days')?.weighted_revenue || 0,
+            forecast_90_days: forecast.find(f => f.window === '90_days')?.weighted_revenue || 0,
+            forecast_beyond: forecast.find(f => f.window === 'beyond_90')?.weighted_revenue || 0
+        };
+        
+        res.json({
+            revenueForecasts: {
+                next_30_days: Math.round(forecastData.forecast_30_days),
+                next_60_days: Math.round(forecastData.forecast_60_days),
+                next_90_days: Math.round(forecastData.forecast_90_days),
+                beyond_90_days: Math.round(forecastData.forecast_beyond),
+                total_forecast: Math.round(Object.values(forecastData).reduce((a,b) => a+b, 0))
+            }
+        });
+    } catch (error) {
+        res.json({ revenueForecasts: {} });
+    }
+});
+
+// GET /api/deals/by-probability - Deal distribution by probability tier
+app.get('/api/deals/by-probability', async (req, res) => {
+    try {
+        const deals = await db.all(`
+            SELECT 
+                CASE 
+                    WHEN deal_probability >= 75 THEN 'high_confidence'
+                    WHEN deal_probability >= 50 THEN 'medium_confidence'
+                    WHEN deal_probability >= 25 THEN 'low_confidence'
+                    ELSE 'exploratory'
+                END as probability_tier,
+                COUNT(*) as count,
+                SUM(deal_value) as total_value,
+                SUM(deal_value * deal_probability / 100) as weighted_value,
+                AVG(deal_probability) as avg_prob
+            FROM deal_pipeline
+            WHERE closed_status IS NULL
+            GROUP BY probability_tier
+        `);
+        
+        res.json({
+            dealsByProbability: {
+                high_confidence: {
+                    count: deals.find(d => d.probability_tier === 'high_confidence')?.count || 0,
+                    value: Math.round(deals.find(d => d.probability_tier === 'high_confidence')?.weighted_value || 0)
+                },
+                medium_confidence: {
+                    count: deals.find(d => d.probability_tier === 'medium_confidence')?.count || 0,
+                    value: Math.round(deals.find(d => d.probability_tier === 'medium_confidence')?.weighted_value || 0)
+                },
+                low_confidence: {
+                    count: deals.find(d => d.probability_tier === 'low_confidence')?.count || 0,
+                    value: Math.round(deals.find(d => d.probability_tier === 'low_confidence')?.weighted_value || 0)
+                },
+                exploratory: {
+                    count: deals.find(d => d.probability_tier === 'exploratory')?.count || 0,
+                    value: Math.round(deals.find(d => d.probability_tier === 'exploratory')?.weighted_value || 0)
+                }
+            }
+        });
+    } catch (error) {
+        res.json({ dealsByProbability: {} });
+    }
+});
+
+// PUT /api/deals/:leadId/close - Mark a deal as won or lost
+app.put('/api/deals/:leadId/close', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { closed_status } = req.body;
+        
+        if (!['won', 'lost'].includes(closed_status)) {
+            return res.status(400).json({ error: 'closed_status must be "won" or "lost"' });
+        }
+        
+        await db.run(
+            `UPDATE deal_pipeline SET closed_status = ?, closed_at = ?, deal_stage = ? WHERE lead_id = ?`,
+            [closed_status, Date.now(), closed_status === 'won' ? 'won' : 'lost', leadId]
+        );
+        
+        res.json({ closed: true, status: closed_status });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/deals/summary - Quick pipeline summary for dashboard
+app.get('/api/deals/summary', async (req, res) => {
+    try {
+        const summary = await db.get(`
+            SELECT 
+                COUNT(*) as total_deals,
+                SUM(deal_value * deal_probability / 100) as pipeline_value,
+                AVG(deal_probability) as avg_probability
+            FROM deal_pipeline
+            WHERE closed_status IS NULL
+        `);
+        
+        res.json({
+            dealSummary: {
+                total_open_deals: summary.total_deals || 0,
+                pipeline_value: Math.round(summary.pipeline_value || 0),
+                avg_probability: Math.round(summary.avg_probability || 0),
+                status: '📊 Pipeline active'
+            }
+        });
+    } catch (error) {
+        res.json({ dealSummary: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
