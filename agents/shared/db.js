@@ -359,6 +359,26 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN campaign_id TEXT`);
   } catch (e) { /* column exists */ }
   
+  // Add data enrichment columns to prospect_queue
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN company_size TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN industry TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN revenue_range TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN employee_count INTEGER`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN data_quality_score INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN enriched_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   console.log("✅ Agent tables initialized");
 }
 

@@ -4287,6 +4287,199 @@ app.get('/api/analytics/attribution', async (req, res) => {
     }
 });
 
+// POST /api/prospects/:leadId/enrich - Add enrichment data to prospect record
+app.post('/api/prospects/:leadId/enrich', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { company_size, industry, revenue_range, employee_count } = req.body;
+        
+        await db.run(
+            `UPDATE prospect_queue SET company_size = ?, industry = ?, revenue_range = ?, employee_count = ?, enriched_at = ?, updated_at = ? WHERE id = ?`,
+            [company_size, industry, revenue_range, employee_count, Date.now(), Date.now(), leadId]
+        );
+        
+        res.json({ enriched: true, leadId });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/data-quality - Show data quality scores for all prospects
+app.get('/api/prospects/data-quality', async (req, res) => {
+    try {
+        const prospects = await db.all(`
+            SELECT 
+                id,
+                company_name,
+                contact_email,
+                website_url,
+                company_size,
+                industry,
+                revenue_range,
+                employee_count
+            FROM prospect_queue
+            LIMIT 200
+        `);
+        
+        const withQuality = prospects.map(p => {
+            let score = 0;
+            const dataPoints = [];
+            
+            if (p.company_name) { score += 20; dataPoints.push('company'); }
+            if (p.contact_email) { score += 20; dataPoints.push('email'); }
+            if (p.website_url) { score += 15; dataPoints.push('website'); }
+            if (p.company_size) { score += 15; dataPoints.push('size'); }
+            if (p.industry) { score += 15; dataPoints.push('industry'); }
+            if (p.revenue_range) { score += 10; dataPoints.push('revenue'); }
+            if (p.employee_count) { score += 5; dataPoints.push('headcount'); }
+            
+            const missing = [];
+            if (!p.company_size) missing.push('company_size');
+            if (!p.industry) missing.push('industry');
+            if (!p.website_url) missing.push('website_url');
+            if (!p.revenue_range) missing.push('revenue_range');
+            
+            return {
+                id: p.id,
+                company: p.company_name,
+                quality_score: score,
+                data_completeness: `${score}%`,
+                missing_fields: missing,
+                quality_tier: score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor'
+            };
+        });
+        
+        const distribution = {
+            excellent: withQuality.filter(p => p.quality_score >= 80).length,
+            good: withQuality.filter(p => p.quality_score >= 60 && p.quality_score < 80).length,
+            fair: withQuality.filter(p => p.quality_score >= 40 && p.quality_score < 60).length,
+            poor: withQuality.filter(p => p.quality_score < 40).length
+        };
+        
+        res.json({
+            dataQuality: {
+                total_prospects: withQuality.length,
+                avg_quality_score: Math.round(withQuality.reduce((sum, p) => sum + p.quality_score, 0) / withQuality.length || 0),
+                distribution: distribution,
+                prospects: withQuality.sort((a, b) => a.quality_score - b.quality_score)
+            }
+        });
+    } catch (error) {
+        res.json({ dataQuality: { total_prospects: 0 } });
+    }
+});
+
+// POST /api/prospects/bulk-enrich - Batch enrich prospects with data
+app.post('/api/prospects/bulk-enrich', async (req, res) => {
+    try {
+        const { enrichments } = req.body; // Array of {lead_id, company_size, industry, revenue_range, employee_count}
+        
+        if (!Array.isArray(enrichments)) {
+            return res.status(400).json({ error: 'enrichments must be an array' });
+        }
+        
+        let updated = 0;
+        for (const enrich of enrichments) {
+            await db.run(
+                `UPDATE prospect_queue SET company_size = ?, industry = ?, revenue_range = ?, employee_count = ?, enriched_at = ?, updated_at = ? WHERE id = ?`,
+                [enrich.company_size, enrich.industry, enrich.revenue_range, enrich.employee_count, Date.now(), Date.now(), enrich.lead_id]
+            );
+            updated++;
+        }
+        
+        res.json({
+            enriched: updated,
+            message: `Enriched ${updated} prospects with data`
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/enrichment-progress - Track enrichment across pipeline
+app.get('/api/prospects/enrichment-progress', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN company_size IS NOT NULL THEN 1 ELSE 0 END) as with_size,
+                SUM(CASE WHEN industry IS NOT NULL THEN 1 ELSE 0 END) as with_industry,
+                SUM(CASE WHEN revenue_range IS NOT NULL THEN 1 ELSE 0 END) as with_revenue,
+                SUM(CASE WHEN employee_count IS NOT NULL THEN 1 ELSE 0 END) as with_headcount,
+                SUM(CASE WHEN enriched_at IS NOT NULL THEN 1 ELSE 0 END) as enriched
+            FROM prospect_queue
+        `);
+        
+        const total = stats.total || 0;
+        
+        res.json({
+            enrichmentMetrics: {
+                total_prospects: total,
+                enriched_count: stats.enriched || 0,
+                enrichment_percent: total > 0 ? Math.round((stats.enriched / total) * 100) : 0,
+                by_field: {
+                    company_size: {
+                        count: stats.with_size || 0,
+                        percent: total > 0 ? Math.round((stats.with_size / total) * 100) : 0
+                    },
+                    industry: {
+                        count: stats.with_industry || 0,
+                        percent: total > 0 ? Math.round((stats.with_industry / total) * 100) : 0
+                    },
+                    revenue_range: {
+                        count: stats.with_revenue || 0,
+                        percent: total > 0 ? Math.round((stats.with_revenue / total) * 100) : 0
+                    },
+                    employee_count: {
+                        count: stats.with_headcount || 0,
+                        percent: total > 0 ? Math.round((stats.with_headcount / total) * 100) : 0
+                    }
+                },
+                recommendation: `${total - stats.enriched} prospects need enrichment for better targeting`
+            }
+        });
+    } catch (error) {
+        res.json({ enrichmentMetrics: {} });
+    }
+});
+
+// GET /api/prospects/needs-enrichment - Get prospects with incomplete data
+app.get('/api/prospects/needs-enrichment', async (req, res) => {
+    try {
+        const needsEnrich = await db.all(`
+            SELECT 
+                id,
+                company_name,
+                contact_email,
+                workflow_stage,
+                performance_tier,
+                CASE WHEN company_size IS NULL THEN 1 ELSE 0 END +
+                CASE WHEN industry IS NULL THEN 1 ELSE 0 END +
+                CASE WHEN revenue_range IS NULL THEN 1 ELSE 0 END as missing_count
+            FROM prospect_queue
+            WHERE (company_size IS NULL OR industry IS NULL OR revenue_range IS NULL)
+            ORDER BY missing_count DESC, performance_tier DESC
+            LIMIT 50
+        `);
+        
+        res.json({
+            needsEnrichment: {
+                total_needing: needsEnrich.length,
+                prospects: needsEnrich.map(p => ({
+                    id: p.id,
+                    company: p.company_name,
+                    email: p.contact_email,
+                    tier: p.performance_tier,
+                    stage: p.workflow_stage,
+                    missing_fields: p.missing_count
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ needsEnrichment: { total_needing: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
