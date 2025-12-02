@@ -34,6 +34,8 @@ import invalidationHooks from './services/cacheInvalidation.js';
 import deduplicator from './services/requestDeduplication.js';
 import telemetry from './services/telemetry.js';
 import circuitBreaker from './services/circuitBreaker.js';
+import segmentedCache from './services/segmentedAnalyticsCache.js';
+import bulkOptimizer from './services/bulkOperationOptimizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1181,6 +1183,42 @@ app.get('/api/telemetry/circuit-breakers', async (req, res) => {
         });
     } catch (error) {
         console.error("Circuit Breaker Status Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/by-tier - Engagement analytics segmented by lead tier
+app.get('/api/analytics/by-tier', async (req, res) => {
+    try {
+        const tier = req.query.tier || 'all';
+        const stats = tier === 'all' 
+            ? await segmentedCache.getAllTierStats(db)
+            : await segmentedCache.getEngagementByTier(db, tier);
+        res.json(stats);
+    } catch (error) {
+        console.error("Analytics By Tier Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/pipeline-tiers - Pipeline breakdown by lead tier
+app.get('/api/analytics/pipeline-tiers', async (req, res) => {
+    try {
+        const stats = await segmentedCache.getPipelineByTier(db);
+        res.json({ pipelineByTier: stats });
+    } catch (error) {
+        console.error("Pipeline Tiers Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/optimization/stats - Bulk operation optimization statistics
+app.get('/api/optimization/stats', async (req, res) => {
+    try {
+        const stats = bulkOptimizer.stats();
+        res.json(stats);
+    } catch (error) {
+        console.error("Optimization Stats Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
