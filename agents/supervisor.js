@@ -107,6 +107,16 @@ export async function startAllAgents() {
   logger.info(`Started ${Object.keys(agents).length} agents`);
   
   // COO Agent: System health monitoring (merged into supervisor - runs in-process)
+  // Initialize COO status in database
+  await db.run(`
+    INSERT INTO agent_status (agent_name, status, last_heartbeat, items_processed, started_at)
+    VALUES ('COO', 'running', ?, 0, ?)
+    ON CONFLICT(agent_name) DO UPDATE SET 
+      status = 'running',
+      last_heartbeat = ?,
+      started_at = ?
+  `, [Date.now(), Date.now(), Date.now(), Date.now()]);
+  
   setInterval(async () => {
     if (!isRunning) return;
     
@@ -116,6 +126,13 @@ export async function startAllAgents() {
       
       const healthy = statuses.filter(s => s.health === 'healthy').length;
       const stale = statuses.filter(s => s.health === 'stale').length;
+      
+      // Update COO's heartbeat so it appears as healthy
+      await db.run(`
+        UPDATE agent_status 
+        SET last_heartbeat = ?, status = 'running'
+        WHERE agent_name = 'COO'
+      `, [Date.now()]);
       
       const alertSuffix = stale > 0 ? ` ⚠️ ${stale} stale agents` : '';
       logger.info(`✅ COO Health Monitor: ${healthy} healthy, ${stale} stale | Queues: prospect=${stats.prospect?.pending || 0}, research=${stats.research?.pending || 0}, draft=${stats.draft?.pending || 0}, approval=${stats.approval?.pending || 0}, send=${stats.send?.pending || 0}${alertSuffix}`);
