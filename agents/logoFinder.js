@@ -18,7 +18,18 @@ const LOGO_SEARCH_STRATEGIES = [
 
 async function findLogo(companyName, website) {
   try {
-    const domain = new URL(website).hostname.replace('www.', '');
+    // Validate website URL exists and is valid
+    if (!website || typeof website !== 'string' || website.trim() === '') {
+      return null;
+    }
+    
+    // Ensure URL has protocol
+    let url = website;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    
+    const domain = new URL(url).hostname.replace('www.', '');
     
     for (const strategy of LOGO_SEARCH_STRATEGIES) {
       const logoUrl = strategy(domain);
