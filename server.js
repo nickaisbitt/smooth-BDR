@@ -32,6 +32,7 @@ import {
 import queryCache from './services/queryCache.js';
 import invalidationHooks from './services/cacheInvalidation.js';
 import deduplicator from './services/requestDeduplication.js';
+import telemetry from './services/telemetry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -52,6 +53,20 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// TELEMETRY MIDDLEWARE: Track request performance and errors
+app.use((req, res, next) => {
+  const metric = telemetry.recordRequest(req.path, req.method);
+  const originalSend = res.send;
+  
+  res.send = function(data) {
+    const duration = Date.now() - metric.startTime;
+    metric.complete(res.statusCode, duration);
+    return originalSend.call(this, data);
+  };
+  
+  next();
+});
 
 // RATE LIMITER: Protect SMTP Reputation
 const limiter = rateLimit({
@@ -1094,6 +1109,54 @@ app.post('/api/research/scrape', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error("Scrape Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ TELEMETRY & OBSERVABILITY ENDPOINTS ============
+
+// GET /api/telemetry/health - System health report
+app.get('/api/telemetry/health', async (req, res) => {
+    try {
+        const report = telemetry.getHealthReport();
+        res.json(report);
+    } catch (error) {
+        console.error("Telemetry Health Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/telemetry/endpoints - All endpoint performance metrics
+app.get('/api/telemetry/endpoints', async (req, res) => {
+    try {
+        const metrics = telemetry.getAggregateMetrics();
+        const slowest = telemetry.getSlowestEndpoints(10);
+        const errorProne = telemetry.getMostErrorProne(10);
+        
+        res.json({
+            all: metrics,
+            slowest,
+            errorProne
+        });
+    } catch (error) {
+        console.error("Telemetry Endpoints Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/telemetry/errors - Error tracking and analysis
+app.get('/api/telemetry/errors', async (req, res) => {
+    try {
+        const errors = telemetry.getErrorSummary();
+        const recent = telemetry.getRecentRequests(100).filter(r => r.statusCode >= 400);
+        
+        res.json({
+            errorsByType: errors,
+            recentErrors: recent,
+            totalErrorCount: Object.values(errors).reduce((sum, e) => sum + e.count, 0)
+        });
+    } catch (error) {
+        console.error("Telemetry Errors Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
