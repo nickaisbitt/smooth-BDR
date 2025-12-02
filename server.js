@@ -43,6 +43,14 @@ import adaptiveThrottling from './services/adaptiveThrottling.js';
 import queueOptimizer from './services/queueOptimizer.js';
 import resourceMonitor from './services/resourceMonitor.js';
 import UnifiedDashboard from './services/unifiedDashboard.js';
+import LeadQualityScorer from './services/leadQualityScorer.js';
+import CampaignAnalytics from './services/campaignAnalytics.js';
+import researchEnrichment from './services/researchEnrichment.js';
+import TemplatePerformance from './services/templatePerformance.js';
+import BatchScoringEngine from './services/batchScoringEngine.js';
+import EngagementPredictor from './services/engagementPredictor.js';
+import sequencer from './services/outreachSequencer.js';
+import SalesRecommendationEngine from './services/salesRecommendationEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1376,6 +1384,165 @@ app.get('/api/system/dashboard', async (req, res) => {
         res.json(summary);
     } catch (error) {
         console.error("Dashboard Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ BUSINESS INTELLIGENCE API ENDPOINTS ============
+
+// GET /api/analytics/lead-quality - Score and analyze lead quality
+app.get('/api/analytics/lead-quality', async (req, res) => {
+    try {
+        const leadId = req.query.leadId;
+        if (!leadId) return res.status(400).json({ error: 'leadId required' });
+        
+        const prospect = await db.get('SELECT * FROM leads WHERE id = ?', [leadId]);
+        const research = await db.get('SELECT * FROM research_data WHERE lead_id = ?', [leadId]);
+        
+        const scorer = new LeadQualityScorer(client);
+        const quality = await scorer.scoreLeadQuality(prospect, research);
+        res.json(quality);
+    } catch (error) {
+        console.error("Lead Quality Score Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/campaign/:campaignId - Campaign performance metrics
+app.get('/api/analytics/campaign/:campaignId', async (req, res) => {
+    try {
+        const metrics = await CampaignAnalytics.getCampaignMetrics(db, req.params.campaignId);
+        res.json(metrics);
+    } catch (error) {
+        console.error("Campaign Analytics Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/analytics/ab-test - Analyze A/B test results
+app.post('/api/analytics/ab-test', async (req, res) => {
+    try {
+        const { variantA, variantB } = req.body;
+        const results = await CampaignAnalytics.getABTestResults(db, variantA, variantB);
+        res.json(results);
+    } catch (error) {
+        console.error("A/B Test Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/templates - Email template performance ranking
+app.get('/api/analytics/templates', async (req, res) => {
+    try {
+        const ranked = await TemplatePerformance.rankTemplates(db);
+        const recommendations = await TemplatePerformance.getRecommendations(db);
+        const variants = await TemplatePerformance.analyzeVariants(db);
+        
+        res.json({
+            rankedTemplates: ranked,
+            recommendations: recommendations.recommendations,
+            topVariants: variants.topVariants
+        });
+    } catch (error) {
+        console.error("Template Analytics Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/research-enrichment/:leadId - Research enrichment status
+app.get('/api/analytics/research-enrichment/:leadId', async (req, res) => {
+    try {
+        const prospect = await db.get('SELECT * FROM leads WHERE id = ?', [req.params.leadId]);
+        const research = await db.get('SELECT * FROM research_data WHERE lead_id = ?', [req.params.leadId]);
+        
+        const enriched = researchEnrichment.enrichProspect(prospect, research);
+        const quality = researchEnrichment.scoreEnrichmentQuality(enriched);
+        const recommendations = researchEnrichment.getEnrichmentRecommendations(enriched);
+        
+        res.json({
+            enrichmentQuality: quality,
+            recommendations,
+            enrichedData: enriched.enrichment
+        });
+    } catch (error) {
+        console.error("Research Enrichment Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/analytics/batch-scoring - Score multiple prospects in parallel
+app.post('/api/analytics/batch-scoring', async (req, res) => {
+    try {
+        const { prospectIds } = req.body;
+        if (!prospectIds || !Array.isArray(prospectIds)) {
+            return res.status(400).json({ error: 'prospectIds array required' });
+        }
+
+        const prospects = await Promise.all(
+            prospectIds.map(id => db.get('SELECT * FROM leads WHERE id = ?', [id]))
+        );
+        
+        const engine = new BatchScoringEngine(client, queryCache);
+        const scores = await engine.scoreProspectBatch(prospects.filter(Boolean));
+        const stats = engine.getBatchStats(scores);
+        
+        res.json({ scores, stats });
+    } catch (error) {
+        console.error("Batch Scoring Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/engagement-prediction/:leadId - Predict engagement likelihood
+app.get('/api/analytics/engagement-prediction/:leadId', async (req, res) => {
+    try {
+        const prospect = await db.get('SELECT * FROM leads WHERE id = ?', [req.params.leadId]);
+        const research = await db.get('SELECT * FROM research_data WHERE lead_id = ?', [req.params.leadId]);
+        
+        const prediction = EngagementPredictor.predictEngagement(prospect, research);
+        res.json(prediction);
+    } catch (error) {
+        console.error("Engagement Prediction Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/sales/outreach-sequence/:leadId - Get optimized outreach sequence
+app.get('/api/sales/outreach-sequence/:leadId', async (req, res) => {
+    try {
+        const prospect = await db.get('SELECT * FROM leads WHERE id = ?', [req.params.leadId]);
+        const research = await db.get('SELECT * FROM research_data WHERE lead_id = ?', [req.params.leadId]);
+        
+        const sequence = sequencer.generateSequence(prospect, research);
+        res.json({ prospectId: req.params.leadId, sequence });
+    } catch (error) {
+        console.error("Outreach Sequence Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/sales/recommendations/:leadId - Get AI-powered sales recommendations
+app.get('/api/sales/recommendations/:leadId', async (req, res) => {
+    try {
+        const prospect = await db.get('SELECT * FROM leads WHERE id = ?', [req.params.leadId]);
+        const engagement = await db.get('SELECT * FROM engagement_data WHERE lead_id = ? ORDER BY created_at DESC LIMIT 1', [req.params.leadId]);
+        const research = await db.get('SELECT * FROM research_data WHERE lead_id = ?', [req.params.leadId]);
+        
+        const recommendations = SalesRecommendationEngine.getProspectRecommendations(prospect, engagement, research);
+        res.json(recommendations);
+    } catch (error) {
+        console.error("Sales Recommendations Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/sales/team-recommendations - Get team-level action recommendations
+app.get('/api/sales/team-recommendations', async (req, res) => {
+    try {
+        const recommendations = await SalesRecommendationEngine.getTeamRecommendations(db);
+        res.json(recommendations);
+    } catch (error) {
+        console.error("Team Recommendations Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
