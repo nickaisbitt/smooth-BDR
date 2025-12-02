@@ -1586,6 +1586,32 @@ app.get('/api/leads/engagement-stats', async (req, res) => {
     }
 });
 
+// GET /api/pipeline/deduplication-stats - Show duplicates prevented
+app.get('/api/pipeline/deduplication-stats', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_prospects,
+                SUM(CASE WHEN last_error LIKE '%Duplicate%' THEN 1 ELSE 0 END) as duplicates_blocked,
+                SUM(CASE WHEN last_error LIKE '%Duplicate%' THEN 1 ELSE 0 END) * 100 / COUNT(*) as duplicate_prevention_rate
+            FROM prospect_queue
+            WHERE status = 'failed'
+        `);
+        
+        res.json({
+            deduplicationMetrics: {
+                total_prospects_processed: stats?.total_prospects || 0,
+                duplicates_blocked: stats?.duplicates_blocked || 0,
+                prevention_rate: Math.round(stats?.duplicate_prevention_rate || 0),
+                efficiency_gain: `${Math.round((stats?.duplicates_blocked || 0) * 7 / 60)} minutes saved on wasted research`
+            }
+        });
+    } catch (error) {
+        console.error("Dedup Stats Error:", error);
+        res.json({ deduplicationMetrics: { total_prospects_processed: 0, duplicates_blocked: 0, prevention_rate: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

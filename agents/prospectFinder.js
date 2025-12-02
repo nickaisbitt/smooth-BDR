@@ -23,6 +23,18 @@ async function moveProspectToResearchQueue(prospect) {
   logger.info(`Moved prospect to research queue: ${prospect.company_name}`);
 }
 
+async function checkDuplicateProspect(companyName) {
+  const exists = await db.get(`
+    SELECT id FROM research_queue WHERE company_name = ? AND status IN ('pending', 'in_progress')
+    UNION
+    SELECT id FROM draft_queue WHERE company_name = ?
+    UNION
+    SELECT id FROM email_queue WHERE company_name = ?
+    LIMIT 1
+  `, [companyName, companyName, companyName]);
+  return !!exists;
+}
+
 async function processProspects() {
   if (!isRunning) return;
   
@@ -67,6 +79,14 @@ async function processProspects() {
         } catch (e) {
           logger.warn(`Skipping prospect with invalid URL: ${prospect.company_name} (${prospect.website_url})`);
           await failQueueItem(db, 'prospect_queue', prospect.id, 'Invalid URL format', 1);
+          continue;
+        }
+
+        // DEDUPLICATION: Skip if already in pipeline
+        const isDuplicate = await checkDuplicateProspect(prospect.company_name);
+        if (isDuplicate) {
+          logger.info(`🔄 Duplicate detected - already in pipeline: ${prospect.company_name}`);
+          await failQueueItem(db, 'prospect_queue', prospect.id, 'Duplicate - already in pipeline', 0);
           continue;
         }
         
