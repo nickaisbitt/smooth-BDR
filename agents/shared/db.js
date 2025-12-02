@@ -277,6 +277,17 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE email_queue ADD COLUMN scheduled_followup_at INTEGER`);
   } catch (e) { /* column exists */ }
   
+  // Add performance tier column to prospect_queue for segmentation
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN performance_tier TEXT DEFAULT 'medium'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN tier_score INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN tier_calculated_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   console.log("✅ Agent tables initialized");
 }
 

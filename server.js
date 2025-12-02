@@ -3448,6 +3448,248 @@ app.post('/api/followups/bulk-configure', async (req, res) => {
     }
 });
 
+// POST /api/prospects/calculate-tiers - Auto-calculate performance tiers for all prospects
+app.post('/api/prospects/calculate-tiers', async (req, res) => {
+    try {
+        const prospects = await db.all(`
+            SELECT 
+                pq.id,
+                pq.company_name,
+                COALESCE(ls.engagement_score, 0) as engagement_score,
+                COALESCE(eq.research_quality, 0) as avg_quality,
+                COALESCE(COUNT(em.id), 0) as reply_count
+            FROM prospect_queue pq
+            LEFT JOIN lead_scores ls ON pq.id = ls.lead_id
+            LEFT JOIN email_queue eq ON pq.id = eq.lead_id
+            LEFT JOIN email_messages em ON pq.id = em.lead_id AND em.received_at IS NOT NULL
+            GROUP BY pq.id
+        `);
+        
+        let updated = 0;
+        for (const prospect of prospects) {
+            // Calculate tier score (0-100)
+            const engagementScore = prospect.engagement_score || 0;
+            const qualityScore = prospect.avg_quality || 0;
+            const replyBonus = Math.min(prospect.reply_count * 10, 20);
+            const tierScore = (engagementScore * 0.5) + (qualityScore * 3) + replyBonus;
+            
+            // Assign tier based on score
+            let tier = 'low';
+            if (tierScore >= 70) tier = 'vip';
+            else if (tierScore >= 50) tier = 'high';
+            else if (tierScore >= 30) tier = 'medium';
+            else tier = 'low';
+            
+            await db.run(
+                `UPDATE prospect_queue SET performance_tier = ?, tier_score = ?, tier_calculated_at = ? WHERE id = ?`,
+                [tier, Math.round(tierScore), Date.now(), prospect.id]
+            );
+            updated++;
+        }
+        
+        res.json({
+            recalculated: updated,
+            message: `Performance tiers calculated for ${updated} prospects`
+        });
+    } catch (error) {
+        console.error("Calculate Tiers Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/tier-distribution - See prospect distribution by performance tier
+app.get('/api/prospects/tier-distribution', async (req, res) => {
+    try {
+        const distribution = await db.all(`
+            SELECT 
+                performance_tier,
+                COUNT(*) as count,
+                AVG(tier_score) as avg_score,
+                SUM(CASE WHEN workflow_stage = 'qualified' THEN 1 ELSE 0 END) as qualified_count
+            FROM prospect_queue
+            GROUP BY performance_tier
+            ORDER BY CASE WHEN performance_tier = 'vip' THEN 1 
+                         WHEN performance_tier = 'high' THEN 2
+                         WHEN performance_tier = 'medium' THEN 3
+                         ELSE 4 END
+        `);
+        
+        const totalProspects = distribution.reduce((sum, d) => sum + d.count, 0);
+        
+        res.json({
+            tierMetrics: {
+                total_prospects: totalProspects,
+                by_tier: distribution.map(d => ({
+                    tier: d.performance_tier,
+                    count: d.count,
+                    percentage: Math.round((d.count / totalProspects) * 100),
+                    avg_tier_score: Math.round(d.avg_score || 0),
+                    qualified: d.qualified_count || 0
+                })),
+                tier_summary: {
+                    vip: distribution.find(d => d.performance_tier === 'vip')?.count || 0,
+                    high: distribution.find(d => d.performance_tier === 'high')?.count || 0,
+                    medium: distribution.find(d => d.performance_tier === 'medium')?.count || 0,
+                    low: distribution.find(d => d.performance_tier === 'low')?.count || 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Tier Distribution Error:", error);
+        res.json({ tierMetrics: { total_prospects: 0 } });
+    }
+});
+
+// GET /api/prospects/by-tier/:tier - Get all prospects in a specific performance tier
+app.get('/api/prospects/by-tier/:tier', async (req, res) => {
+    try {
+        const { tier } = req.params;
+        const validTiers = ['vip', 'high', 'medium', 'low'];
+        
+        if (!validTiers.includes(tier)) {
+            return res.status(400).json({ error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` });
+        }
+        
+        const prospects = await db.all(`
+            SELECT 
+                pq.id,
+                pq.company_name,
+                pq.contact_email,
+                pq.workflow_stage,
+                pq.tier_score,
+                ls.engagement_score,
+                ls.priority_rank,
+                COUNT(eq.id) as emails_sent
+            FROM prospect_queue pq
+            LEFT JOIN lead_scores ls ON pq.id = ls.lead_id
+            LEFT JOIN email_queue eq ON pq.id = eq.lead_id AND eq.status = 'sent'
+            WHERE pq.performance_tier = ?
+            GROUP BY pq.id
+            ORDER BY pq.tier_score DESC
+            LIMIT 100
+        `, [tier]);
+        
+        res.json({
+            tier: tier,
+            prospects_found: prospects.length,
+            prospects: prospects.map(p => ({
+                id: p.id,
+                company: p.company_name,
+                email: p.contact_email,
+                stage: p.workflow_stage,
+                tier_score: p.tier_score,
+                engagement: p.engagement_score || 0,
+                priority: p.priority_rank,
+                emails_sent: p.emails_sent
+            }))
+        });
+    } catch (error) {
+        console.error("Get By Tier Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/tier-analytics - Performance metrics by tier
+app.get('/api/prospects/tier-analytics', async (req, res) => {
+    try {
+        const analytics = await db.all(`
+            SELECT 
+                pq.performance_tier,
+                COUNT(*) as total,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replied,
+                AVG(ls.engagement_score) as avg_engagement,
+                SUM(CASE WHEN pq.workflow_stage = 'qualified' THEN 1 ELSE 0 END) as qualified
+            FROM prospect_queue pq
+            LEFT JOIN email_messages em ON pq.id = em.lead_id
+            LEFT JOIN lead_scores ls ON pq.id = ls.lead_id
+            GROUP BY pq.performance_tier
+        `);
+        
+        const metrics = analytics.map(a => {
+            const replyRate = a.total > 0 ? Math.round((a.replied / a.total) * 100) : 0;
+            const conversionRate = a.total > 0 ? Math.round((a.qualified / a.total) * 100) : 0;
+            return {
+                tier: a.performance_tier,
+                total_prospects: a.total,
+                reply_rate: `${replyRate}%`,
+                avg_engagement_score: Math.round(a.avg_engagement || 0),
+                qualified_count: a.qualified,
+                conversion_rate: `${conversionRate}%`
+            };
+        });
+        
+        res.json({
+            tierAnalytics: {
+                metrics_by_tier: metrics,
+                insight: 'VIP tier should have 30%+ conversion rates. High tier 15%+. Use low tier for testing new approaches.'
+            }
+        });
+    } catch (error) {
+        console.error("Tier Analytics Error:", error);
+        res.json({ tierAnalytics: { metrics_by_tier: [] } });
+    }
+});
+
+// POST /api/prospects/bulk-operations-by-tier - Perform bulk operations on all prospects in a tier
+app.post('/api/prospects/bulk-operations-by-tier', async (req, res) => {
+    try {
+        const { tier, operation, payload } = req.body;
+        
+        const validTiers = ['vip', 'high', 'medium', 'low'];
+        if (!validTiers.includes(tier)) {
+            return res.status(400).json({ error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` });
+        }
+        
+        // Get all prospects in tier
+        const prospects = await db.all(
+            `SELECT id FROM prospect_queue WHERE performance_tier = ?`,
+            [tier]
+        );
+        
+        let result = 0;
+        
+        if (operation === 'update_status') {
+            const { new_stage } = payload;
+            for (const p of prospects) {
+                await db.run(
+                    `UPDATE prospect_queue SET workflow_stage = ?, stage_updated_at = ?, updated_at = ? WHERE id = ?`,
+                    [new_stage, Date.now(), Date.now(), p.id]
+                );
+                result++;
+            }
+        } else if (operation === 'add_tag') {
+            const { tag_name } = payload;
+            for (const p of prospects) {
+                await db.run(
+                    `INSERT OR IGNORE INTO prospect_tags (lead_id, tag_name, tag_category, added_at)
+                     VALUES (?, ?, ?, ?)`,
+                    [p.id, tag_name, 'tier_operation', Date.now()]
+                );
+                result++;
+            }
+        } else if (operation === 'schedule_followups') {
+            for (const p of prospects) {
+                await db.run(
+                    `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, created_at)
+                     VALUES (?, ?, ?, ?)`,
+                    [p.id, 'followup_configured', `Tier-based follow-up scheduled`, Date.now()]
+                );
+                result++;
+            }
+        }
+        
+        res.json({
+            operation: operation,
+            tier: tier,
+            prospects_affected: result,
+            message: `${operation} applied to ${result} prospects in ${tier} tier`
+        });
+    } catch (error) {
+        console.error("Bulk Operations By Tier Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
