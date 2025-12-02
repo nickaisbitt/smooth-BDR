@@ -1504,6 +1504,48 @@ Return ONLY valid JSON.`;
     }
 });
 
+// GET /api/metrics - Real-time pipeline metrics
+app.get('/api/metrics', async (req, res) => {
+    try {
+        const stats = await Promise.all([
+            db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'sent'`),
+            db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'`),
+            db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending_approval'`),
+            db.get(`SELECT COUNT(*) as count FROM email_queue WHERE status = 'failed'`),
+            db.get(`SELECT COUNT(*) as count FROM prospect_queue`),
+            db.get(`SELECT COUNT(*) as count FROM research_queue`),
+            db.get(`SELECT COUNT(*) as count FROM draft_queue`),
+            db.get(`SELECT COUNT(*) as count FROM email_logs WHERE sent_at > (strftime('%s', 'now') - 3600) * 1000`),
+            db.get(`SELECT AVG(research_quality) as avg_quality FROM email_queue WHERE research_quality > 0 AND status = 'sent'`),
+            db.get(`SELECT SUM(CASE WHEN approval_status = 'approved' THEN 1 ELSE 0 END) as approved FROM email_queue WHERE status = 'sent'`)
+        ]);
+        
+        res.json({
+            pipeline: {
+                sent: stats[0]?.count || 0,
+                pending: stats[1]?.count || 0,
+                awaiting_approval: stats[2]?.count || 0,
+                failed: stats[3]?.count || 0
+            },
+            queues: {
+                prospects: stats[4]?.count || 0,
+                research: stats[5]?.count || 0,
+                drafts: stats[6]?.count || 0
+            },
+            velocity: {
+                sent_last_hour: stats[7]?.count || 0
+            },
+            quality: {
+                avg_research_quality: Math.round((stats[8]?.avg_quality || 0) * 10) / 10,
+                approved_emails: stats[9]?.approved || 0
+            }
+        });
+    } catch (error) {
+        console.error("Metrics Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

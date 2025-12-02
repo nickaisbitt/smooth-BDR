@@ -63,6 +63,7 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<any>(null);
   
   // CIRCUIT BREAKER STATE
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
@@ -96,19 +97,21 @@ function App() {
     return () => clearInterval(gcInterval);
   }, []);
 
-  // Fetch Agent Logs and Automation State
+  // Fetch Agent Logs, Automation State, and Real-time Metrics
   useEffect(() => {
     const fetchAgentData = async () => {
       try {
-        const [logsRes, statusRes, agentsRes] = await Promise.all([
+        const [logsRes, statusRes, agentsRes, metricsRes] = await Promise.all([
           fetch('/api/agents/logs?limit=50'),
           fetch('/api/automation/status'),
-          fetch('/api/agents/status')
+          fetch('/api/agents/status'),
+          fetch('/api/metrics')
         ]);
         
         const logsData = await logsRes.json();
         const statusData = await statusRes.json();
         const agentsData = await agentsRes.json();
+        const metricsData = await metricsRes.json();
         
         if (logsData.logs) {
           const formattedLogs: AgentLog[] = logsData.logs.map((log: any) => ({
@@ -126,6 +129,10 @@ function App() {
         
         if (agentsData.agents) {
           setAgentStatuses(agentsData.agents);
+        }
+        
+        if (metricsData) {
+          setMetrics(metricsData);
         }
       } catch (error) {
         console.error('Failed to fetch agent data:', error);
