@@ -70,6 +70,8 @@ async function processLeads() {
     const leads = await db.all(`
       SELECT id, company_name as companyName, website_url as website FROM prospect_queue 
       WHERE (logo_url IS NULL OR logo_url = '') 
+      AND website_url IS NOT NULL
+      AND website_url != ''
       AND status IN ('completed', 'processing', 'pending')
       LIMIT ?
     `, [config.batchSize]);
