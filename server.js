@@ -36,6 +36,9 @@ import telemetry from './services/telemetry.js';
 import circuitBreaker from './services/circuitBreaker.js';
 import segmentedCache from './services/segmentedAnalyticsCache.js';
 import bulkOptimizer from './services/bulkOperationOptimizer.js';
+import retryStrategy from './services/smartRetryStrategy.js';
+import retentionPolicy from './services/dataRetentionPolicy.js';
+import HealthCheck from './services/healthCheck.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1219,6 +1222,82 @@ app.get('/api/optimization/stats', async (req, res) => {
         res.json(stats);
     } catch (error) {
         console.error("Optimization Stats Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/retry-stats - Smart retry strategy configuration
+app.get('/api/system/retry-stats', async (req, res) => {
+    try {
+        const stats = retryStrategy.stats();
+        res.json({ retryStrategy: stats });
+    } catch (error) {
+        console.error("Retry Stats Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/data-retention - Data retention policy and database statistics
+app.get('/api/system/data-retention', async (req, res) => {
+    try {
+        const stats = await retentionPolicy.getDatabaseStats(db);
+        const thresholds = retentionPolicy.getCleanupThresholds();
+        res.json({ 
+            tableStats: stats,
+            policies: retentionPolicy.policies,
+            cleanupThresholds: thresholds
+        });
+    } catch (error) {
+        console.error("Data Retention Stats Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/system/cleanup-old-records - Manually trigger cleanup of old records
+app.post('/api/system/cleanup-old-records', async (req, res) => {
+    try {
+        const results = await retentionPolicy.cleanAllOldRecords(db);
+        const totalDeleted = Object.values(results).reduce((sum, count) => sum + count, 0);
+        res.json({ 
+            success: true, 
+            results,
+            totalRecordsDeleted: totalDeleted,
+            message: `Cleaned ${totalDeleted} old records across all tables`
+        });
+    } catch (error) {
+        console.error("Cleanup Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/wellness - Comprehensive system health & wellness dashboard
+app.get('/api/system/wellness', async (req, res) => {
+    try {
+        const services = {
+            telemetry,
+            circuitBreaker,
+            queryCache,
+            deduplicator,
+            retryStrategy,
+            retentionPolicy
+        };
+        
+        const wellness = await HealthCheck.getSystemWellness(db, services);
+        res.json(wellness);
+    } catch (error) {
+        console.error("Wellness Check Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/status - Quick system status
+app.get('/api/system/status', async (req, res) => {
+    try {
+        const services = { telemetry, circuitBreaker };
+        const status = HealthCheck.quickStatus(services);
+        res.json(status);
+    } catch (error) {
+        console.error("Status Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
