@@ -1,6 +1,6 @@
 export const AGENT_CONFIG = {
   COO: {
-    name: 'coo',
+    name: 'COO',
     pollIntervalMs: 5000,  // MAXIMUM MONITORING: every 5s
     enabled: true
   },

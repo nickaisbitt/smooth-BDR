@@ -3,7 +3,7 @@ import { createLogger } from './shared/logger.js';
 import { AgentHeartbeat } from './shared/heartbeat.js';
 
 const config = {
-  name: 'coo',
+  name: 'COO',
   pollIntervalMs: 15000
 };
 

@@ -1546,6 +1546,46 @@ app.get('/api/metrics', async (req, res) => {
     }
 });
 
+// GET /api/leads/engagement-stats - Engagement scoring for top leads
+app.get('/api/leads/engagement-stats', async (req, res) => {
+    try {
+        const engagedLeads = await db.all(`
+            SELECT DISTINCT
+                el.to_email as email,
+                el.lead_id as id,
+                SUBSTR(el.to_email, 1, INSTR(el.to_email, '@') - 1) as companyName,
+                COUNT(DISTINCT eq.id) as emails_sent,
+                COUNT(DISTINCT CASE WHEN em.id IS NOT NULL THEN em.id END) as replies_received,
+                MAX(em.received_at) as last_activity,
+                (COUNT(DISTINCT CASE WHEN em.id IS NOT NULL THEN em.id END) * 40) + 
+                (COUNT(DISTINCT eq.id) * 20) + 
+                CASE WHEN MAX(em.received_at) > 0 THEN 10 ELSE 0 END as engagement_score
+            FROM email_logs el
+            LEFT JOIN email_queue eq ON el.lead_id = eq.lead_id
+            LEFT JOIN email_messages em ON el.to_email = em.from_email AND em.lead_id = el.lead_id
+            GROUP BY el.to_email, el.lead_id
+            HAVING COUNT(DISTINCT eq.id) > 0
+            ORDER BY engagement_score DESC
+            LIMIT 10
+        `);
+
+        res.json({
+            topEngagedLeads: engagedLeads.map(lead => ({
+                id: lead.id || 'unknown',
+                companyName: lead.companyName || 'Unknown',
+                email: lead.email,
+                engagement_score: Math.min(100, Math.max(0, lead.engagement_score || 0)),
+                emails_sent: lead.emails_sent || 0,
+                replies_received: lead.replies_received || 0,
+                last_activity: lead.last_activity || null
+            }))
+        });
+    } catch (error) {
+        console.error("Engagement Stats Error:", error);
+        res.json({ topEngagedLeads: [] });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
