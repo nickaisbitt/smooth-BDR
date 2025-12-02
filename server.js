@@ -6152,6 +6152,193 @@ app.get('/api/engagement/recommended-actions', async (req, res) => {
     }
 });
 
+// POST /api/replies/classify - Classify prospect email replies
+app.post('/api/replies/classify', async (req, res) => {
+    try {
+        const { lead_id, email_id, reply_text } = req.body;
+        
+        // Simple classification logic (in production, use AI)
+        const lowerText = reply_text.toLowerCase();
+        
+        // Sentiment detection
+        let sentiment = 'neutral';
+        let confidence = 50;
+        
+        const positiveKeywords = ['interested', 'great', 'love', 'perfect', 'yes', 'demo', 'meeting', 'call', 'schedule', 'sign up', 'pricing', 'excited', 'definitely', 'count me in'];
+        const negativeKeywords = ['not interested', 'unsubscribe', 'stop', 'remove', 'spam', 'delete', 'no thanks', 'not relevant', 'wrong person'];
+        const questionKeywords = ['?', 'how', 'what', 'when', 'where', 'why', 'can you', 'could you', 'would you', 'tell me', 'learn more'];
+        
+        const positiveMatches = positiveKeywords.filter(kw => lowerText.includes(kw)).length;
+        const negativeMatches = negativeKeywords.filter(kw => lowerText.includes(kw)).length;
+        const questionMatches = questionKeywords.filter(kw => lowerText.includes(kw)).length;
+        
+        if (negativeMatches > 0) {
+            sentiment = 'negative';
+            confidence = 75 + (negativeMatches * 5);
+        } else if (positiveMatches > 0) {
+            sentiment = 'positive';
+            confidence = 75 + (positiveMatches * 5);
+        } else if (questionMatches > 0) {
+            sentiment = 'question';
+            confidence = 60 + (questionMatches * 5);
+        }
+        
+        // Extract questions
+        const questionPattern = /[^.!?]*\?/g;
+        const questions = (reply_text.match(questionPattern) || []).join(' | ');
+        
+        // Classification
+        let classification = 'follow_up_needed';
+        if (sentiment === 'positive') classification = 'hot_lead';
+        if (sentiment === 'negative') classification = 'unsubscribe';
+        if (sentiment === 'question') classification = 'needs_response';
+        
+        // Recommended next action
+        let nextAction = 'Review and respond';
+        if (classification === 'hot_lead') nextAction = '🔥 Schedule demo call immediately';
+        if (classification === 'unsubscribe') nextAction = '⛔ Remove from campaign';
+        if (classification === 'needs_response') nextAction = '📧 Answer questions and send info';
+        
+        await db.run(`
+            INSERT INTO reply_classifications (lead_id, email_id, reply_text, sentiment, classification, confidence, extracted_questions, next_action_recommended, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [lead_id, email_id || '', reply_text, sentiment, classification, confidence, questions, nextAction, Date.now()]);
+        
+        res.json({ success: true, classification, sentiment, confidence, nextAction });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/replies/summary - Get classified replies summary
+app.get('/api/replies/summary', async (req, res) => {
+    try {
+        const past30Days = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        const summary = await db.get(`
+            SELECT 
+                COUNT(*) as total_replies,
+                SUM(CASE WHEN sentiment = 'positive' THEN 1 ELSE 0 END) as positive_replies,
+                SUM(CASE WHEN sentiment = 'negative' THEN 1 ELSE 0 END) as negative_replies,
+                SUM(CASE WHEN sentiment = 'question' THEN 1 ELSE 0 END) as question_replies,
+                SUM(CASE WHEN sentiment = 'neutral' THEN 1 ELSE 0 END) as neutral_replies,
+                AVG(confidence) as avg_confidence
+            FROM reply_classifications
+            WHERE created_at > ?
+        `, [past30Days]);
+        
+        const hotLeadReplies = summary.positive_replies || 0;
+        const sentimentScore = summary.total_replies > 0 ? Math.round(((hotLeadReplies / summary.total_replies) * 100)) : 0;
+        
+        res.json({
+            replySummary: {
+                total_classified: summary.total_replies || 0,
+                positive: summary.positive_replies || 0,
+                negative: summary.negative_replies || 0,
+                questions: summary.question_replies || 0,
+                neutral: summary.neutral_replies || 0,
+                avg_classification_confidence: Math.round(summary.avg_confidence || 0),
+                positive_sentiment_rate: `${sentimentScore}%`,
+                health: sentimentScore >= 40 ? '🟢 Great' : sentimentScore >= 20 ? '🟡 Good' : '🔴 Needs attention'
+            }
+        });
+    } catch (error) {
+        res.json({ replySummary: {} });
+    }
+});
+
+// GET /api/replies/hot-leads - Get recent positive sentiment replies
+app.get('/api/replies/hot-leads', async (req, res) => {
+    try {
+        const hotReplies = await db.all(`
+            SELECT 
+                rc.id,
+                pq.prospect_name,
+                pq.company_name,
+                pq.email,
+                rc.sentiment,
+                rc.classification,
+                rc.confidence,
+                rc.reply_text,
+                rc.next_action_recommended,
+                rc.created_at
+            FROM reply_classifications rc
+            LEFT JOIN prospect_queue pq ON rc.lead_id = pq.id
+            WHERE rc.sentiment IN ('positive', 'question')
+            ORDER BY rc.created_at DESC
+            LIMIT 30
+        `);
+        
+        res.json({
+            hotReplies: {
+                total_hot: hotReplies.length,
+                replies: hotReplies.map(r => ({
+                    id: r.id,
+                    prospect: r.prospect_name,
+                    company: r.company_name,
+                    sentiment: r.sentiment,
+                    classification: r.classification,
+                    confidence: r.confidence,
+                    action: r.next_action_recommended,
+                    received: new Date(r.created_at).toLocaleDateString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ hotReplies: { total_hot: 0, replies: [] } });
+    }
+});
+
+// GET /api/replies/action-items - Replies requiring immediate action
+app.get('/api/replies/action-items', async (req, res) => {
+    try {
+        const actionItems = await db.all(`
+            SELECT 
+                rc.id,
+                pq.prospect_name,
+                pq.email,
+                rc.classification,
+                rc.next_action_recommended,
+                rc.extracted_questions,
+                rc.sentiment,
+                rc.reply_text,
+                COUNT(*) as reply_count
+            FROM reply_classifications rc
+            LEFT JOIN prospect_queue pq ON rc.lead_id = pq.id
+            WHERE rc.classification IN ('hot_lead', 'needs_response', 'unsubscribe')
+            GROUP BY rc.lead_id
+            ORDER BY CASE 
+                WHEN rc.classification = 'hot_lead' THEN 1
+                WHEN rc.classification = 'needs_response' THEN 2
+                WHEN rc.classification = 'unsubscribe' THEN 3
+                ELSE 4
+            END,
+            rc.created_at DESC
+            LIMIT 25
+        `);
+        
+        const hotCount = actionItems.filter(a => a.classification === 'hot_lead').length;
+        const needsResponse = actionItems.filter(a => a.classification === 'needs_response').length;
+        
+        res.json({
+            actionItems: {
+                urgent_hot_leads: hotCount,
+                need_response: needsResponse,
+                items: actionItems.map(item => ({
+                    prospect: item.prospect_name,
+                    email: item.email,
+                    type: item.classification,
+                    action: item.next_action_recommended,
+                    questions: item.extracted_questions ? item.extracted_questions.split('|').filter(q => q).slice(0, 2) : [],
+                    summary: item.reply_text.substring(0, 100)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ actionItems: { urgent_hot_leads: 0, need_response: 0, items: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
