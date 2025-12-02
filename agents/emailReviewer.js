@@ -476,6 +476,16 @@ async function reviewPendingEmails() {
     
     // BATCH PROCESSING: Review up to 50 emails per cycle for maximum throughput
     const batchSize = 50;
+    
+    // SAFETY: First, move any already-approved emails to pending so sender can pick them up
+    // This handles edge cases where approval_status=approved but status still pending_approval
+    await db.run(`
+      UPDATE email_queue 
+      SET status = 'pending'
+      WHERE status = 'pending_approval' 
+        AND approval_status = 'approved'
+    `);
+    
     const pendingEmails = await db.all(`
       SELECT * FROM email_queue 
       WHERE status = 'pending_approval' 
