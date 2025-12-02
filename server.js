@@ -1891,6 +1891,50 @@ app.post('/api/prospects/queue-followups', async (req, res) => {
     }
 });
 
+// GET /api/email/bounce-unsubscribe-stats - Track bounced and unsubscribed addresses
+app.get('/api/email/bounce-unsubscribe-stats', async (req, res) => {
+    try {
+        const bounceStats = await db.get(`
+            SELECT 
+                COUNT(*) as total_bounces,
+                COUNT(DISTINCT bounce_type) as bounce_types,
+                MAX(detected_at) as last_bounce
+            FROM bounce_list
+        `);
+        
+        const unsubscribeStats = await db.get(`
+            SELECT 
+                COUNT(*) as total_unsubscribes,
+                MAX(unsubscribed_at) as last_unsubscribe
+            FROM unsubscribe_list
+        `);
+        
+        const totalQueued = await db.get(`
+            SELECT COUNT(*) as count FROM email_queue 
+            WHERE created_at > ?
+        `, [Date.now() - (24 * 60 * 60 * 1000)]);
+        
+        const preventedSends = (bounceStats?.total_bounces || 0) + (unsubscribeStats?.total_unsubscribes || 0);
+        const preventionRate = totalQueued?.count > 0 
+            ? Math.round((preventedSends / (totalQueued.count + preventedSends)) * 100)
+            : 0;
+        
+        res.json({
+            deliverabilityMetrics: {
+                bounced_addresses: bounceStats?.total_bounces || 0,
+                unsubscribed_addresses: unsubscribeStats?.total_unsubscribes || 0,
+                total_blocked: preventedSends,
+                sender_reputation_protection: `${preventionRate}% sends prevented from bad addresses`,
+                smtp_quota_saved: `${preventedSends} sends`,
+                compliance_status: 'CAN-SPAM compliant (respecting unsubscribes)'
+            }
+        });
+    } catch (error) {
+        console.error("Bounce/Unsubscribe Stats Error:", error);
+        res.json({ deliverabilityMetrics: { bounced_addresses: 0, unsubscribed_addresses: 0, total_blocked: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

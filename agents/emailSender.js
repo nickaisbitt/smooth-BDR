@@ -17,6 +17,21 @@ function validateEmailAddress(email) {
   return emailRegex.test(email) && email.length <= 254;
 }
 
+// BOUNCE/UNSUBSCRIBE CHECK - Skip addresses on bounce or unsubscribe lists
+async function isAddressBlacklisted(email) {
+  const bounced = await db.get(
+    `SELECT id FROM bounce_list WHERE email = ? LIMIT 1`,
+    [email]
+  );
+  
+  const unsubscribed = await db.get(
+    `SELECT id FROM unsubscribe_list WHERE email = ? LIMIT 1`,
+    [email]
+  );
+  
+  return !!(bounced || unsubscribed);
+}
+
 async function loadSmtpConfig() {
   const settings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
   if (!settings || !settings.host) return null;
@@ -134,6 +149,18 @@ async function processPendingEmails() {
         logger.warn(`🚫 Invalid email format - skipping: ${email.to_email}`);
         await db.run(
           `UPDATE email_queue SET status = 'failed', approval_status = 'rejected', approval_reason = 'Invalid email format' WHERE id = ?`,
+          [email.id]
+        );
+        heartbeat.incrementErrors();
+        continue;
+      }
+      
+      // VALIDATION: Check if address is bounced or unsubscribed
+      const isBlacklisted = await isAddressBlacklisted(email.to_email);
+      if (isBlacklisted) {
+        logger.warn(`⛔ Address blacklisted - skipping: ${email.to_email}`);
+        await db.run(
+          `UPDATE email_queue SET status = 'failed', approval_status = 'rejected', approval_reason = 'Address on bounce/unsubscribe list' WHERE id = ?`,
           [email.id]
         );
         heartbeat.incrementErrors();

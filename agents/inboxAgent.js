@@ -43,6 +43,32 @@ async function syncInbox() {
   return result;
 }
 
+async function detectBounceOrUnsubscribe(email) {
+  // Detect bounce emails from mailer daemons
+  const bouncePatterns = [
+    /mailer.?daemon|mail.?delivery.?failed|undeliverable|delivery.?status|failure.?notice/i,
+    /550\s|551\s|552\s|553\s|554\s/, // SMTP error codes
+    /permanent.?failure|hard.?bounce|rejected/i
+  ];
+  
+  const unsubscribePatterns = [
+    /unsubscribe|list-unsubscribe|opt.?out/i,
+    /removed.{0,20}list|no.?longer.{0,20}mail/i
+  ];
+  
+  const subject = (email.subject || '').toLowerCase();
+  const body = ((email.body_text || '') + (email.body_html || '')).toLowerCase();
+  const combinedText = subject + ' ' + body;
+  
+  // Check for bounces
+  const isBounce = bouncePatterns.some(p => p.test(combinedText));
+  
+  // Check for unsubscribes
+  const isUnsubscribe = unsubscribePatterns.some(p => p.test(combinedText));
+  
+  return { isBounce, isUnsubscribe };
+}
+
 async function processUnanalyzedReplies() {
   const unprocessed = await db.all(`
     SELECT em.id, em.lead_id, em.from_email, em.subject, em.body_text, em.body_html
@@ -61,6 +87,41 @@ async function processUnanalyzedReplies() {
     heartbeat.setCurrentItem({ id: email.id, from: email.from_email });
     
     try {
+      // BOUNCE/UNSUBSCRIBE DETECTION
+      const { isBounce, isUnsubscribe } = await detectBounceOrUnsubscribe(email);
+      
+      if (isBounce) {
+        logger.warn(`⚠️ BOUNCE DETECTED for ${email.from_email} - marking as invalid`);
+        await db.run(
+          `INSERT INTO bounce_list (email, bounce_type, detected_at) VALUES (?, ?, ?)`,
+          [email.from_email, 'hard_bounce', Date.now()]
+        );
+        await db.run(
+          `UPDATE email_queue SET status = 'failed', approval_reason = 'Hard bounce detected' WHERE to_email = ?`,
+          [email.from_email]
+        );
+        heartbeat.incrementProcessed();
+        processed++;
+        heartbeat.clearCurrentItem();
+        continue;
+      }
+      
+      if (isUnsubscribe) {
+        logger.warn(`🚫 UNSUBSCRIBE DETECTED for ${email.from_email} - respecting opt-out`);
+        await db.run(
+          `INSERT INTO unsubscribe_list (email, reason, unsubscribed_at) VALUES (?, ?, ?)`,
+          [email.from_email, 'User requested unsubscribe', Date.now()]
+        );
+        await db.run(
+          `UPDATE email_queue SET status = 'failed', approval_reason = 'User unsubscribed' WHERE to_email = ?`,
+          [email.from_email]
+        );
+        heartbeat.incrementProcessed();
+        processed++;
+        heartbeat.clearCurrentItem();
+        continue;
+      }
+      
       const analysis = await categorizeReply(body, email.subject, '');
       
       let autoResponse = null;
