@@ -3030,6 +3030,202 @@ app.get('/api/prospects/:leadId/reply-sentiment', async (req, res) => {
     }
 });
 
+// GET /api/pipeline/engagement-funnel - Complete funnel from discovery to qualification
+app.get('/api/pipeline/engagement-funnel', async (req, res) => {
+    try {
+        // Stage 1: All prospects discovered
+        const discovered = await db.get(`SELECT COUNT(*) as count FROM prospect_queue`);
+        
+        // Stage 2: Prospects with emails sent
+        const emailsSent = await db.get(`
+            SELECT COUNT(DISTINCT lead_id) as count FROM email_queue WHERE status = 'sent'
+        `);
+        
+        // Stage 3: Prospects who replied
+        const replied = await db.get(`
+            SELECT COUNT(DISTINCT lead_id) as count FROM email_messages 
+            WHERE lead_id IS NOT NULL AND received_at IS NOT NULL
+        `);
+        
+        // Stage 4: Prospects showing positive interest (positive sentiment or interested signal)
+        const interested = await db.get(`
+            SELECT COUNT(DISTINCT em.lead_id) as count FROM email_messages em
+            WHERE (em.sentiment = 'positive' OR em.decision_signal IN ('interested', 'needs_demo', 'needs_info'))
+        `);
+        
+        // Stage 5: Prospects moved to qualified stage
+        const qualified = await db.get(`
+            SELECT COUNT(*) as count FROM prospect_queue WHERE workflow_stage = 'qualified'
+        `);
+        
+        const discovered_count = discovered.count || 0;
+        const sent_count = emailsSent.count || 0;
+        const replied_count = replied.count || 0;
+        const interested_count = interested.count || 0;
+        const qualified_count = qualified.count || 0;
+        
+        // Calculate conversion rates
+        const conversionRates = {
+            discovery_to_sent: discovered_count > 0 ? Math.round((sent_count / discovered_count) * 100) : 0,
+            sent_to_reply: sent_count > 0 ? Math.round((replied_count / sent_count) * 100) : 0,
+            reply_to_interested: replied_count > 0 ? Math.round((interested_count / replied_count) * 100) : 0,
+            interested_to_qualified: interested_count > 0 ? Math.round((qualified_count / interested_count) * 100) : 0,
+            overall: discovered_count > 0 ? Math.round((qualified_count / discovered_count) * 100) : 0
+        };
+        
+        res.json({
+            funnelMetrics: {
+                funnel_stages: [
+                    { stage: 'Discovered', count: discovered_count, percentage: 100 },
+                    { stage: 'Emails Sent', count: sent_count, percentage: Math.round((sent_count / discovered_count) * 100) },
+                    { stage: 'Replied', count: replied_count, percentage: Math.round((replied_count / discovered_count) * 100) },
+                    { stage: 'Interested', count: interested_count, percentage: Math.round((interested_count / discovered_count) * 100) },
+                    { stage: 'Qualified', count: qualified_count, percentage: Math.round((qualified_count / discovered_count) * 100) }
+                ],
+                conversion_rates: conversionRates,
+                bottleneck: {
+                    identified: true,
+                    stage: conversionRates.discovery_to_sent < 50 ? 'discovery_to_sent' : 
+                           conversionRates.sent_to_reply < 15 ? 'sent_to_reply' :
+                           conversionRates.reply_to_interested < 30 ? 'reply_to_interested' :
+                           'healthy',
+                    message: conversionRates.discovery_to_sent < 50 ? 'Many prospects not receiving emails' :
+                             conversionRates.sent_to_reply < 15 ? 'Low reply rate - review email quality' :
+                             conversionRates.reply_to_interested < 30 ? 'Low engagement conversion - check follow-ups' :
+                             '✅ Pipeline flowing smoothly'
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Engagement Funnel Error:", error);
+        res.json({ funnelMetrics: { funnel_stages: [], conversion_rates: {} } });
+    }
+});
+
+// GET /api/pipeline/time-to-conversion - Average time from sent to reply to qualified
+app.get('/api/pipeline/time-to-conversion', async (req, res) => {
+    try {
+        // Time from email sent to first reply
+        const timeToReply = await db.get(`
+            SELECT 
+                AVG(em.received_at - eq.sent_at) / 1000 / 3600 as avg_hours,
+                MIN(em.received_at - eq.sent_at) / 1000 / 3600 as min_hours,
+                MAX(em.received_at - eq.sent_at) / 1000 / 3600 as max_hours
+            FROM email_queue eq
+            JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.status = 'sent'
+        `);
+        
+        // Time from first contact to qualification
+        const timeToQualified = await db.get(`
+            SELECT 
+                AVG((SELECT MAX(stage_updated_at) FROM prospect_queue WHERE workflow_stage = 'qualified' AND id = pq.id) - MIN(eq.sent_at)) / 1000 / 3600 / 24 as avg_days
+            FROM prospect_queue pq
+            LEFT JOIN email_queue eq ON pq.id = eq.lead_id
+            WHERE pq.workflow_stage = 'qualified'
+        `);
+        
+        res.json({
+            timeMetrics: {
+                email_to_first_reply: {
+                    avg_hours: Math.round((timeToReply.avg_hours || 0) * 10) / 10,
+                    min_hours: Math.round((timeToReply.min_hours || 0) * 10) / 10,
+                    max_hours: Math.round((timeToReply.max_hours || 0) * 10) / 10,
+                    label: 'Time from email sent to first reply'
+                },
+                contact_to_qualified: {
+                    avg_days: Math.round((timeToQualified.avg_days || 0) * 10) / 10,
+                    label: 'Average days from first contact to qualification'
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Time To Conversion Error:", error);
+        res.json({ timeMetrics: {} });
+    }
+});
+
+// GET /api/pipeline/conversion-by-quality - Show conversion rates by research quality
+app.get('/api/pipeline/conversion-by-quality', async (req, res) => {
+    try {
+        const qualityBuckets = await db.all(`
+            SELECT 
+                CASE 
+                    WHEN eq.research_quality >= 8 THEN 'High (8-10)'
+                    WHEN eq.research_quality >= 6 THEN 'Medium (6-7)'
+                    WHEN eq.research_quality >= 4 THEN 'Low (4-5)'
+                    ELSE 'Very Low (0-3)'
+                END as quality_bucket,
+                COUNT(*) as emails_sent,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies,
+                COUNT(DISTINCT eq.lead_id) as unique_prospects
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.status = 'sent'
+            GROUP BY quality_bucket
+            ORDER BY 
+                CASE 
+                    WHEN quality_bucket = 'High (8-10)' THEN 1
+                    WHEN quality_bucket = 'Medium (6-7)' THEN 2
+                    WHEN quality_bucket = 'Low (4-5)' THEN 3
+                    ELSE 4
+                END
+        `);
+        
+        const conversionByQuality = qualityBuckets.map(b => {
+            const replyRate = b.emails_sent > 0 ? Math.round((b.replies / b.emails_sent) * 100) : 0;
+            return {
+                quality_level: b.quality_bucket,
+                emails_sent: b.emails_sent,
+                replies: b.replies,
+                reply_rate: `${replyRate}%`,
+                unique_prospects: b.unique_prospects
+            };
+        });
+        
+        res.json({
+            qualityAnalysis: {
+                conversion_by_quality: conversionByQuality,
+                insight: 'Higher research quality correlates with better reply rates'
+            }
+        });
+    } catch (error) {
+        console.error("Quality Conversion Error:", error);
+        res.json({ qualityAnalysis: { conversion_by_quality: [] } });
+    }
+});
+
+// GET /api/pipeline/stage-velocity - How fast prospects move through stages
+app.get('/api/pipeline/stage-velocity', async (req, res) => {
+    try {
+        const stageTransitions = await db.all(`
+            SELECT 
+                workflow_stage,
+                COUNT(*) as prospects_in_stage,
+                AVG(CAST((julianday('now') * 24 * 60 * 60 * 1000) - stage_updated_at AS FLOAT)) / 1000 / 3600 / 24 as avg_days_in_stage
+            FROM prospect_queue
+            WHERE workflow_stage IS NOT NULL
+            GROUP BY workflow_stage
+            ORDER BY workflow_stage
+        `);
+        
+        res.json({
+            stageVelocity: {
+                stages: stageTransitions.map(s => ({
+                    stage: s.workflow_stage,
+                    count: s.prospects_in_stage,
+                    avg_days_in_stage: Math.round((s.avg_days_in_stage || 0) * 10) / 10,
+                    velocity: s.avg_days_in_stage < 3 ? '⚡ Fast' : s.avg_days_in_stage < 7 ? '→ Normal' : '🐢 Slow'
+                })),
+                recommendation: 'Monitor prospects stuck in "contacted" stage for >7 days'
+            }
+        });
+    } catch (error) {
+        console.error("Stage Velocity Error:", error);
+        res.json({ stageVelocity: { stages: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
