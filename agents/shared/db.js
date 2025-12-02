@@ -217,6 +217,23 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE research_queue ADD COLUMN brief_generated_at INTEGER`);
   } catch (e) { /* column exists */ }
   
+  // Add sentiment analysis columns to email_messages for reply analysis
+  try {
+    await db.run(`ALTER TABLE email_messages ADD COLUMN sentiment TEXT DEFAULT 'neutral'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_messages ADD COLUMN sentiment_score REAL DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_messages ADD COLUMN decision_signal TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_messages ADD COLUMN key_topics TEXT DEFAULT '[]'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_messages ADD COLUMN analyzed_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];
   for (const agent of agents) {
     await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);

@@ -2848,6 +2848,188 @@ app.post('/api/prospects/bulk-insights', async (req, res) => {
     }
 });
 
+// POST /api/replies/analyze-sentiment - AI-powered sentiment analysis of email replies
+app.post('/api/replies/analyze-sentiment', async (req, res) => {
+    try {
+        const { email_id, body_text } = req.body;
+        
+        if (!body_text || body_text.trim().length === 0) {
+            return res.status(400).json({ error: 'Email body required' });
+        }
+        
+        // Analyze sentiment using AI
+        const prompt = `Analyze this email reply for business sentiment. Extract:
+1. Overall sentiment (positive/negative/neutral)
+2. Sentiment score (-1 to +1)
+3. Decision signal (interested/not_interested/needs_info/needs_demo/objection/auto_reply/unsubscribe)
+4. Key topics mentioned (array)
+
+Email: "${body_text}"
+
+Return ONLY valid JSON:
+{
+  "sentiment": "positive|negative|neutral",
+  "sentiment_score": 0.8,
+  "decision_signal": "interested",
+  "key_topics": ["topic1", "topic2"]
+}`;
+        
+        const response = await openrouter.chat.completions.create({
+            model: "meta-llama/llama-3.3-70b-instruct",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+            max_tokens: 300
+        });
+        
+        const analysisText = response.choices[0]?.message?.content || '{}';
+        let analysis;
+        try {
+            const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+            analysis = JSON.parse(jsonMatch ? jsonMatch[0] : analysisText);
+        } catch (e) {
+            analysis = { sentiment: 'neutral', sentiment_score: 0, decision_signal: 'unknown', key_topics: [] };
+        }
+        
+        // Store analysis if email_id provided
+        if (email_id) {
+            await db.run(
+                `UPDATE email_messages SET sentiment = ?, sentiment_score = ?, decision_signal = ?, key_topics = ?, analyzed_at = ? WHERE id = ?`,
+                [analysis.sentiment, analysis.sentiment_score || 0, analysis.decision_signal, JSON.stringify(analysis.key_topics || []), Date.now(), email_id]
+            );
+        }
+        
+        res.json({ analysis });
+    } catch (error) {
+        console.error("Sentiment Analysis Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/replies/sentiment-distribution - Overall sentiment distribution of all replies
+app.get('/api/replies/sentiment-distribution', async (req, res) => {
+    try {
+        const distribution = await db.all(`
+            SELECT 
+                sentiment,
+                COUNT(*) as count,
+                AVG(sentiment_score) as avg_sentiment_score
+            FROM email_messages
+            WHERE sentiment IS NOT NULL
+            GROUP BY sentiment
+        `);
+        
+        const totalReplies = distribution.reduce((sum, d) => sum + d.count, 0);
+        
+        res.json({
+            sentimentMetrics: {
+                total_analyzed: totalReplies,
+                by_sentiment: distribution.map(d => ({
+                    sentiment: d.sentiment,
+                    count: d.count,
+                    percentage: Math.round((d.count / totalReplies) * 100),
+                    avg_score: Math.round(d.avg_sentiment_score * 100) / 100
+                })),
+                overall_sentiment: totalReplies > 0 ? distribution.reduce((s, d) => s + (d.avg_sentiment_score || 0) * d.count, 0) / totalReplies : 0
+            }
+        });
+    } catch (error) {
+        console.error("Sentiment Distribution Error:", error);
+        res.json({ sentimentMetrics: { total_analyzed: 0 } });
+    }
+});
+
+// GET /api/replies/decision-signals - Track decision signals from prospects
+app.get('/api/replies/decision-signals', async (req, res) => {
+    try {
+        const signals = await db.all(`
+            SELECT 
+                decision_signal,
+                COUNT(*) as count,
+                COUNT(DISTINCT lead_id) as unique_prospects
+            FROM email_messages
+            WHERE decision_signal IS NOT NULL
+            GROUP BY decision_signal
+            ORDER BY count DESC
+        `);
+        
+        res.json({
+            decisionSignals: {
+                total_signals: signals.reduce((sum, s) => sum + s.count, 0),
+                signals: signals.map(s => ({
+                    signal: s.decision_signal,
+                    occurrences: s.count,
+                    unique_prospects: s.unique_prospects
+                })),
+                action_items: {
+                    interested: signals.find(s => s.decision_signal === 'interested')?.count || 0,
+                    objections: signals.find(s => s.decision_signal === 'objection')?.count || 0,
+                    needs_demo: signals.find(s => s.decision_signal === 'needs_demo')?.count || 0,
+                    unsubscribe: signals.find(s => s.decision_signal === 'unsubscribe')?.count || 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Decision Signals Error:", error);
+        res.json({ decisionSignals: { total_signals: 0 } });
+    }
+});
+
+// GET /api/prospects/:leadId/reply-sentiment - Get all sentiment analysis for a prospect's replies
+app.get('/api/prospects/:leadId/reply-sentiment', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const replies = await db.all(`
+            SELECT 
+                id,
+                from_email,
+                subject,
+                sentiment,
+                sentiment_score,
+                decision_signal,
+                key_topics,
+                received_at
+            FROM email_messages
+            WHERE lead_id = ? AND sentiment IS NOT NULL
+            ORDER BY received_at DESC
+            LIMIT 20
+        `, [leadId]);
+        
+        const sentiment_breakdown = await db.get(`
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN sentiment = 'positive' THEN 1 ELSE 0 END) as positive,
+                SUM(CASE WHEN sentiment = 'negative' THEN 1 ELSE 0 END) as negative,
+                SUM(CASE WHEN sentiment = 'neutral' THEN 1 ELSE 0 END) as neutral,
+                AVG(sentiment_score) as avg_score
+            FROM email_messages
+            WHERE lead_id = ?
+        `, [leadId]);
+        
+        res.json({
+            prospect_replies: {
+                total_replies: sentiment_breakdown.total || 0,
+                sentiment_breakdown: {
+                    positive: sentiment_breakdown.positive || 0,
+                    negative: sentiment_breakdown.negative || 0,
+                    neutral: sentiment_breakdown.neutral || 0,
+                    avg_sentiment_score: Math.round((sentiment_breakdown.avg_score || 0) * 100) / 100
+                },
+                recent_replies: replies.map(r => ({
+                    sentiment: r.sentiment,
+                    score: Math.round(r.sentiment_score * 100) / 100,
+                    signal: r.decision_signal,
+                    topics: JSON.parse(r.key_topics || '[]'),
+                    date: new Date(r.received_at).toLocaleDateString()
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Prospect Reply Sentiment Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
