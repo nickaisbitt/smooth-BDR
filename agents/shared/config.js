@@ -1,9 +1,4 @@
 export const AGENT_CONFIG = {
-  COO: {
-    name: 'COO',
-    pollIntervalMs: 5000,  // MAXIMUM MONITORING: every 5s
-    enabled: true
-  },
   PROSPECT_FINDER: {
     name: 'prospect-finder',
     pollIntervalMs: 3000,  // EXTREME SPEED: 40% faster from 5s - CRITICAL FOR CONTINUOUS FEED

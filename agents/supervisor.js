@@ -16,7 +16,6 @@ let db = null;
 let isRunning = false;
 
 const AGENT_FILES = {
-  'COO': 'cooAgent.js',
   'prospect-finder': 'prospectFinder.js',
   'research': 'researchAgent.js',
   'research-retry': 'researchRetryAgent.js',

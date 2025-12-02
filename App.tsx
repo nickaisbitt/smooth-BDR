@@ -10,7 +10,6 @@ import { AgentTerminal } from './components/AgentTerminal';
 
 // Agent display name mapping with emoji profile icons
 const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  'COO': 'Atlas - COO',
   'prospect-finder': 'Scout - Prospect Finder',
   'research': 'Scholar - Research',
   'research-retry': 'Persistence - Research Retry',
@@ -22,7 +21,6 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
 };
 
 const AGENT_ICONS: Record<string, string> = {
-  'COO': '🎯',
   'prospect-finder': '🔍',
   'research': '📚',
   'research-retry': '🔄',
