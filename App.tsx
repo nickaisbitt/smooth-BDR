@@ -7,6 +7,23 @@ import { StatCard } from './components/StatCard';
 import { MetricsPanel } from './components/MetricsPanel';
 import { Sidebar } from './components/Sidebar';
 import { AgentTerminal } from './components/AgentTerminal';
+
+// Agent display name mapping
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  'COO': 'Atlas - COO',
+  'prospect-finder': 'Scout - Prospect Finder',
+  'research': 'Scholar - Research',
+  'research-retry': 'Persistence - Research Retry',
+  'email-generator': 'Scribe - Email Generator',
+  'email-reviewer': 'Guardian - Email Reviewer',
+  'email-sender': 'Mercury - Email Sender',
+  'inbox': 'Sentinel - Inbox',
+  'logo-finder': 'Canvas - Logo Finder'
+};
+
+function getAgentDisplayName(agentName: string): string {
+  return AGENT_DISPLAY_NAMES[agentName] || agentName.replace('-', ' ').toUpperCase();
+}
 import { StrategyQueue } from './components/StrategyQueue';
 import { AnalyticsView } from './components/AnalyticsView';
 import { QualityControlView } from './components/QualityControlView';
@@ -794,7 +811,7 @@ function App() {
                                   <div className="flex items-center gap-1.5 mb-1">
                                     <div className={`w-2 h-2 rounded-full ${agent.health === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
                                     <span className="font-medium text-slate-700 dark:text-slate-300 capitalize truncate">
-                                      {agent.name.replace('-', ' ')}
+                                      {getAgentDisplayName(agent.name)}
                                     </span>
                                   </div>
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
