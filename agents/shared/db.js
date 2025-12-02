@@ -193,6 +193,14 @@ export async function initAgentTables(db) {
     CREATE INDEX IF NOT EXISTS idx_unsubscribe_list_email ON unsubscribe_list(email);
   `);
   
+  // Add campaign_id column to email_queue if it doesn't exist
+  try {
+    await db.run(`ALTER TABLE email_queue ADD COLUMN campaign_id TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_queue ADD COLUMN is_followup INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  
   const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];
   for (const agent of agents) {
     await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);

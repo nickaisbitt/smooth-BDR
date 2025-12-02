@@ -2300,6 +2300,199 @@ app.post('/api/prospects/bulk-tag', async (req, res) => {
     }
 });
 
+// GET /api/email/campaign-analytics - Performance analysis of email campaigns
+app.get('/api/email/campaign-analytics', async (req, res) => {
+    try {
+        // Group by subject line as campaign identifier
+        const campaigns = await db.all(`
+            SELECT 
+                eq.subject as campaign_name,
+                COUNT(*) as total_sent,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies_received,
+                COUNT(DISTINCT eq.lead_id) as unique_leads,
+                AVG(eq.research_quality) as avg_quality,
+                SUM(CASE WHEN eq.is_followup = 1 THEN 1 ELSE 0 END) as followups,
+                MIN(eq.sent_at) as first_sent,
+                MAX(eq.sent_at) as last_sent
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.status = 'sent'
+            GROUP BY eq.subject
+            ORDER BY total_sent DESC
+            LIMIT 50
+        `);
+        
+        // Calculate performance metrics
+        const campaignMetrics = campaigns.map(c => {
+            const replyRate = c.total_sent > 0 ? Math.round((c.replies_received / c.total_sent) * 100) : 0;
+            return {
+                campaign: c.campaign_name?.substring(0, 50) || 'Unnamed',
+                total_sent: c.total_sent,
+                replies: c.replies_received,
+                reply_rate: `${replyRate}%`,
+                unique_leads: c.unique_leads,
+                avg_quality: Math.round(c.avg_quality * 10) / 10,
+                followups: c.followups || 0,
+                date_range: `${new Date(c.first_sent).toLocaleDateString()} - ${new Date(c.last_sent).toLocaleDateString()}`
+            };
+        });
+        
+        // Top performing campaigns
+        const topCampaigns = campaignMetrics.filter(c => c.total_sent >= 3).sort((a, b) => {
+            const aRate = parseInt(a.reply_rate);
+            const bRate = parseInt(b.reply_rate);
+            return bRate - aRate;
+        }).slice(0, 5);
+        
+        res.json({
+            campaignAnalytics: {
+                total_campaigns: campaigns.length,
+                total_emails_sent: campaigns.reduce((sum, c) => sum + c.total_sent, 0),
+                total_replies: campaigns.reduce((sum, c) => sum + (c.replies_received || 0), 0),
+                overall_reply_rate: `${Math.round(campaigns.reduce((sum, c) => sum + (c.replies_received || 0), 0) / campaigns.reduce((sum, c) => sum + c.total_sent, 0) * 100)}%`,
+                top_campaigns: topCampaigns,
+                all_campaigns: campaignMetrics.slice(0, 10)
+            }
+        });
+    } catch (error) {
+        console.error("Campaign Analytics Error:", error);
+        res.json({ campaignAnalytics: { total_campaigns: 0, total_emails_sent: 0 } });
+    }
+});
+
+// GET /api/email/subject-line-performance - Which subject lines drive replies?
+app.get('/api/email/subject-line-performance', async (req, res) => {
+    try {
+        const subjectPerformance = await db.all(`
+            SELECT 
+                eq.subject,
+                COUNT(*) as total_sent,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies,
+                GROUP_CONCAT(DISTINCT ra.sentiment, ',') as reply_sentiments,
+                AVG(ls.engagement_score) as avg_engagement
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            LEFT JOIN reply_analysis ra ON em.id = ra.email_id
+            LEFT JOIN lead_scores ls ON eq.lead_id = ls.lead_id
+            WHERE eq.status = 'sent' AND eq.subject != ''
+            GROUP BY eq.subject
+            ORDER BY CAST(SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) AS REAL) / COUNT(*) DESC
+            LIMIT 20
+        `);
+        
+        const performance = subjectPerformance.map(s => {
+            const replyRate = s.total_sent > 0 ? Math.round((s.replies / s.total_sent) * 100) : 0;
+            return {
+                subject: s.subject?.substring(0, 50),
+                sent: s.total_sent,
+                replies: s.replies,
+                reply_rate: `${replyRate}%`,
+                sentiment_mix: s.reply_sentiments || 'N/A',
+                avg_engagement: Math.round(s.avg_engagement || 0)
+            };
+        });
+        
+        res.json({
+            subjectLineMetrics: {
+                analyzed_subjects: performance.length,
+                best_subjects: performance.slice(0, 5),
+                all_subjects: performance
+            }
+        });
+    } catch (error) {
+        console.error("Subject Line Performance Error:", error);
+        res.json({ subjectLineMetrics: { analyzed_subjects: 0 } });
+    }
+});
+
+// GET /api/email/followup-effectiveness - How effective are follow-ups?
+app.get('/api/email/followup-effectiveness', async (req, res) => {
+    try {
+        // Compare initial emails to follow-ups
+        const stats = await db.all(`
+            SELECT 
+                eq.is_followup,
+                COUNT(*) as total,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies,
+                AVG(eq.research_quality) as avg_quality
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.status = 'sent'
+            GROUP BY eq.is_followup
+        `);
+        
+        const initial = stats.find(s => s.is_followup === 0) || { total: 0, replies: 0 };
+        const followups = stats.find(s => s.is_followup === 1) || { total: 0, replies: 0 };
+        
+        const initialRate = initial.total > 0 ? Math.round((initial.replies / initial.total) * 100) : 0;
+        const followupRate = followups.total > 0 ? Math.round((followups.replies / followups.total) * 100) : 0;
+        
+        res.json({
+            followupMetrics: {
+                initial_emails: {
+                    sent: initial.total,
+                    replies: initial.replies,
+                    reply_rate: `${initialRate}%`,
+                    avg_quality: Math.round(initial.avg_quality || 0)
+                },
+                followup_emails: {
+                    sent: followups.total,
+                    replies: followups.replies,
+                    reply_rate: `${followupRate}%`,
+                    avg_quality: Math.round(followups.avg_quality || 0)
+                },
+                effectiveness_delta: `${followupRate - initialRate}%`,
+                recommendation: followupRate > initialRate ? '✅ Follow-ups are MORE effective' : '⚠️ Initial emails performing better'
+            }
+        });
+    } catch (error) {
+        console.error("Followup Effectiveness Error:", error);
+        res.json({ followupMetrics: {} });
+    }
+});
+
+// GET /api/email/best-times-to-send - Analyze reply patterns by day/time
+app.get('/api/email/send-time-analysis', async (req, res) => {
+    try {
+        const dayAnalysis = await db.all(`
+            SELECT 
+                CAST(strftime('%w', datetime(eq.sent_at/1000, 'unixepoch')) AS INTEGER) as day_of_week,
+                CAST(strftime('%H', datetime(eq.sent_at/1000, 'unixepoch')) AS INTEGER) as hour,
+                COUNT(*) as sent,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.status = 'sent'
+            GROUP BY day_of_week, hour
+            ORDER BY replies DESC
+            LIMIT 10
+        `);
+        
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        const analysis = dayAnalysis.map(d => {
+            const replyRate = d.sent > 0 ? Math.round((d.replies / d.sent) * 100) : 0;
+            return {
+                day: dayNames[d.day_of_week],
+                hour: `${d.hour}:00`,
+                sent: d.sent,
+                replies: d.replies,
+                reply_rate: `${replyRate}%`
+            };
+        });
+        
+        res.json({
+            sendTimeMetrics: {
+                best_send_windows: analysis.slice(0, 5),
+                all_send_times: analysis
+            }
+        });
+    } catch (error) {
+        console.error("Send Time Analysis Error:", error);
+        res.json({ sendTimeMetrics: { best_send_windows: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
