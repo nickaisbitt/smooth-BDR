@@ -296,6 +296,18 @@ Return valid JSON:
   }
 }
 
+async function checkForDuplicateSend(contactEmail) {
+  // Check if email was already sent to this contact in the last 30 days
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const existing = await db.get(`
+    SELECT id, subject, sent_at FROM email_queue
+    WHERE to_email = ? AND status = 'sent' AND sent_at > ?
+    LIMIT 1
+  `, [contactEmail, thirtyDaysAgo]);
+  
+  return existing;
+}
+
 async function processEmailGeneration(item) {
   // Step 1: Check basic quality threshold - USE CONFIG VALUE
   if (item.research_quality < config.minQuality) {  // Use config minQuality instead of hardcoded value
@@ -438,7 +450,17 @@ async function processEmailGeneration(item) {
   `, [email.subject, email.body, Date.now(), Date.now(), item.id]);
   
   if (contactEmail) {
-    // Step 6: Queue email with approval_required flag
+    // Step 6a: Check for duplicate sends in last 30 days
+    const duplicate = await checkForDuplicateSend(contactEmail);
+    if (duplicate) {
+      await completeQueueItem(db, 'draft_queue', item.id, 'skipped', {
+        last_error: `⚠️ Duplicate prevention: Email already sent to ${contactEmail} on ${new Date(duplicate.sent_at).toLocaleDateString()}`
+      });
+      logger.warn(`🚫 DUPLICATE PREVENTED: ${contactEmail} - already sent on ${new Date(duplicate.sent_at).toLocaleDateString()}`);
+      return { success: false, reason: 'Duplicate send prevented - email recently sent to this contact' };
+    }
+    
+    // Step 6b: Queue email with approval_required flag
     await db.run(`
       INSERT INTO email_queue (lead_id, lead_name, to_email, subject, body, scheduled_for, status, created_at, research_quality, approval_status)
       VALUES (?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, 'needs_review')

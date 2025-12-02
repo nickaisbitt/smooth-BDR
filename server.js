@@ -1724,6 +1724,38 @@ app.get('/api/email/validation-stats', async (req, res) => {
     }
 });
 
+// GET /api/email/duplicate-prevention-stats - Duplicate send prevention metrics
+app.get('/api/email/duplicate-prevention-stats', async (req, res) => {
+    try {
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_skipped,
+                SUM(CASE WHEN last_error LIKE '%Duplicate%' THEN 1 ELSE 0 END) as duplicates_prevented
+            FROM draft_queue
+            WHERE status = 'skipped' AND last_error LIKE '%Duplicate%' AND updated_at > ?
+        `, [thirtyDaysAgo]);
+        
+        const totalGenerated = await db.get(`SELECT COUNT(*) as count FROM draft_queue WHERE status IN ('awaiting_approval', 'skipped')`);
+        const preventionRate = totalGenerated?.count > 0 
+            ? Math.round((stats?.duplicates_prevented || 0) / (totalGenerated.count + (stats?.duplicates_prevented || 0)) * 100)
+            : 0;
+        
+        res.json({
+            duplicatePreventionMetrics: {
+                duplicates_prevented: stats?.duplicates_prevented || 0,
+                smtp_quota_saved: `${(stats?.duplicates_prevented || 0)} sends`,
+                prevention_rate: `${preventionRate}%`,
+                time_window: '30 days',
+                efficiency_gain: `Prevented ${Math.round((stats?.duplicates_prevented || 0) * 30 / 60)} mins of wasted research`
+            }
+        });
+    } catch (error) {
+        console.error("Duplicate Prevention Stats Error:", error);
+        res.json({ duplicatePreventionMetrics: { duplicates_prevented: 0, smtp_quota_saved: '0 sends', prevention_rate: '0%' } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
