@@ -83,7 +83,7 @@ I want the agent to:
 
 ## System Architecture
 The application features a modern full-stack architecture with a React 18 (TypeScript, Vite) frontend and a Node.js (Express) backend. Data is persisted using SQLite. The UI is built with Tailwind CSS for rapid styling and Recharts for data visualization. Key architectural decisions include:
-- **Multi-Agent Architecture**: 8 parallel agents (7 spawned + 1 supervisor with merged COO) with validated thresholds:
+- **Multi-Agent Architecture**: 9 parallel agents (8 spawned + 1 supervisor with merged COO) with validated thresholds:
   1. **Prospect Finder Agent**: Discovers and adds new prospects (3s polling, 50/batch) - validates against placeholder data ✅ HEALTHY
   2. **Research Agent**: Multi-source research on companies (600ms polling, 15 parallel items, 3/10 min quality, 4s timeouts) ✅ HEALTHY
   3. **Research Retry Agent**: Retry research with fail-fast strategy (1000ms polling, max 1 retry) ✅ HEALTHY
@@ -91,8 +91,8 @@ The application features a modern full-stack architecture with a React 18 (TypeS
   5. **Email Reviewer Agent**: Quality review & hallucination detection (600ms polling, 3/10 approval threshold, auto-moves approved emails to pending) ✅ HEALTHY
   6. **Email Sender Agent**: Sends approved emails (600ms polling, 25/batch, 250ms delays = 4 emails/sec sustainable, smart rate limit recovery) ✅ HEALTHY
   7. **Inbox Agent**: Monitors IMAP inbox for replies (5s polling) ✅ HEALTHY
-  8. **Supervisor Agent**: System health monitor (15s polling, merged COO functionality) - tracks agent health, queue depths, and system bottlenecks ✅ HEALTHY
-  - Logo Finder Agent: Disabled (on-demand enrichment only)
+  8. **Logo Finder Agent**: Enriches prospects with company logos (60s polling, 30/batch) ✅ HEALTHY
+  9. **Supervisor Agent**: System health monitor (15s polling, merged COO functionality) - tracks agent health, queue depths, and system bottlenecks ✅ HEALTHY
 - **Multi-Source Intelligence Research**: Parallel research orchestrator gathers data from 7+ sources (website scraping, Google News, press releases, executive news, careers pages, web search) with adaptive fallbacks.
 - **Sustainable Rate Limiting**: Email reviewer 3/10 minimum, email generator 3/10 minimum, email sender 25/batch with 250ms delays = **4 emails/sec sustainable throughput** (respects strict Hostinger SMTP limits, auto-detects 451 rate limits for graceful retry)
 - **Real-time Metrics Dashboard**: Live `/api/metrics` endpoint + MetricsPanel component showing pipeline velocity, queue depths, research quality, and approval rates with 5-second auto-refresh
