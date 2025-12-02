@@ -649,6 +649,19 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_intent_score ON intent_scores(intent_score);
   CREATE INDEX IF NOT EXISTS idx_intent_level ON intent_scores(intent_level);
   
+  CREATE TABLE IF NOT EXISTS research_diagnostics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT,
+    failure_reason TEXT,
+    research_sources TEXT,
+    attempted_count INTEGER DEFAULT 1,
+    last_attempt_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_research_company ON research_diagnostics(company_name);
+  CREATE INDEX IF NOT EXISTS idx_research_reason ON research_diagnostics(failure_reason);
+  
   console.log("✅ Agent tables initialized");
 }
 

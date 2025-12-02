@@ -1,0 +1,203 @@
+
+NEURAL_ENGINE :: STANDBY
+v2.5.0
+21:13:42
+🔍 Researching GSC Logistics...
+21:14:20
+⚠️ Research failed for GSC Logistics, proceeding with basic analysis
+21:14:25
+Executing: trucking companies in California with 10+ employees
+21:14:25
+⚡ High Performance Mode: Screen Wake Lock Active
+21:14:38
+Found 1 new candidates. Starting Deep Analysis...
+21:14:38
+🔍 Researching System Transport...
+21:15:02
+Executing: trucking companies in California with 10+ employees
+21:15:03
+⚡ High Performance Mode: Screen Wake Lock Active
+21:15:14
+Found 1 new candidates. Starting Deep Analysis...
+21:15:14
+🔍 Researching Estes Express Lines...
+21:15:29
+⚠️ Research failed for Estes Express Lines, proceeding with basic analysis
+21:15:34
+Executing: trucking companies in California with 10+ employees
+21:15:46
+All found leads were duplicates.
+21:15:51
+Executing: textile manufacturers in North Carolina
+21:16:00
+Found 1 new candidates. Starting Deep Analysis...
+21:16:00
+🔍 Researching Parkdale Mills Inc....
+21:16:38
+⚠️ Research failed for Parkdale Mills Inc., proceeding with basic analysis
+21:16:42
+Executing: textile manufacturers in North Carolina
+21:16:47
+Found 5 new candidates. Starting Deep Analysis...
+21:16:47
+🔍 Researching Parkdale Mills Inc...
+21:17:34
+⚠️ Research failed for Parkdale Mills Inc, proceeding with basic analysis
+21:17:39
+Executing: textile manufacturers in North Carolina
+21:17:50
+Found 1 new candidates. Starting Deep Analysis...
+21:17:50
+🔍 Researching Glen Raven Inc....
+21:18:39
+⚠️ Research failed for Glen Raven Inc., proceeding with basic analysis
+21:18:47
+Executing: textile manufacturers in North Carolina
+21:18:58
+Found 5 new candidates. Starting Deep Analysis...
+21:18:58
+🔍 Researching Carolina Cotton Works...
+21:19:34
+⚠️ Research failed for Carolina Cotton Works, proceeding with basic analysis
+21:19:39
+Executing: textile manufacturers in North Carolina
+21:19:42
+Found 1 new candidates. Starting Deep Analysis...
+21:19:42
+🔍 Researching Cotton Incorporated...
+21:20:18
+⚠️ Research failed for Cotton Incorporated, proceeding with basic analysis
+21:20:24
+Executing: textile manufacturers in North Carolina
+21:20:33
+Found 1 new candidates. Starting Deep Analysis...
+21:20:33
+🔍 Researching Piedmont Yarns Inc....
+21:21:22
+📊 Research complete for Piedmont Yarns Inc.: Quality 4/10
+21:21:25
+✅ Qualified Piedmont Yarns Inc. (85). Deep diving...
+21:21:34
+🚫 Research quality too low (4/10) - email NOT generated for Piedmont Yarns Inc. (requires 9+)
+21:21:34
+🚫 Email NOT queued for Piedmont Yarns Inc. - research quality 4/10 below threshold (requires 9+)
+21:22:00
+Executing: dental practices in New York with 5+ dentists
+21:22:13
+Found 4 new candidates. Starting Deep Analysis...
+21:22:13
+🔍 Researching Smile Design Dental...
+21:22:30
+⚠️ Research failed for Smile Design Dental, proceeding with basic analysis
+21:22:34
+Executing: dental practices in New York with 5+ dentists
+21:22:44
+Found 3 new candidates. Starting Deep Analysis...
+21:22:44
+🔍 Researching NY Smile Creators...
+21:23:19
+⚠️ Research failed for NY Smile Creators, proceeding with basic analysis
+21:23:23
+Executing: dental practices in New York with 5+ dentists
+21:23:36
+Found 2 new candidates. Starting Deep Analysis...
+21:23:36
+🔍 Researching Long Island Implant and Cosmetic Dentistry...
+21:24:24
+⚠️ Research failed for Long Island Implant and Cosmetic Dentistry, proceeding with basic analysis
+21:24:30
+Executing: dental practices in New York with 5+ dentists
+21:24:40
+Found 2 new candidates. Starting Deep Analysis...
+21:24:40
+🔍 Researching New York Dental Studio...
+21:25:16
+⏹️ Growth Engine Stopped
+21:25:20
+🚀 Growth Engine Started
+21:25:20
+Executing: dental practices in New York with 5+ dentists
+21:25:20
+⚡ High Performance Mode: Screen Wake Lock Active
+21:25:23
+Found 4 new candidates. Starting Deep Analysis...
+21:25:23
+🔍 Researching Tribeca Dental...
+21:25:33
+⚠️ Research failed for Tribeca Dental, proceeding with basic analysis
+21:25:33
+⚠️ Research failed for New York Dental Studio, proceeding with basic analysis
+21:25:40
+Executing: dental practices in New York with 5+ dentists
+21:25:58
+Found 3 new candidates. Starting Deep Analysis...
+21:25:58
+🔍 Researching Manhattan Dental Arts...
+21:26:22
+⚠️ Research failed for Manhattan Dental Arts, proceeding with basic analysis
+21:26:26
+Executing: food wholesalers in Illinois
+21:26:39
+Found 5 new candidates. Starting Deep Analysis...
+21:26:39
+🔍 Researching Joliet Meat Company...
+21:26:54
+⚠️ Research failed for Joliet Meat Company, proceeding with basic analysis
+21:27:12
+Executing: law firms in Florida with 10+ attorneys
+21:27:22
+Found 2 new candidates. Starting Deep Analysis...
+21:27:22
+🔍 Researching Greenberg Traurig...
+21:27:57
+⚠️ Research failed for Greenberg Traurig, proceeding with basic analysis
+21:28:02
+Executing: HVAC contractors in Washington with 5+ technicians
+21:28:13
+Found 4 new candidates. Starting Deep Analysis...
+21:28:13
+🔍 Researching Valley Plumbing and Heating...
+21:28:59
+⚠️ Research failed for Valley Plumbing and Heating, proceeding with basic analysis
+21:29:04
+Funnel Empty. Generating Master Plan...
+21:29:12
+Executing: California manufacturing companies with over 100 employees
+21:29:24
+Found 1 new candidates. Starting Deep Analysis...
+21:29:24
+🔍 Researching Baxter Healthcare...
+21:30:40
+⚠️ Research failed for Baxter Healthcare, proceeding with basic analysis
+21:30:45
+Executing: California manufacturing companies with over 100 employees
+21:30:53
+Found 2 new candidates. Starting Deep Analysis...
+21:30:53
+🔍 Researching Lundberg Family Farms...
+21:31:26
+⚠️ Research failed for Lundberg Family Farms, proceeding with basic analysis
+21:31:30
+Executing: Dental practices in New York with multiple locations
+21:31:39
+Found 2 new candidates. Starting Deep Analysis...
+21:31:39
+🔍 Researching SmileMaker Orthodontics...
+21:32:48
+⚠️ Research failed for SmileMaker Orthodontics, proceeding with basic analysis
+21:32:52
+Executing: Dental practices in New York with multiple locations
+21:33:01
+Found 2 new candidates. Starting Deep Analysis...
+21:33:01
+🔍 Researching Long Island Dental Spa...
+21:33:45
+⚠️ Research failed for Long Island Dental Spa, proceeding with basic analysis
+21:33:50
+Executing: Dental practices in New York with multiple locations
+21:33:53
+Found 5 new candidates. Starting Deep Analysis...
+21:33:53
+🔍 Researching Smile Sciences...
+21:34:43
+⚠️ Research failed for Smile Sciences, proceeding with basic analysis

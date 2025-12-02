@@ -6679,8 +6679,8 @@ async function sendAlertToWebhooks(alertData) {
                 };
             } else if (webhook.webhook_type === 'teams') {
                 formatted = {
-                    @type: 'MessageCard',
-                    @context: 'https://schema.org/extensions',
+                    '@type': 'MessageCard',
+                    '@context': 'https://schema.org/extensions',
                     summary: alertData.title,
                     themeColor: alertData.severity === 'critical' ? 'ff0000' : alertData.severity === 'high' ? 'ff9800' : '00ff00',
                     sections: [
@@ -7130,6 +7130,229 @@ app.get('/api/intent/buyer-journey', async (req, res) => {
         });
     } catch (error) {
         res.json({ buyerJourney: { stages: [] } });
+    }
+});
+
+// POST /api/research/log-failure - Log research failure for diagnostics
+app.post('/api/research/log-failure', async (req, res) => {
+    try {
+        const { company_name, failure_reason, research_sources } = req.body;
+        
+        // Check if we've already logged this failure
+        const existing = await db.get(`
+            SELECT id FROM research_diagnostics 
+            WHERE company_name = ? AND failure_reason = ?
+            ORDER BY created_at DESC LIMIT 1
+        `, [company_name, failure_reason]);
+        
+        if (existing) {
+            // Update attempt count
+            await db.run(`
+                UPDATE research_diagnostics 
+                SET attempted_count = attempted_count + 1, last_attempt_at = ?
+                WHERE id = ?
+            `, [Date.now(), existing.id]);
+        } else {
+            // Log new failure
+            await db.run(`
+                INSERT INTO research_diagnostics (company_name, failure_reason, research_sources, attempted_count, last_attempt_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [company_name, failure_reason, research_sources || 'unknown', 1, Date.now(), Date.now()]);
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/research/failure-analytics - Analyze research failures
+app.get('/api/research/failure-analytics', async (req, res) => {
+    try {
+        const past24h = Date.now() - (24 * 60 * 60 * 1000);
+        
+        const failureStats = await db.get(`
+            SELECT 
+                COUNT(DISTINCT company_name) as failed_companies,
+                COUNT(*) as total_failures,
+                AVG(attempted_count) as avg_attempts,
+                MAX(attempted_count) as max_attempts
+            FROM research_diagnostics
+            WHERE created_at > ?
+        `, [past24h]);
+        
+        const byReason = await db.all(`
+            SELECT 
+                failure_reason,
+                COUNT(DISTINCT company_name) as company_count,
+                COUNT(*) as failure_count,
+                AVG(attempted_count) as avg_attempts
+            FROM research_diagnostics
+            WHERE created_at > ?
+            GROUP BY failure_reason
+            ORDER BY failure_count DESC
+        `, [past24h]);
+        
+        const mostFailed = await db.all(`
+            SELECT 
+                company_name,
+                failure_reason,
+                attempted_count,
+                last_attempt_at
+            FROM research_diagnostics
+            WHERE created_at > ?
+            ORDER BY attempted_count DESC
+            LIMIT 10
+        `, [past24h]);
+        
+        res.json({
+            researchFailureAnalytics: {
+                last_24h: {
+                    failed_companies: failureStats.failed_companies || 0,
+                    total_failures: failureStats.total_failures || 0,
+                    avg_retry_attempts: Math.round((failureStats.avg_attempts || 0) * 10) / 10,
+                    max_retry_attempts: failureStats.max_attempts || 0
+                },
+                by_failure_reason: byReason.map(r => ({
+                    reason: r.failure_reason,
+                    companies_affected: r.company_count,
+                    total_failures: r.failure_count,
+                    avg_attempts: Math.round(r.avg_attempts * 10) / 10
+                })),
+                most_problematic: mostFailed.map(m => ({
+                    company: m.company_name,
+                    reason: m.failure_reason,
+                    attempts: m.attempted_count,
+                    last_attempt: new Date(m.last_attempt_at).toISOString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ researchFailureAnalytics: {} });
+    }
+});
+
+// GET /api/research/health - Research system health score
+app.get('/api/research/health', async (req, res) => {
+    try {
+        const past24h = Date.now() - (24 * 60 * 60 * 1000);
+        
+        // Count successful research
+        const successCount = await db.get(`
+            SELECT COUNT(DISTINCT lead_id) as count 
+            FROM prospect_enrichment 
+            WHERE created_at > ?
+        `, [past24h]);
+        
+        // Count failed research
+        const failCount = await db.get(`
+            SELECT COUNT(DISTINCT company_name) as count 
+            FROM research_diagnostics 
+            WHERE created_at > ?
+        `, [past24h]);
+        
+        const total = (successCount?.count || 0) + (failCount?.count || 0);
+        const successRate = total > 0 ? Math.round((successCount?.count || 0) / total * 100) : 0;
+        
+        // Get recent failures trend
+        const failureTrend = await db.all(`
+            SELECT 
+                datetime((created_at / 1000) / 3600 * 3600, 'unixepoch') as hour,
+                COUNT(*) as failures
+            FROM research_diagnostics
+            WHERE created_at > ?
+            GROUP BY hour
+            ORDER BY hour DESC
+            LIMIT 24
+        `, [past24h]);
+        
+        const healthScore = Math.max(0, 100 - (failCount?.count || 0) * 2);
+        
+        res.json({
+            researchHealth: {
+                success_rate: successRate + '%',
+                successful_companies: successCount?.count || 0,
+                failed_companies: failCount?.count || 0,
+                health_score: healthScore,
+                status: successRate >= 80 ? 'excellent' : successRate >= 60 ? 'good' : successRate >= 40 ? 'fair' : 'needs_attention',
+                recent_trend: failureTrend.map(t => ({
+                    hour: t.hour,
+                    failures: t.failures
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ researchHealth: {} });
+    }
+});
+
+// GET /api/research/recovery-recommendations - Get recommendations to fix failures
+app.get('/api/research/recovery-recommendations', async (req, res) => {
+    try {
+        const past24h = Date.now() - (24 * 60 * 60 * 1000);
+        
+        // Find patterns
+        const timeoutFailures = await db.get(`
+            SELECT COUNT(*) as count FROM research_diagnostics
+            WHERE failure_reason LIKE '%timeout%' AND created_at > ?
+        `, [past24h]);
+        
+        const sourceFailures = await db.get(`
+            SELECT COUNT(*) as count FROM research_diagnostics
+            WHERE failure_reason LIKE '%source%' AND created_at > ?
+        `, [past24h]);
+        
+        const recommendations = [];
+        
+        if ((timeoutFailures?.count || 0) > 5) {
+            recommendations.push({
+                priority: 'high',
+                issue: 'Research Timeout Rate High',
+                pattern: `${timeoutFailures.count} timeouts in last 24h`,
+                recommendation: 'Increase research timeout from 4s to 6s, or reduce parallel research items from 15 to 10',
+                impact: 'Could improve success rate by 15-25%'
+            });
+        }
+        
+        if ((sourceFailures?.count || 0) > 3) {
+            recommendations.push({
+                priority: 'high',
+                issue: 'Data Source Failures',
+                pattern: `${sourceFailures.count} source failures in last 24h`,
+                recommendation: 'Review and rotate research data sources, consider adding cached company data fallback',
+                impact: 'Could prevent 10-20% of failures'
+            });
+        }
+        
+        const failCount = await db.get(`
+            SELECT COUNT(*) as count FROM research_diagnostics WHERE created_at > ?
+        `, [past24h]);
+        
+        if ((failCount?.count || 0) > 20) {
+            recommendations.push({
+                priority: 'medium',
+                issue: 'High Failure Volume',
+                pattern: `${failCount.count} total failures in last 24h`,
+                recommendation: 'Implement research caching to avoid re-researching same companies, or use enrichment API fallback',
+                impact: 'Could reduce failures by 30-40%'
+            });
+        }
+        
+        if (recommendations.length === 0) {
+            recommendations.push({
+                priority: 'low',
+                issue: 'System Healthy',
+                pattern: 'Research performing well',
+                recommendation: 'Continue monitoring; maintain current configuration',
+                impact: 'System stable'
+            });
+        }
+        
+        res.json({
+            recoveryRecommendations: recommendations
+        });
+    } catch (error) {
+        res.json({ recoveryRecommendations: [] });
     }
 });
 
