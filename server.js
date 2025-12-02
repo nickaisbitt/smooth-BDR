@@ -6921,6 +6921,218 @@ app.post('/api/analytics/track-campaign', async (req, res) => {
     }
 });
 
+// POST /api/intent/calculate - Calculate prospect intent score
+app.post('/api/intent/calculate', async (req, res) => {
+    try {
+        const { lead_id } = req.body;
+        
+        // Get prospect engagement data
+        const prospect = await db.get(`
+            SELECT pq.*, 
+                   (SELECT COUNT(*) FROM email_sends WHERE lead_id = ?) as emails_received,
+                   (SELECT COUNT(*) FROM engagement_signals WHERE lead_id = ?) as engagement_count,
+                   (SELECT SUM(signal_value) FROM engagement_signals WHERE lead_id = ?) as total_engagement_score
+            FROM prospect_queue pq WHERE pq.id = ?
+        `, [lead_id, lead_id, lead_id, lead_id]);
+        
+        if (!prospect) {
+            return res.status(404).json({ error: 'Prospect not found' });
+        }
+        
+        // Calculate intent score based on signals
+        let intentScore = 0;
+        const signals = [];
+        
+        // Email opens and clicks (25 points each)
+        if (prospect.engagement_count > 0) {
+            intentScore += Math.min(50, prospect.engagement_count * 10);
+            signals.push('email_engagement');
+        }
+        
+        // Reply activity (40 points)
+        const replies = await db.get(`
+            SELECT COUNT(*) as count FROM reply_classifications WHERE lead_id = ? AND sentiment IN ('positive', 'question')
+        `, [lead_id]);
+        if ((replies?.count || 0) > 0) {
+            intentScore += 40;
+            signals.push('email_replies');
+        }
+        
+        // Meeting interest (50 points)
+        const meetings = await db.get(`
+            SELECT COUNT(*) as count FROM prospect_meetings WHERE lead_id = ?
+        `, [lead_id]);
+        if ((meetings?.count || 0) > 0) {
+            intentScore += 50;
+            signals.push('meeting_scheduled');
+        }
+        
+        // Deal creation (60 points)
+        const deal = await db.get(`
+            SELECT deal_value, deal_probability FROM deal_pipeline WHERE lead_id = ? AND closed_status IS NULL
+        `, [lead_id]);
+        if (deal) {
+            intentScore += 60;
+            signals.push('deal_created');
+            if (deal.deal_probability >= 70) {
+                intentScore += 30;
+                signals.push('high_probability');
+            }
+        }
+        
+        // Determine intent level
+        let intentLevel = 'low';
+        let predictedStage = 'awareness';
+        let timeToClose = 60;
+        
+        if (intentScore >= 150) {
+            intentLevel = 'very_high';
+            predictedStage = 'decision';
+            timeToClose = 7;
+        } else if (intentScore >= 100) {
+            intentLevel = 'high';
+            predictedStage = 'consideration';
+            timeToClose = 14;
+        } else if (intentScore >= 50) {
+            intentLevel = 'medium';
+            predictedStage = 'evaluation';
+            timeToClose = 30;
+        } else if (intentScore >= 20) {
+            intentLevel = 'low';
+            predictedStage = 'awareness';
+            timeToClose = 60;
+        }
+        
+        // Store intent score
+        await db.run(`
+            INSERT INTO intent_scores (lead_id, intent_score, buying_signals, intent_level, predicted_stage, time_to_close_days, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [lead_id, intentScore, signals.join(','), intentLevel, predictedStage, timeToClose, Date.now()]);
+        
+        res.json({ 
+            success: true, 
+            intent_score: intentScore,
+            intent_level: intentLevel,
+            predicted_stage: predictedStage,
+            buying_signals: signals,
+            estimated_close_days: timeToClose
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/intent/high-intent - Get all high-intent prospects
+app.get('/api/intent/high-intent', async (req, res) => {
+    try {
+        const highIntent = await db.all(`
+            SELECT 
+                pq.id,
+                pq.prospect_name,
+                pq.company_name,
+                pq.email,
+                ins.intent_score,
+                ins.intent_level,
+                ins.predicted_stage,
+                ins.time_to_close_days,
+                ins.created_at
+            FROM intent_scores ins
+            LEFT JOIN prospect_queue pq ON ins.lead_id = pq.id
+            WHERE ins.intent_level IN ('high', 'very_high')
+            ORDER BY ins.intent_score DESC
+            LIMIT 50
+        `);
+        
+        res.json({
+            highIntentProspects: {
+                total: highIntent.length,
+                prospects: highIntent.map(p => ({
+                    id: p.id,
+                    name: p.prospect_name,
+                    company: p.company_name,
+                    email: p.email,
+                    intent_score: p.intent_score,
+                    level: p.intent_level,
+                    predicted_close: p.time_to_close_days + ' days',
+                    stage: p.predicted_stage
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ highIntentProspects: { total: 0, prospects: [] } });
+    }
+});
+
+// GET /api/intent/analytics - Intent distribution analytics
+app.get('/api/intent/analytics', async (req, res) => {
+    try {
+        const analytics = await db.get(`
+            SELECT 
+                COUNT(*) as total_scored,
+                SUM(CASE WHEN intent_level = 'very_high' THEN 1 ELSE 0 END) as very_high,
+                SUM(CASE WHEN intent_level = 'high' THEN 1 ELSE 0 END) as high,
+                SUM(CASE WHEN intent_level = 'medium' THEN 1 ELSE 0 END) as medium,
+                SUM(CASE WHEN intent_level = 'low' THEN 1 ELSE 0 END) as low,
+                AVG(intent_score) as avg_score,
+                AVG(time_to_close_days) as avg_close_time
+            FROM intent_scores
+        `);
+        
+        const readyToClose = (analytics.very_high || 0) + (analytics.high || 0);
+        
+        res.json({
+            intentAnalytics: {
+                total_prospects_scored: analytics.total_scored || 0,
+                by_level: {
+                    very_high: analytics.very_high || 0,
+                    high: analytics.high || 0,
+                    medium: analytics.medium || 0,
+                    low: analytics.low || 0
+                },
+                ready_to_close: readyToClose,
+                avg_intent_score: Math.round(analytics.avg_score || 0),
+                avg_days_to_close: Math.round(analytics.avg_close_time || 0)
+            }
+        });
+    } catch (error) {
+        res.json({ intentAnalytics: {} });
+    }
+});
+
+// GET /api/intent/buyer-journey - Map prospect buyer journey stage
+app.get('/api/intent/buyer-journey', async (req, res) => {
+    try {
+        const journey = await db.all(`
+            SELECT 
+                ins.predicted_stage,
+                COUNT(*) as count,
+                AVG(ins.intent_score) as avg_score,
+                AVG(ins.time_to_close_days) as avg_days
+            FROM intent_scores ins
+            GROUP BY ins.predicted_stage
+            ORDER BY CASE 
+                WHEN ins.predicted_stage = 'decision' THEN 1
+                WHEN ins.predicted_stage = 'consideration' THEN 2
+                WHEN ins.predicted_stage = 'evaluation' THEN 3
+                WHEN ins.predicted_stage = 'awareness' THEN 4
+            END
+        `);
+        
+        res.json({
+            buyerJourney: {
+                stages: journey.map(s => ({
+                    stage: s.predicted_stage,
+                    prospects: s.count,
+                    avg_intent_score: Math.round(s.avg_score || 0),
+                    avg_days_to_close: Math.round(s.avg_days || 0)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ buyerJourney: { stages: [] } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

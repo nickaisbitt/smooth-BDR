@@ -633,6 +633,22 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_campaign_source ON campaign_performance(source);
   CREATE INDEX IF NOT EXISTS idx_campaign_period ON campaign_performance(period_date);
   
+  CREATE TABLE IF NOT EXISTS intent_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL,
+    intent_score INTEGER DEFAULT 0,
+    buying_signals TEXT,
+    intent_level TEXT,
+    predicted_stage TEXT,
+    time_to_close_days INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_intent_lead ON intent_scores(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_intent_score ON intent_scores(intent_score);
+  CREATE INDEX IF NOT EXISTS idx_intent_level ON intent_scores(intent_level);
+  
   console.log("✅ Agent tables initialized");
 }
 
