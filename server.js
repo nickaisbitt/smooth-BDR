@@ -4119,6 +4119,174 @@ app.get('/api/deals/summary', async (req, res) => {
     }
 });
 
+// POST /api/campaigns/track - Track a campaign with budget
+app.post('/api/campaigns/track', async (req, res) => {
+    try {
+        const { campaign_name, campaign_source, budget_spent } = req.body;
+        
+        if (!campaign_name) {
+            return res.status(400).json({ error: 'campaign_name required' });
+        }
+        
+        await db.run(
+            `INSERT INTO campaign_tracking (campaign_name, campaign_source, budget_spent, created_at)
+             VALUES (?, ?, ?, ?)`,
+            [campaign_name, campaign_source || 'organic', budget_spent || 0, Date.now()]
+        );
+        
+        res.json({ tracked: true, campaign_name });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/prospects/:leadId/source - Tag a prospect with lead source/campaign
+app.post('/api/prospects/:leadId/source', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { lead_source, campaign_id } = req.body;
+        
+        await db.run(
+            `UPDATE prospect_queue SET lead_source = ?, campaign_id = ?, updated_at = ? WHERE id = ?`,
+            [lead_source || 'organic', campaign_id, Date.now(), leadId]
+        );
+        
+        res.json({ updated: true, source: lead_source });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/lead-source-roi - ROI by lead source
+app.get('/api/analytics/lead-source-roi', async (req, res) => {
+    try {
+        const sourceAnalytics = await db.all(`
+            SELECT 
+                pq.lead_source,
+                COUNT(DISTINCT pq.id) as leads_generated,
+                COUNT(DISTINCT dp.id) as deals_created,
+                SUM(CASE WHEN dp.closed_status = 'won' THEN 1 ELSE 0 END) as deals_won,
+                SUM(CASE WHEN dp.closed_status = 'won' THEN dp.deal_value ELSE 0 END) as revenue_generated,
+                AVG(ls.engagement_score) as avg_engagement
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline dp ON pq.id = dp.lead_id
+            LEFT JOIN lead_scores ls ON pq.id = ls.lead_id
+            GROUP BY pq.lead_source
+            ORDER BY COUNT(DISTINCT pq.id) DESC
+        `);
+        
+        const metrics = sourceAnalytics.map(s => {
+            const conversionRate = s.leads_generated > 0 ? Math.round((s.deals_won / s.leads_generated) * 100) : 0;
+            const valuePerLead = s.leads_generated > 0 ? Math.round(s.revenue_generated / s.leads_generated) : 0;
+            return {
+                source: s.lead_source,
+                leads: s.leads_generated,
+                deals: s.deals_created || 0,
+                deals_won: s.deals_won || 0,
+                revenue: Math.round(s.revenue_generated || 0),
+                conversion_rate: `${conversionRate}%`,
+                value_per_lead: valuePerLead,
+                avg_engagement: Math.round(s.avg_engagement || 0)
+            };
+        });
+        
+        res.json({
+            sourceROI: {
+                total_sources: metrics.length,
+                by_source: metrics,
+                top_source: metrics[0] || null
+            }
+        });
+    } catch (error) {
+        res.json({ sourceROI: { total_sources: 0, by_source: [] } });
+    }
+});
+
+// GET /api/analytics/campaign-roi - ROI by campaign
+app.get('/api/analytics/campaign-roi', async (req, res) => {
+    try {
+        const campaignAnalytics = await db.all(`
+            SELECT 
+                pq.campaign_id,
+                COUNT(DISTINCT pq.id) as leads_generated,
+                COUNT(DISTINCT dp.id) as deals_created,
+                SUM(CASE WHEN dp.closed_status = 'won' THEN 1 ELSE 0 END) as deals_won,
+                SUM(CASE WHEN dp.closed_status = 'won' THEN dp.deal_value ELSE 0 END) as revenue_generated,
+                ct.budget_spent
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline dp ON pq.id = dp.lead_id
+            LEFT JOIN campaign_tracking ct ON pq.campaign_id = ct.campaign_name
+            WHERE pq.campaign_id IS NOT NULL
+            GROUP BY pq.campaign_id
+        `);
+        
+        const roi = campaignAnalytics.map(c => {
+            const roiPercent = c.budget_spent > 0 ? Math.round(((c.revenue_generated - c.budget_spent) / c.budget_spent) * 100) : 0;
+            const costPerLead = c.leads_generated > 0 ? Math.round(c.budget_spent / c.leads_generated) : 0;
+            return {
+                campaign: c.campaign_id,
+                budget: Math.round(c.budget_spent || 0),
+                leads: c.leads_generated,
+                deals_won: c.deals_won || 0,
+                revenue: Math.round(c.revenue_generated || 0),
+                roi_percent: `${roiPercent}%`,
+                cost_per_lead: costPerLead,
+                profit: Math.round((c.revenue_generated || 0) - (c.budget_spent || 0))
+            };
+        });
+        
+        res.json({
+            campaignROI: {
+                total_campaigns: roi.length,
+                campaigns: roi.sort((a,b) => b.roi_percent - a.roi_percent)
+            }
+        });
+    } catch (error) {
+        res.json({ campaignROI: { total_campaigns: 0 } });
+    }
+});
+
+// GET /api/analytics/attribution - How many prospects reach each stage by source
+app.get('/api/analytics/attribution', async (req, res) => {
+    try {
+        const attribution = await db.all(`
+            SELECT 
+                pq.lead_source,
+                pq.workflow_stage,
+                COUNT(*) as count
+            FROM prospect_queue pq
+            GROUP BY pq.lead_source, pq.workflow_stage
+            ORDER BY pq.lead_source, 
+                CASE WHEN pq.workflow_stage = 'new' THEN 1
+                     WHEN pq.workflow_stage = 'contacted' THEN 2
+                     WHEN pq.workflow_stage = 'interested' THEN 3
+                     WHEN pq.workflow_stage = 'qualified' THEN 4
+                     WHEN pq.workflow_stage = 'won' THEN 5
+                     ELSE 6 END
+        `);
+        
+        const sources = [...new Set(attribution.map(a => a.lead_source))];
+        const attributionMap = {};
+        
+        for (const source of sources) {
+            attributionMap[source] = {
+                new: attribution.find(a => a.lead_source === source && a.workflow_stage === 'new')?.count || 0,
+                contacted: attribution.find(a => a.lead_source === source && a.workflow_stage === 'contacted')?.count || 0,
+                interested: attribution.find(a => a.lead_source === source && a.workflow_stage === 'interested')?.count || 0,
+                qualified: attribution.find(a => a.lead_source === source && a.workflow_stage === 'qualified')?.count || 0,
+                won: attribution.find(a => a.lead_source === source && a.workflow_stage === 'won')?.count || 0
+            };
+        }
+        
+        res.json({
+            stageAttribution: attributionMap,
+            sources: sources
+        });
+    } catch (error) {
+        res.json({ stageAttribution: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

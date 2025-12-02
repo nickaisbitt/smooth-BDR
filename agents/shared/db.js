@@ -338,7 +338,26 @@ export async function initAgentTables(db) {
     CREATE INDEX IF NOT EXISTS idx_deal_pipeline_stage ON deal_pipeline(deal_stage);
     CREATE INDEX IF NOT EXISTS idx_deal_pipeline_probability ON deal_pipeline(deal_probability);
     CREATE INDEX IF NOT EXISTS idx_deal_pipeline_close_date ON deal_pipeline(close_date);
+    
+    CREATE TABLE IF NOT EXISTS campaign_tracking (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_name TEXT NOT NULL UNIQUE,
+      campaign_source TEXT,
+      leads_generated INTEGER DEFAULT 0,
+      budget_spent REAL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_campaign_source ON campaign_tracking(campaign_source);
   `);
+  
+  // Add source tracking columns to prospect_queue
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN lead_source TEXT DEFAULT 'organic'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN campaign_id TEXT`);
+  } catch (e) { /* column exists */ }
   
   console.log("✅ Agent tables initialized");
 }
