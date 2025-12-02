@@ -39,6 +39,10 @@ import bulkOptimizer from './services/bulkOperationOptimizer.js';
 import retryStrategy from './services/smartRetryStrategy.js';
 import retentionPolicy from './services/dataRetentionPolicy.js';
 import HealthCheck from './services/healthCheck.js';
+import adaptiveThrottling from './services/adaptiveThrottling.js';
+import queueOptimizer from './services/queueOptimizer.js';
+import resourceMonitor from './services/resourceMonitor.js';
+import UnifiedDashboard from './services/unifiedDashboard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1298,6 +1302,80 @@ app.get('/api/system/status', async (req, res) => {
         res.json(status);
     } catch (error) {
         console.error("Status Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/throttling - Adaptive rate limiting status
+app.get('/api/system/throttling', async (req, res) => {
+    try {
+        const status = adaptiveThrottling.getStatus();
+        res.json(status);
+    } catch (error) {
+        console.error("Throttling Status Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/resources - System resource usage (memory, CPU, disk)
+app.get('/api/system/resources', async (req, res) => {
+    try {
+        const dbPath = join(__dirname, 'smooth_ai.db');
+        const health = resourceMonitor.getHealthReport(dbPath);
+        res.json(health);
+    } catch (error) {
+        console.error("Resources Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/system/analyze-queue - Analyze and optimize email/research queue
+app.post('/api/system/analyze-queue', async (req, res) => {
+    try {
+        const queueType = req.body.queueType || 'email';
+        const table = queueType === 'research' ? 'research_queue' : 'email_queue';
+        
+        const queue = await db.all(`SELECT * FROM ${table} WHERE status = 'pending' LIMIT 1000`);
+        const metrics = queueOptimizer.getMetrics(queue);
+        const optimized = queueOptimizer.optimizeQueue(queue);
+        const nextOptimal = optimized[0] || null;
+        
+        res.json({
+            queueType,
+            metrics,
+            nextOptimalItem: nextOptimal,
+            sampleOptimizedOrder: optimized.slice(0, 10)
+        });
+    } catch (error) {
+        console.error("Queue Analysis Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/system/dashboard - Complete unified system dashboard (ONE ENDPOINT FOR ALL OBSERVABILITY)
+app.get('/api/system/dashboard', async (req, res) => {
+    try {
+        const services = {
+            telemetry,
+            circuitBreaker,
+            queryCache,
+            deduplicator,
+            retryStrategy,
+            retentionPolicy,
+            HealthCheck,
+            adaptiveThrottling,
+            queueOptimizer,
+            resourceMonitor
+        };
+        
+        const fullDashboard = await UnifiedDashboard.getFullDashboard(db, services);
+        const summary = req.query.summary === 'true' 
+            ? UnifiedDashboard.getSummary(fullDashboard)
+            : fullDashboard;
+            
+        res.json(summary);
+    } catch (error) {
+        console.error("Dashboard Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
