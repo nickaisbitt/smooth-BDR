@@ -586,6 +586,25 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_reply_classification ON reply_classifications(classification);
   CREATE INDEX IF NOT EXISTS idx_reply_created ON reply_classifications(created_at);
   
+  CREATE TABLE IF NOT EXISTS system_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_type TEXT,
+    severity TEXT,
+    lead_id INTEGER,
+    title TEXT,
+    description TEXT,
+    action_recommended TEXT,
+    is_read INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_alert_type ON system_alerts(alert_type);
+  CREATE INDEX IF NOT EXISTS idx_alert_severity ON system_alerts(severity);
+  CREATE INDEX IF NOT EXISTS idx_alert_lead ON system_alerts(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_alert_read ON system_alerts(is_read);
+  CREATE INDEX IF NOT EXISTS idx_alert_created ON system_alerts(created_at);
+  
   console.log("✅ Agent tables initialized");
 }
 

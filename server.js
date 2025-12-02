@@ -6339,6 +6339,211 @@ app.get('/api/replies/action-items', async (req, res) => {
     }
 });
 
+// POST /api/alerts/create - Create system alert
+app.post('/api/alerts/create', async (req, res) => {
+    try {
+        const { alert_type, severity, lead_id, title, description, action_recommended } = req.body;
+        
+        await db.run(`
+            INSERT INTO system_alerts (alert_type, severity, lead_id, title, description, action_recommended, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [alert_type, severity, lead_id, title, description, action_recommended || '', Date.now()]);
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/alerts/active - Get all unread alerts
+app.get('/api/alerts/active', async (req, res) => {
+    try {
+        const alerts = await db.all(`
+            SELECT 
+                sa.id,
+                sa.alert_type,
+                sa.severity,
+                sa.title,
+                sa.description,
+                sa.action_recommended,
+                pq.prospect_name,
+                pq.company_name,
+                sa.created_at
+            FROM system_alerts sa
+            LEFT JOIN prospect_queue pq ON sa.lead_id = pq.id
+            WHERE sa.is_read = 0
+            ORDER BY 
+                CASE WHEN sa.severity = 'critical' THEN 1
+                     WHEN sa.severity = 'high' THEN 2
+                     WHEN sa.severity = 'medium' THEN 3
+                     ELSE 4
+                END,
+                sa.created_at DESC
+            LIMIT 50
+        `);
+        
+        const critical = alerts.filter(a => a.severity === 'critical').length;
+        const high = alerts.filter(a => a.severity === 'high').length;
+        
+        res.json({
+            activeAlerts: {
+                total_unread: alerts.length,
+                critical_count: critical,
+                high_count: high,
+                alerts: alerts.map(a => ({
+                    id: a.id,
+                    type: a.alert_type,
+                    severity: a.severity,
+                    title: a.title,
+                    prospect: a.prospect_name || 'System',
+                    company: a.company_name,
+                    description: a.description,
+                    action: a.action_recommended,
+                    created: new Date(a.created_at).toLocaleString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ activeAlerts: { total_unread: 0, alerts: [] } });
+    }
+});
+
+// GET /api/alerts/summary - Alert statistics
+app.get('/api/alerts/summary', async (req, res) => {
+    try {
+        const past24h = Date.now() - (24 * 60 * 60 * 1000);
+        
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_alerts,
+                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical,
+                SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high,
+                SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) as medium,
+                SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread,
+                SUM(CASE WHEN alert_type = 'hot_lead' THEN 1 ELSE 0 END) as hot_leads,
+                SUM(CASE WHEN alert_type = 'stuck_deal' THEN 1 ELSE 0 END) as stuck_deals,
+                SUM(CASE WHEN alert_type = 'missed_followup' THEN 1 ELSE 0 END) as missed_followups,
+                SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as last_24h
+            FROM system_alerts
+        `, [past24h]);
+        
+        res.json({
+            alertSummary: {
+                total_alerts: stats.total_alerts || 0,
+                by_severity: {
+                    critical: stats.critical || 0,
+                    high: stats.high || 0,
+                    medium: stats.medium || 0
+                },
+                unread: stats.unread || 0,
+                by_type: {
+                    hot_leads: stats.hot_leads || 0,
+                    stuck_deals: stats.stuck_deals || 0,
+                    missed_followups: stats.missed_followups || 0
+                },
+                last_24_hours: stats.last_24h || 0,
+                alert_status: (stats.critical || 0) > 0 ? '🔴 CRITICAL ALERTS' : (stats.high || 0) > 0 ? '🟠 HIGH PRIORITY' : '🟢 UNDER CONTROL'
+            }
+        });
+    } catch (error) {
+        res.json({ alertSummary: {} });
+    }
+});
+
+// PUT /api/alerts/:id/read - Mark alert as read
+app.put('/api/alerts/:id/read', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.run(`UPDATE system_alerts SET is_read = 1 WHERE id = ?`, [id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/alerts/auto-generate - Auto-generate alerts based on system rules
+app.get('/api/alerts/auto-generate', async (req, res) => {
+    try {
+        // Hot leads - high engagement signals (>50 score in last 7 days)
+        const hotLeads = await db.all(`
+            SELECT pq.id, pq.prospect_name, SUM(es.signal_value) as score
+            FROM prospect_queue pq
+            LEFT JOIN engagement_signals es ON pq.id = es.lead_id AND es.created_at > ?
+            GROUP BY pq.id
+            HAVING SUM(es.signal_value) > 50
+            LIMIT 10
+        `, [Date.now() - (7 * 24 * 60 * 60 * 1000)]);
+        
+        for (const lead of hotLeads) {
+            const existing = await db.get(
+                `SELECT id FROM system_alerts WHERE lead_id = ? AND alert_type = 'hot_lead' AND is_read = 0`,
+                [lead.id]
+            );
+            if (!existing) {
+                await db.run(`
+                    INSERT INTO system_alerts (alert_type, severity, lead_id, title, description, action_recommended, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, ['hot_lead', 'high', lead.id, `🔥 Hot Lead: ${lead.prospect_name}`, `High engagement detected (${lead.score} points)`, '📞 Contact immediately', Date.now()]);
+            }
+        }
+        
+        // Stuck deals - in same stage >21 days
+        const stuckDeals = await db.all(`
+            SELECT pq.id, pq.prospect_name, dp.workflow_stage, 
+                   ROUND((? - MAX(st.created_at)) / (24 * 60 * 60 * 1000)) as days_in_stage
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline dp ON pq.id = dp.lead_id
+            LEFT JOIN stage_transitions st ON pq.id = st.lead_id
+            WHERE dp.closed_status IS NULL
+            GROUP BY pq.id
+            HAVING days_in_stage > 21
+            LIMIT 10
+        `, [Date.now()]);
+        
+        for (const deal of stuckDeals) {
+            const existing = await db.get(
+                `SELECT id FROM system_alerts WHERE lead_id = ? AND alert_type = 'stuck_deal' AND is_read = 0`,
+                [deal.id]
+            );
+            if (!existing) {
+                await db.run(`
+                    INSERT INTO system_alerts (alert_type, severity, lead_id, title, description, action_recommended, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, ['stuck_deal', 'critical', deal.id, `⚠️ Stuck Deal: ${deal.prospect_name}`, `Stuck in ${deal.workflow_stage} for ${deal.days_in_stage} days`, '🎯 Reassess strategy or move to next stage', Date.now()]);
+            }
+        }
+        
+        // Missed follow-ups - no activity >5 days since last email
+        const missedFollowups = await db.all(`
+            SELECT pq.id, pq.prospect_name, 
+                   ROUND((? - MAX(es.created_at)) / (24 * 60 * 60 * 1000)) as days_since_activity
+            FROM prospect_queue pq
+            LEFT JOIN engagement_signals es ON pq.id = es.lead_id
+            WHERE pq.workflow_stage NOT IN ('closed_won', 'closed_lost', 'unsubscribed')
+            GROUP BY pq.id
+            HAVING days_since_activity > 5
+            LIMIT 15
+        `, [Date.now()]);
+        
+        for (const followup of missedFollowups) {
+            const existing = await db.get(
+                `SELECT id FROM system_alerts WHERE lead_id = ? AND alert_type = 'missed_followup' AND is_read = 0 AND created_at > ?`,
+                [followup.id, Date.now() - (24 * 60 * 60 * 1000)]
+            );
+            if (!existing) {
+                await db.run(`
+                    INSERT INTO system_alerts (alert_type, severity, lead_id, title, description, action_recommended, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, ['missed_followup', 'medium', followup.id, `📅 Follow-up Due: ${followup.prospect_name}`, `No activity for ${followup.days_since_activity} days`, '✉️ Send follow-up email', Date.now()]);
+            }
+        }
+        
+        res.json({ success: true, message: 'Alerts generated' });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
