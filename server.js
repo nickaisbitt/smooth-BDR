@@ -2493,6 +2493,202 @@ app.get('/api/email/send-time-analysis', async (req, res) => {
     }
 });
 
+// PUT /api/prospects/:leadId/status - Update prospect workflow stage
+app.put('/api/prospects/:leadId/status', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { stage } = req.body;
+        
+        const validStages = ['new', 'contacted', 'interested', 'qualified', 'won', 'lost', 'archived'];
+        if (!validStages.includes(stage)) {
+            return res.status(400).json({ error: `Invalid stage. Must be one of: ${validStages.join(', ')}` });
+        }
+        
+        await db.run(
+            `UPDATE prospect_queue SET workflow_stage = ?, stage_updated_at = ?, updated_at = ? WHERE id = ?`,
+            [stage, Date.now(), Date.now(), leadId]
+        );
+        
+        // Log activity
+        await db.run(
+            `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, metadata, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [leadId, 'status_changed', `Status changed to: ${stage}`, JSON.stringify({stage}), Date.now()]
+        );
+        
+        res.json({ updated: true, new_stage: stage });
+    } catch (error) {
+        console.error("Status Update Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/prospects/bulk-status - Update status for multiple prospects
+app.post('/api/prospects/bulk-status', async (req, res) => {
+    try {
+        const { lead_ids, stage } = req.body;
+        
+        const validStages = ['new', 'contacted', 'interested', 'qualified', 'won', 'lost', 'archived'];
+        if (!validStages.includes(stage)) {
+            return res.status(400).json({ error: `Invalid stage. Must be one of: ${validStages.join(', ')}` });
+        }
+        
+        let updated = 0;
+        for (const leadId of lead_ids) {
+            await db.run(
+                `UPDATE prospect_queue SET workflow_stage = ?, stage_updated_at = ?, updated_at = ? WHERE id = ?`,
+                [stage, Date.now(), Date.now(), leadId]
+            );
+            await db.run(
+                `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, metadata, created_at)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [leadId, 'status_changed', `Bulk status update to: ${stage}`, JSON.stringify({stage}), Date.now()]
+            );
+            updated++;
+        }
+        
+        res.json({
+            updated: updated,
+            stage: stage,
+            message: `Updated ${updated} prospects to ${stage}`
+        });
+    } catch (error) {
+        console.error("Bulk Status Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/pipeline/stage-distribution - Show prospect distribution across workflow stages
+app.get('/api/pipeline/stage-distribution', async (req, res) => {
+    try {
+        const distribution = await db.all(`
+            SELECT 
+                workflow_stage,
+                COUNT(*) as count,
+                COUNT(DISTINCT id) as unique_prospects
+            FROM prospect_queue
+            WHERE workflow_stage IS NOT NULL
+            GROUP BY workflow_stage
+            ORDER BY 
+                CASE workflow_stage 
+                    WHEN 'new' THEN 1
+                    WHEN 'contacted' THEN 2
+                    WHEN 'interested' THEN 3
+                    WHEN 'qualified' THEN 4
+                    WHEN 'won' THEN 5
+                    WHEN 'lost' THEN 6
+                    WHEN 'archived' THEN 7
+                END
+        `);
+        
+        const totalProspects = distribution.reduce((sum, d) => sum + d.count, 0);
+        
+        res.json({
+            pipelineMetrics: {
+                total_prospects: totalProspects,
+                by_stage: distribution.map(d => ({
+                    stage: d.workflow_stage,
+                    count: d.count,
+                    percentage: Math.round((d.count / totalProspects) * 100)
+                })),
+                stage_summary: {
+                    new: distribution.find(d => d.workflow_stage === 'new')?.count || 0,
+                    contacted: distribution.find(d => d.workflow_stage === 'contacted')?.count || 0,
+                    interested: distribution.find(d => d.workflow_stage === 'interested')?.count || 0,
+                    qualified: distribution.find(d => d.workflow_stage === 'qualified')?.count || 0,
+                    won: distribution.find(d => d.workflow_stage === 'won')?.count || 0,
+                    lost: distribution.find(d => d.workflow_stage === 'lost')?.count || 0,
+                    archived: distribution.find(d => d.workflow_stage === 'archived')?.count || 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Pipeline Distribution Error:", error);
+        res.json({ pipelineMetrics: { total_prospects: 0 } });
+    }
+});
+
+// POST /api/pipeline/auto-archive - Auto-archive unresponsive prospects after 30 days
+app.post('/api/pipeline/auto-archive', async (req, res) => {
+    try {
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        // Find prospects with no activity in last 30 days
+        const inactiveProspects = await db.all(`
+            SELECT pq.id
+            FROM prospect_queue pq
+            LEFT JOIN activity_timeline at ON pq.id = at.lead_id AND at.created_at > ?
+            WHERE pq.workflow_stage != 'won' 
+              AND pq.workflow_stage != 'lost'
+              AND pq.workflow_stage != 'archived'
+              AND pq.stage_updated_at < ?
+              AND at.id IS NULL
+            GROUP BY pq.id
+        `, [thirtyDaysAgo, thirtyDaysAgo]);
+        
+        let archived = 0;
+        for (const prospect of inactiveProspects) {
+            await db.run(
+                `UPDATE prospect_queue SET workflow_stage = 'archived', stage_updated_at = ?, updated_at = ? WHERE id = ?`,
+                [Date.now(), Date.now(), prospect.id]
+            );
+            await db.run(
+                `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, created_at)
+                 VALUES (?, ?, ?, ?)`,
+                [prospect.id, 'auto_archived', 'Auto-archived after 30 days of inactivity', Date.now()]
+            );
+            archived++;
+        }
+        
+        res.json({
+            archived: archived,
+            message: `Auto-archived ${archived} unresponsive prospects`
+        });
+    } catch (error) {
+        console.error("Auto-Archive Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/by-stage/:stage - Get all prospects in a specific workflow stage
+app.get('/api/prospects/by-stage/:stage', async (req, res) => {
+    try {
+        const { stage } = req.params;
+        
+        const prospects = await db.all(`
+            SELECT DISTINCT
+                pq.id,
+                pq.company_name,
+                pq.contact_email,
+                pq.workflow_stage,
+                ls.engagement_score,
+                ls.priority_rank,
+                pq.stage_updated_at
+            FROM prospect_queue pq
+            LEFT JOIN lead_scores ls ON pq.id = ls.lead_id
+            WHERE pq.workflow_stage = ?
+            ORDER BY ls.engagement_score DESC, pq.stage_updated_at DESC
+            LIMIT 100
+        `, [stage]);
+        
+        res.json({
+            stage: stage,
+            prospects_found: prospects.length,
+            prospects: prospects.map(p => ({
+                id: p.id,
+                company: p.company_name,
+                email: p.contact_email,
+                engagement_score: p.engagement_score || 0,
+                priority: p.priority_rank || 'unknown',
+                stage_updated: new Date(p.stage_updated_at).toLocaleDateString()
+            }))
+        });
+    } catch (error) {
+        console.error("Get By Stage Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

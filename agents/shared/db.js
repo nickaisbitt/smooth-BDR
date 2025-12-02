@@ -201,6 +201,14 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE email_queue ADD COLUMN is_followup INTEGER DEFAULT 0`);
   } catch (e) { /* column exists */ }
   
+  // Add workflow_stage column to prospect_queue for CRM status tracking
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN workflow_stage TEXT DEFAULT 'new'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN stage_updated_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];
   for (const agent of agents) {
     await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);
