@@ -43,6 +43,18 @@ async function syncInbox() {
   return result;
 }
 
+async function logActivity(leadId, email, activityType, description, metadata = {}) {
+  try {
+    await db.run(
+      `INSERT INTO activity_timeline (lead_id, email, activity_type, activity_description, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [leadId, email, activityType, description, JSON.stringify(metadata), Date.now()]
+    );
+  } catch (e) {
+    logger.warn(`Failed to log activity: ${e.message}`);
+  }
+}
+
 async function detectBounceOrUnsubscribe(email) {
   // Detect bounce emails from mailer daemons
   const bouncePatterns = [
@@ -100,6 +112,9 @@ async function processUnanalyzedReplies() {
           `UPDATE email_queue SET status = 'failed', approval_reason = 'Hard bounce detected' WHERE to_email = ?`,
           [email.from_email]
         );
+        if (email.lead_id) {
+          await logActivity(email.lead_id, email.from_email, 'bounce_detected', 'Hard bounce detected - address marked invalid', {});
+        }
         heartbeat.incrementProcessed();
         processed++;
         heartbeat.clearCurrentItem();
@@ -116,6 +131,9 @@ async function processUnanalyzedReplies() {
           `UPDATE email_queue SET status = 'failed', approval_reason = 'User unsubscribed' WHERE to_email = ?`,
           [email.from_email]
         );
+        if (email.lead_id) {
+          await logActivity(email.lead_id, email.from_email, 'unsubscribe', 'User unsubscribed from emails', {});
+        }
         heartbeat.incrementProcessed();
         processed++;
         heartbeat.clearCurrentItem();
@@ -134,6 +152,14 @@ async function processUnanalyzedReplies() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [email.id, email.lead_id, analysis.category, analysis.sentiment, analysis.summary, analysis.suggestedAction, autoResponse, Date.now()]
       );
+      
+      // LOG REPLY ACTIVITY
+      if (email.lead_id) {
+        await logActivity(email.lead_id, email.from_email, 'reply_received', `Reply: ${analysis.category} (${analysis.sentiment})`, {
+          category: analysis.category,
+          sentiment: analysis.sentiment
+        });
+      }
       
       logger.info(`Categorized reply from ${email.from_email} as ${analysis.category}`);
       heartbeat.incrementProcessed();

@@ -1935,6 +1935,85 @@ app.get('/api/email/bounce-unsubscribe-stats', async (req, res) => {
     }
 });
 
+// GET /api/prospects/:leadId/activity-timeline - Get complete activity history for a prospect
+app.get('/api/prospects/:leadId/activity-timeline', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const activities = await db.all(`
+            SELECT 
+                id, lead_id, email, activity_type, activity_description, metadata, created_at
+            FROM activity_timeline
+            WHERE lead_id = ?
+            ORDER BY created_at DESC
+            LIMIT 100
+        `, [leadId]);
+        
+        // Parse metadata for each activity
+        const parsedActivities = activities.map(a => ({
+            ...a,
+            metadata: a.metadata ? JSON.parse(a.metadata) : {},
+            created_at_formatted: new Date(a.created_at).toLocaleString()
+        }));
+        
+        // Count activity types
+        const summary = {};
+        parsedActivities.forEach(a => {
+            summary[a.activity_type] = (summary[a.activity_type] || 0) + 1;
+        });
+        
+        res.json({
+            prospect: leadId,
+            total_activities: parsedActivities.length,
+            activity_summary: summary,
+            timeline: parsedActivities
+        });
+    } catch (error) {
+        console.error("Activity Timeline Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/activity/summary - Get activity summary across all prospects
+app.get('/api/activity/summary', async (req, res) => {
+    try {
+        const activities = await db.all(`
+            SELECT activity_type, COUNT(*) as count
+            FROM activity_timeline
+            GROUP BY activity_type
+        `);
+        
+        const recentActivities = await db.all(`
+            SELECT lead_id, email, activity_type, activity_description, created_at
+            FROM activity_timeline
+            ORDER BY created_at DESC
+            LIMIT 20
+        `);
+        
+        const activityStats = {};
+        activities.forEach(a => {
+            activityStats[a.activity_type] = a.count;
+        });
+        
+        res.json({
+            systemActivityMetrics: {
+                total_activities_logged: activities.reduce((sum, a) => sum + a.count, 0),
+                activity_types: activityStats,
+                recent_activities: recentActivities.map(a => ({
+                    prospect: a.lead_id,
+                    email: a.email,
+                    type: a.activity_type,
+                    description: a.activity_description,
+                    time: new Date(a.created_at).toLocaleString()
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Activity Summary Error:", error);
+        res.json({ systemActivityMetrics: { total_activities_logged: 0 } });
+    }
+});
+
 // GET /api/leads/engagement-scoring - Calculate lead engagement scores and ranks
 app.get('/api/leads/engagement-scoring', async (req, res) => {
     try {

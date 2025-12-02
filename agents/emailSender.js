@@ -71,6 +71,18 @@ async function checkDailyLimit() {
   };
 }
 
+async function logActivity(leadId, email, activityType, description, metadata = {}) {
+  try {
+    await db.run(
+      `INSERT INTO activity_timeline (lead_id, email, activity_type, activity_description, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [leadId, email, activityType, description, JSON.stringify(metadata), Date.now()]
+    );
+  } catch (e) {
+    logger.warn(`Failed to log activity: ${e.message}`);
+  }
+}
+
 async function sendEmail(email, smtpConfig) {
   const transporter = nodemailer.createTransport({
     host: smtpConfig.host,
@@ -184,6 +196,12 @@ async function processPendingEmails() {
           'UPDATE automation_state SET emails_sent_today = emails_sent_today + 1, updated_at = ? WHERE id = 1',
           [Date.now()]
         );
+        
+        // LOG ACTIVITY
+        await logActivity(email.lead_id, email.to_email, 'email_sent', `Email sent: ${email.subject}`, {
+          subject: email.subject,
+          quality: email.research_quality
+        });
         
         logger.info(`Sent email to ${email.to_email} (${email.lead_name})`);
         heartbeat.incrementProcessed();
