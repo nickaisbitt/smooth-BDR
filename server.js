@@ -173,6 +173,7 @@ let db;
         }
         
         startAutomationScheduler();
+        startDatabaseCleanupScheduler();
     } catch (e) {
         console.error("❌ Database Init Failed:", e);
     }
@@ -181,6 +182,42 @@ let db;
 let automationIntervals = {};
 let cachedSmtpConfig = null;
 let cachedLeads = [];
+
+// DATABASE CLEANUP SCHEDULER - Prevent unbounded growth
+async function cleanupDatabase() {
+    try {
+        const now = Date.now();
+        
+        // 1. PURGE email logs older than 90 days
+        const ninetyDaysAgo = now - (90 * 24 * 60 * 60 * 1000);
+        const deletedLogs = await db.run(`DELETE FROM email_logs WHERE sent_at < ?`, [ninetyDaysAgo]);
+        if (deletedLogs.changes > 0) console.log(`🧹 Deleted ${deletedLogs.changes} old email logs (>90 days)`);
+        
+        // 2. PURGE expired research cache entries
+        const expiredCache = await db.run(`DELETE FROM research_cache WHERE expires_at < ?`, [now]);
+        if (expiredCache.changes > 0) console.log(`🧹 Deleted ${expiredCache.changes} expired cache entries`);
+        
+        // 3. PURGE old failed queue items (older than 7 days)
+        const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+        const deletedFailed = await db.run(
+            `DELETE FROM prospect_queue WHERE status = 'failed' AND completed_at < ? AND completed_at > 0`,
+            [sevenDaysAgo]
+        );
+        if (deletedFailed.changes > 0) console.log(`🧹 Cleaned ${deletedFailed.changes} old failed prospects`);
+        
+        // 4. VACUUM database to reclaim space
+        await db.run('VACUUM');
+        console.log('✅ Database cleanup + vacuum completed');
+    } catch (error) {
+        console.error('❌ Database cleanup error:', error.message);
+    }
+}
+
+function startDatabaseCleanupScheduler() {
+    // Run cleanup every 6 hours
+    setInterval(cleanupDatabase, 6 * 60 * 60 * 1000);
+    console.log('🗑️ Database cleanup scheduler started (runs every 6 hours)');
+}
 
 async function loadSmtpConfigFromDb() {
   try {
