@@ -117,11 +117,8 @@ export async function startAllAgents() {
       const healthy = statuses.filter(s => s.health === 'healthy').length;
       const stale = statuses.filter(s => s.health === 'stale').length;
       
-      logger.info(`✅ COO Health Monitor: ${healthy} healthy, ${stale} stale | Queues: prospect=${stats.prospect?.pending || 0}, research=${stats.research?.pending || 0}, draft=${stats.draft?.pending || 0}, approval=${stats.approval?.pending || 0}, send=${stats.send?.pending || 0}`);
-      
-      if (stale > 0) {
-        logger.warn(`⚠️ COO Alert: ${stale} stale agents detected`);
-      }
+      const alertSuffix = stale > 0 ? ` ⚠️ ${stale} stale agents` : '';
+      logger.info(`✅ COO Health Monitor: ${healthy} healthy, ${stale} stale | Queues: prospect=${stats.prospect?.pending || 0}, research=${stats.research?.pending || 0}, draft=${stats.draft?.pending || 0}, approval=${stats.approval?.pending || 0}, send=${stats.send?.pending || 0}${alertSuffix}`);
     } catch (e) {
       logger.error(`COO monitoring error: ${e.message}`);
     }
