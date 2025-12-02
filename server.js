@@ -5636,6 +5636,189 @@ app.get('/api/analytics/close-date-prediction', async (req, res) => {
     }
 });
 
+// GET /api/analytics/revenue-forecast - Monthly revenue forecast
+app.get('/api/analytics/revenue-forecast', async (req, res) => {
+    try {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const now = new Date();
+        const forecasts = [];
+        
+        // Get current pipeline and project forward 6 months
+        for (let i = 0; i < 6; i++) {
+            const forecastMonth = new Date(now.getFullYear(), now.getMonth() + i, 1);
+            const monthStr = months[forecastMonth.getMonth()] + ' ' + forecastMonth.getFullYear();
+            
+            // Get deals likely to close in this month
+            const closingDeals = await db.all(`
+                SELECT 
+                    dp.deal_value,
+                    dp.deal_probability,
+                    dp.close_date
+                FROM deal_pipeline dp
+                WHERE dp.closed_status IS NULL
+                AND dp.close_date > ? AND dp.close_date < ?
+                AND dp.deal_value > 0
+            `, [
+                forecastMonth.getTime(),
+                new Date(forecastMonth.getFullYear(), forecastMonth.getMonth() + 1, 1).getTime()
+            ]);
+            
+            const weighted = closingDeals.reduce((sum, d) => 
+                sum + (d.deal_value * (d.deal_probability / 100)), 0
+            );
+            
+            forecasts.push({
+                month: monthStr,
+                forecasted_revenue: Math.round(weighted),
+                deal_count: closingDeals.length,
+                confidence: closingDeals.length > 0 ? '🎯 High' : '⏳ Low'
+            });
+        }
+        
+        const totalForecast = forecasts.reduce((sum, f) => sum + f.forecasted_revenue, 0);
+        
+        res.json({
+            revenueForecast: {
+                total_6month_forecast: Math.round(totalForecast),
+                by_month: forecasts
+            }
+        });
+    } catch (error) {
+        res.json({ revenueForecast: {} });
+    }
+});
+
+// GET /api/analytics/revenue-by-stage - Revenue breakdown by pipeline stage
+app.get('/api/analytics/revenue-by-stage', async (req, res) => {
+    try {
+        const byStage = await db.all(`
+            SELECT 
+                pq.workflow_stage,
+                SUM(dp.deal_value) as total_value,
+                SUM(dp.deal_value * dp.deal_probability / 100) as weighted_value,
+                COUNT(*) as deal_count,
+                AVG(dp.deal_probability) as avg_probability
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline dp ON pq.id = dp.lead_id
+            WHERE dp.deal_value > 0 AND dp.closed_status IS NULL
+            GROUP BY pq.workflow_stage
+            ORDER BY weighted_value DESC
+        `);
+        
+        res.json({
+            revenueByStage: {
+                total_pipeline: byStage.reduce((sum, s) => sum + (s.total_value || 0), 0),
+                by_stage: byStage.map(s => ({
+                    stage: s.workflow_stage,
+                    total_value: Math.round(s.total_value || 0),
+                    weighted_value: Math.round(s.weighted_value || 0),
+                    deals: s.deal_count,
+                    avg_probability: Math.round(s.avg_probability || 0)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ revenueByStage: {} });
+    }
+});
+
+// GET /api/analytics/forecast-accuracy - Track forecast vs actual revenue
+app.get('/api/analytics/forecast-accuracy', async (req, res) => {
+    try {
+        const recent = await db.all(`
+            SELECT 
+                forecast_month,
+                forecasted_revenue,
+                actual_revenue,
+                forecast_accuracy,
+                created_at
+            FROM revenue_forecasts
+            WHERE actual_revenue IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 12
+        `);
+        
+        const avgAccuracy = recent.length > 0 ? 
+            Math.round(recent.reduce((sum, f) => sum + (f.forecast_accuracy || 0), 0) / recent.length) : 0;
+        
+        res.json({
+            forecastAccuracy: {
+                avg_accuracy_percent: avgAccuracy,
+                recent_forecasts: recent.map(f => ({
+                    month: f.forecast_month,
+                    forecasted: Math.round(f.forecasted_revenue || 0),
+                    actual: Math.round(f.actual_revenue || 0),
+                    accuracy: f.forecast_accuracy
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ forecastAccuracy: {} });
+    }
+});
+
+// GET /api/analytics/executive-summary - One-page executive revenue dashboard
+app.get('/api/analytics/executive-summary', async (req, res) => {
+    try {
+        const pipeline = await db.get(`
+            SELECT 
+                SUM(dp.deal_value) as total_pipeline,
+                SUM(dp.deal_value * dp.deal_probability / 100) as weighted_pipeline,
+                COUNT(*) as total_deals,
+                AVG(dp.deal_probability) as avg_probability
+            FROM deal_pipeline dp
+            WHERE dp.closed_status IS NULL
+        `);
+        
+        const thisMonth = await db.get(`
+            SELECT 
+                SUM(dp.deal_value * dp.deal_probability / 100) as month_forecast,
+                COUNT(*) as month_deals
+            FROM deal_pipeline dp
+            WHERE dp.closed_status IS NULL
+            AND dp.close_date > ?
+            AND dp.close_date < ?
+        `, [
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+            new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).getTime()
+        ]);
+        
+        const won = await db.get(`
+            SELECT 
+                COUNT(*) as won_deals,
+                SUM(dp.deal_value) as won_revenue
+            FROM deal_outcomes do
+            LEFT JOIN deal_pipeline dp ON do.lead_id = dp.lead_id
+            WHERE do.outcome = 'won'
+        `);
+        
+        const winRate = await db.get(`
+            SELECT 
+                SUM(CASE WHEN outcome = 'won' THEN 1 ELSE 0 END) as wins,
+                COUNT(*) as total_closed
+            FROM deal_outcomes
+        `);
+        
+        const winPercent = winRate.total_closed > 0 ? 
+            Math.round((winRate.wins / winRate.total_closed) * 100) : 0;
+        
+        res.json({
+            executiveSummary: {
+                total_pipeline_value: Math.round(pipeline.total_pipeline || 0),
+                weighted_pipeline_value: Math.round(pipeline.weighted_pipeline || 0),
+                this_month_forecast: Math.round(thisMonth.month_forecast || 0),
+                deals_in_pipeline: pipeline.total_deals || 0,
+                avg_deal_probability: Math.round(pipeline.avg_probability || 0),
+                won_this_period: Math.round(won.won_revenue || 0),
+                win_rate: `${winPercent}%`,
+                health_status: pipeline.total_deals > 10 && winPercent >= 40 ? '🟢 Healthy' : pipeline.total_deals > 5 ? '🟡 Monitor' : '🔴 Needs attention'
+            }
+        });
+    } catch (error) {
+        res.json({ executiveSummary: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

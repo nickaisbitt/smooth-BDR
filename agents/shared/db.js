@@ -514,6 +514,20 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_transition_from ON stage_transitions(from_stage);
   CREATE INDEX IF NOT EXISTS idx_transition_to ON stage_transitions(to_stage);
   
+  CREATE TABLE IF NOT EXISTS revenue_forecasts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_month TEXT,
+    forecast_date INTEGER,
+    forecasted_revenue REAL,
+    actual_revenue REAL,
+    forecast_accuracy INTEGER,
+    by_stage TEXT,
+    created_at INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_forecast_month ON revenue_forecasts(forecast_month);
+  CREATE INDEX IF NOT EXISTS idx_forecast_date ON revenue_forecasts(forecast_date);
+  
   console.log("✅ Agent tables initialized");
 }
 
