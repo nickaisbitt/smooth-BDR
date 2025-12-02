@@ -440,58 +440,69 @@ export async function initAgentTables(db) {
     await db.run(`CREATE TABLE IF NOT EXISTS deal_outcomes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lead_id TEXT NOT NULL UNIQUE,
-    outcome TEXT,
-    close_reason TEXT,
-    competitor_lost_to TEXT,
-    competitor_pricing TEXT,
-    competitor_features TEXT,
-    close_date INTEGER,
-    closed_at INTEGER,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+      outcome TEXT,
+      close_reason TEXT,
+      competitor_lost_to TEXT,
+      competitor_pricing TEXT,
+      competitor_features TEXT,
+      close_date INTEGER,
+      closed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_outcome_status ON deal_outcomes(outcome);
-  CREATE INDEX IF NOT EXISTS idx_outcome_competitor ON deal_outcomes(competitor_lost_to);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_outcome_status ON deal_outcomes(outcome)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_outcome_competitor ON deal_outcomes(competitor_lost_to)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS prospect_meetings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id TEXT NOT NULL,
-    meeting_type TEXT,
-    scheduled_at INTEGER,
-    completed_at INTEGER,
-    meeting_status TEXT DEFAULT 'scheduled',
-    meeting_outcome TEXT,
-    duration_minutes INTEGER,
-    attendees TEXT,
-    notes TEXT,
-    follow_up_required INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS prospect_meetings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL,
+      meeting_type TEXT,
+      scheduled_at INTEGER,
+      completed_at INTEGER,
+      meeting_status TEXT DEFAULT 'scheduled',
+      meeting_outcome TEXT,
+      duration_minutes INTEGER,
+      attendees TEXT,
+      notes TEXT,
+      follow_up_required INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_meeting_lead ON prospect_meetings(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_meeting_scheduled ON prospect_meetings(scheduled_at);
-  CREATE INDEX IF NOT EXISTS idx_meeting_status ON prospect_meetings(meeting_status);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_meeting_lead ON prospect_meetings(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_meeting_scheduled ON prospect_meetings(scheduled_at)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_meeting_status ON prospect_meetings(meeting_status)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS prospect_connections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    prospect_1_id TEXT NOT NULL,
-    prospect_2_id TEXT NOT NULL,
-    relationship_type TEXT,
-    company_id TEXT,
-    relationship_quality INTEGER DEFAULT 0,
-    is_buying_committee_member INTEGER DEFAULT 0,
-    notes TEXT,
-    created_at INTEGER NOT NULL,
-    UNIQUE(prospect_1_id, prospect_2_id),
-    FOREIGN KEY (prospect_1_id) REFERENCES prospect_queue(id),
-    FOREIGN KEY (prospect_2_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS prospect_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prospect_1_id TEXT NOT NULL,
+      prospect_2_id TEXT NOT NULL,
+      relationship_type TEXT,
+      company_id TEXT,
+      relationship_quality INTEGER DEFAULT 0,
+      is_buying_committee_member INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      UNIQUE(prospect_1_id, prospect_2_id),
+      FOREIGN KEY (prospect_1_id) REFERENCES prospect_queue(id),
+      FOREIGN KEY (prospect_2_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_connection_prospect1 ON prospect_connections(prospect_1_id);
-  CREATE INDEX IF NOT EXISTS idx_connection_prospect2 ON prospect_connections(prospect_2_id);
-  CREATE INDEX IF NOT EXISTS idx_connection_company ON prospect_connections(company_id);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_connection_prospect1 ON prospect_connections(prospect_1_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_connection_prospect2 ON prospect_connections(prospect_2_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_connection_company ON prospect_connections(company_id)`);
+  } catch (e) { /* indexes exist */ }
   
   try {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN opportunity_score INTEGER DEFAULT 0`);
@@ -500,46 +511,58 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN score_last_updated INTEGER`);
   } catch (e) { /* column exists */ }
   
-  CREATE TABLE IF NOT EXISTS opportunity_scoring_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id TEXT NOT NULL,
-    old_score INTEGER,
-    new_score INTEGER,
-    score_factors TEXT,
-    calculated_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS opportunity_scoring_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL,
+      old_score INTEGER,
+      new_score INTEGER,
+      score_factors TEXT,
+      calculated_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_score_history_lead ON opportunity_scoring_history(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_score_history_date ON opportunity_scoring_history(calculated_at);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_score_history_lead ON opportunity_scoring_history(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_score_history_date ON opportunity_scoring_history(calculated_at)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS stage_transitions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id TEXT NOT NULL,
-    from_stage TEXT,
-    to_stage TEXT,
-    transition_at INTEGER NOT NULL,
-    duration_days INTEGER,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS stage_transitions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL,
+      from_stage TEXT,
+      to_stage TEXT,
+      transition_at INTEGER NOT NULL,
+      duration_days INTEGER,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_transition_lead ON stage_transitions(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_transition_from ON stage_transitions(from_stage);
-  CREATE INDEX IF NOT EXISTS idx_transition_to ON stage_transitions(to_stage);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_transition_lead ON stage_transitions(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_transition_from ON stage_transitions(from_stage)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_transition_to ON stage_transitions(to_stage)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS revenue_forecasts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    forecast_month TEXT,
-    forecast_date INTEGER,
-    forecasted_revenue REAL,
-    actual_revenue REAL,
-    forecast_accuracy INTEGER,
-    by_stage TEXT,
-    created_at INTEGER NOT NULL
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS revenue_forecasts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      forecast_month TEXT,
+      forecast_date INTEGER,
+      forecasted_revenue REAL,
+      actual_revenue REAL,
+      forecast_accuracy INTEGER,
+      by_stage TEXT,
+      created_at INTEGER NOT NULL
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_forecast_month ON revenue_forecasts(forecast_month);
-  CREATE INDEX IF NOT EXISTS idx_forecast_date ON revenue_forecasts(forecast_date);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_forecast_month ON revenue_forecasts(forecast_month)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_forecast_date ON revenue_forecasts(forecast_date)`);
+  } catch (e) { /* indexes exist */ }
   
   try {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN assigned_to TEXT`);
@@ -548,132 +571,164 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN last_activity_by TEXT`);
   } catch (e) { /* column exists */ }
   
-  CREATE TABLE IF NOT EXISTS rep_activity_metrics (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rep_id TEXT NOT NULL UNIQUE,
-    rep_name TEXT,
-    period_date INTEGER,
-    emails_sent INTEGER DEFAULT 0,
-    calls_made INTEGER DEFAULT 0,
-    meetings_scheduled INTEGER DEFAULT 0,
-    meetings_completed INTEGER DEFAULT 0,
-    deals_won INTEGER DEFAULT 0,
-    revenue_generated REAL DEFAULT 0,
-    created_at INTEGER NOT NULL
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS rep_activity_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rep_id TEXT NOT NULL UNIQUE,
+      rep_name TEXT,
+      period_date INTEGER,
+      emails_sent INTEGER DEFAULT 0,
+      calls_made INTEGER DEFAULT 0,
+      meetings_scheduled INTEGER DEFAULT 0,
+      meetings_completed INTEGER DEFAULT 0,
+      deals_won INTEGER DEFAULT 0,
+      revenue_generated REAL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_rep_activity_rep ON rep_activity_metrics(rep_id);
-  CREATE INDEX IF NOT EXISTS idx_rep_activity_period ON rep_activity_metrics(period_date);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_rep_activity_rep ON rep_activity_metrics(rep_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_rep_activity_period ON rep_activity_metrics(period_date)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS engagement_signals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id INTEGER NOT NULL,
-    signal_type TEXT,
-    signal_value INTEGER DEFAULT 0,
-    event_data TEXT,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS engagement_signals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL,
+      signal_type TEXT,
+      signal_value INTEGER DEFAULT 0,
+      event_data TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_engagement_lead ON engagement_signals(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_engagement_type ON engagement_signals(signal_type);
-  CREATE INDEX IF NOT EXISTS idx_engagement_created ON engagement_signals(created_at);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_engagement_lead ON engagement_signals(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_engagement_type ON engagement_signals(signal_type)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_engagement_created ON engagement_signals(created_at)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS reply_classifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id INTEGER NOT NULL,
-    email_id TEXT,
-    reply_text TEXT,
-    sentiment TEXT,
-    classification TEXT,
-    confidence INTEGER,
-    extracted_questions TEXT,
-    extracted_objections TEXT,
-    next_action_recommended TEXT,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS reply_classifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL,
+      email_id TEXT,
+      reply_text TEXT,
+      sentiment TEXT,
+      classification TEXT,
+      confidence INTEGER,
+      extracted_questions TEXT,
+      extracted_objections TEXT,
+      next_action_recommended TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_reply_lead ON reply_classifications(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_reply_sentiment ON reply_classifications(sentiment);
-  CREATE INDEX IF NOT EXISTS idx_reply_classification ON reply_classifications(classification);
-  CREATE INDEX IF NOT EXISTS idx_reply_created ON reply_classifications(created_at);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_reply_lead ON reply_classifications(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_reply_sentiment ON reply_classifications(sentiment)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_reply_classification ON reply_classifications(classification)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_reply_created ON reply_classifications(created_at)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS system_alerts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    alert_type TEXT,
-    severity TEXT,
-    lead_id INTEGER,
-    title TEXT,
-    description TEXT,
-    action_recommended TEXT,
-    is_read INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS system_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_type TEXT,
+      severity TEXT,
+      lead_id INTEGER,
+      title TEXT,
+      description TEXT,
+      action_recommended TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_alert_type ON system_alerts(alert_type);
-  CREATE INDEX IF NOT EXISTS idx_alert_severity ON system_alerts(severity);
-  CREATE INDEX IF NOT EXISTS idx_alert_lead ON system_alerts(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_alert_read ON system_alerts(is_read);
-  CREATE INDEX IF NOT EXISTS idx_alert_created ON system_alerts(created_at);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_alert_type ON system_alerts(alert_type)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_alert_severity ON system_alerts(severity)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_alert_lead ON system_alerts(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_alert_read ON system_alerts(is_read)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_alert_created ON system_alerts(created_at)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS webhooks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    webhook_url TEXT NOT NULL,
-    webhook_type TEXT,
-    is_active INTEGER DEFAULT 1,
-    trigger_on TEXT,
-    created_at INTEGER NOT NULL
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      webhook_url TEXT NOT NULL,
+      webhook_type TEXT,
+      is_active INTEGER DEFAULT 1,
+      trigger_on TEXT,
+      created_at INTEGER NOT NULL
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_webhook_active ON webhooks(is_active);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_webhook_active ON webhooks(is_active)`);
+  } catch (e) { /* index exists */ }
   
-  CREATE TABLE IF NOT EXISTS campaign_performance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    campaign_name TEXT,
-    source TEXT,
-    leads_added INTEGER DEFAULT 0,
-    leads_responded INTEGER DEFAULT 0,
-    leads_converted INTEGER DEFAULT 0,
-    revenue_generated REAL DEFAULT 0,
-    avg_engagement_score INTEGER DEFAULT 0,
-    period_date INTEGER,
-    created_at INTEGER NOT NULL
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS campaign_performance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_name TEXT,
+      source TEXT,
+      leads_added INTEGER DEFAULT 0,
+      leads_responded INTEGER DEFAULT 0,
+      leads_converted INTEGER DEFAULT 0,
+      revenue_generated REAL DEFAULT 0,
+      avg_engagement_score INTEGER DEFAULT 0,
+      period_date INTEGER,
+      created_at INTEGER NOT NULL
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_campaign_source ON campaign_performance(source);
-  CREATE INDEX IF NOT EXISTS idx_campaign_period ON campaign_performance(period_date);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_campaign_source ON campaign_performance(source)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_campaign_period ON campaign_performance(period_date)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS intent_scores (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id INTEGER NOT NULL,
-    intent_score INTEGER DEFAULT 0,
-    buying_signals TEXT,
-    intent_level TEXT,
-    predicted_stage TEXT,
-    time_to_close_days INTEGER,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS intent_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL,
+      intent_score INTEGER DEFAULT 0,
+      buying_signals TEXT,
+      intent_level TEXT,
+      predicted_stage TEXT,
+      time_to_close_days INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_intent_lead ON intent_scores(lead_id);
-  CREATE INDEX IF NOT EXISTS idx_intent_score ON intent_scores(intent_score);
-  CREATE INDEX IF NOT EXISTS idx_intent_level ON intent_scores(intent_level);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_intent_lead ON intent_scores(lead_id)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_intent_score ON intent_scores(intent_score)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_intent_level ON intent_scores(intent_level)`);
+  } catch (e) { /* indexes exist */ }
   
-  CREATE TABLE IF NOT EXISTS research_diagnostics (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_name TEXT,
-    failure_reason TEXT,
-    research_sources TEXT,
-    attempted_count INTEGER DEFAULT 1,
-    last_attempt_at INTEGER,
-    created_at INTEGER NOT NULL
-  );
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS research_diagnostics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT,
+      failure_reason TEXT,
+      research_sources TEXT,
+      attempted_count INTEGER DEFAULT 1,
+      last_attempt_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`);
+  } catch (e) { /* table exists */ }
   
-  CREATE INDEX IF NOT EXISTS idx_research_company ON research_diagnostics(company_name);
-  CREATE INDEX IF NOT EXISTS idx_research_reason ON research_diagnostics(failure_reason);
+  try {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_research_company ON research_diagnostics(company_name)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_research_reason ON research_diagnostics(failure_reason)`);
+  } catch (e) { /* indexes exist */
   
   console.log("✅ Agent tables initialized");
 }
