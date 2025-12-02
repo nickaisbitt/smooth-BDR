@@ -1623,6 +1623,39 @@ app.get('/api/pipeline/deduplication-stats', async (req, res) => {
     }
 });
 
+// GET /api/research/cache-stats - Research caching performance metrics
+app.get('/api/research/cache-stats', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as cached_companies,
+                SUM(hits) as total_cache_hits,
+                AVG(hits) as avg_hits_per_company,
+                AVG(quality_score) as avg_cached_quality
+            FROM research_cache
+            WHERE expires_at > ?
+        `, [Date.now()]);
+        
+        const totalResearched = await db.get(`SELECT COUNT(*) as count FROM research_queue WHERE status = 'completed'`);
+        const cacheHitRate = totalResearched?.count > 0 
+            ? Math.round((stats?.total_cache_hits || 0) / (totalResearched.count + (stats?.total_cache_hits || 0)) * 100) 
+            : 0;
+        
+        res.json({
+            cacheMetrics: {
+                cached_companies: stats?.cached_companies || 0,
+                total_cache_hits: stats?.total_cache_hits || 0,
+                cache_hit_rate: `${cacheHitRate}%`,
+                avg_quality: Math.round((stats?.avg_cached_quality || 0) * 10) / 10,
+                time_saved_minutes: Math.round((stats?.total_cache_hits || 0) * 0.5)
+            }
+        });
+    } catch (error) {
+        console.error("Cache Stats Error:", error);
+        res.json({ cacheMetrics: { cached_companies: 0, total_cache_hits: 0, cache_hit_rate: '0%', time_saved_minutes: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

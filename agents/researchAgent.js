@@ -22,20 +22,59 @@ async function getServiceProfile() {
 We help businesses reduce operational costs by 40-60% through intelligent automation.`;
 }
 
+async function checkResearchCache(companyName) {
+  const cached = await db.get(`
+    SELECT research_data, quality_score, hits FROM research_cache 
+    WHERE company_name = ? AND expires_at > ?
+    LIMIT 1
+  `, [companyName, Date.now()]);
+  
+  if (cached) {
+    await db.run(`UPDATE research_cache SET hits = hits + 1 WHERE company_name = ?`, [companyName]);
+    logger.info(`💾 Cache HIT for ${companyName} (${cached.hits + 1} total hits)`);
+    return { data: JSON.parse(cached.research_data), quality: cached.quality_score, fromCache: true };
+  }
+  return null;
+}
+
+async function storeResearchCache(companyName, websiteUrl, research, quality) {
+  const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
+  try {
+    await db.run(`
+      INSERT OR REPLACE INTO research_cache (company_name, website_url, research_data, quality_score, created_at, expires_at, hits)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `, [companyName, websiteUrl, JSON.stringify(research), quality, Date.now(), expiresAt]);
+  } catch (e) {
+    // Cache write failed, continue anyway
+  }
+}
+
 async function processResearchItem(item) {
   logger.info(`Starting research for: ${item.company_name}`, { url: item.website_url });
   
-  const serviceProfile = await getServiceProfile();
+  // CHECK CACHE FIRST
+  const cached = await checkResearchCache(item.company_name);
+  let research, quality;
   
-  const research = await conductIterativeResearch(
-    item.company_name,
-    item.website_url,
-    serviceProfile,
-    config.targetQuality,
-    config.maxPasses
-  );
-  
-  const quality = research.researchQuality || 0;
+  if (cached) {
+    research = cached.data;
+    quality = cached.quality;
+  } else {
+    const serviceProfile = await getServiceProfile();
+    
+    research = await conductIterativeResearch(
+      item.company_name,
+      item.website_url,
+      serviceProfile,
+      config.targetQuality,
+      config.maxPasses
+    );
+    
+    quality = research.researchQuality || 0;
+    
+    // STORE IN CACHE
+    await storeResearchCache(item.company_name, item.website_url, research, quality);
+  }
   
   await db.run(`
     UPDATE research_queue 
