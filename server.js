@@ -4932,6 +4932,168 @@ app.get('/api/analytics/win-loss-by-industry', async (req, res) => {
     }
 });
 
+// POST /api/meetings/schedule - Schedule a meeting/call with prospect
+app.post('/api/meetings/schedule', async (req, res) => {
+    try {
+        const { lead_id, meeting_type, scheduled_at, attendees, notes } = req.body;
+        
+        if (!lead_id || !scheduled_at) {
+            return res.status(400).json({ error: 'lead_id and scheduled_at required' });
+        }
+        
+        await db.run(
+            `INSERT INTO prospect_meetings (lead_id, meeting_type, scheduled_at, attendees, notes, meeting_status, created_at)
+             VALUES (?, ?, ?, ?, ?, 'scheduled', ?)`,
+            [lead_id, meeting_type || 'call', scheduled_at, attendees, notes, Date.now()]
+        );
+        
+        res.json({ scheduled: true, meeting_type, scheduled_for: new Date(scheduled_at).toISOString() });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/meetings/:meetingId/complete - Log completed meeting with outcome
+app.post('/api/meetings/:meetingId/complete', async (req, res) => {
+    try {
+        const { meetingId } = req.params;
+        const { meeting_outcome, duration_minutes, follow_up_required, notes } = req.body;
+        
+        if (!meeting_outcome || !['interested', 'not_interested', 'demo_needed', 'reschedule', 'no_show'].includes(meeting_outcome)) {
+            return res.status(400).json({ error: 'Invalid meeting_outcome' });
+        }
+        
+        await db.run(
+            `UPDATE prospect_meetings SET meeting_status = 'completed', completed_at = ?, meeting_outcome = ?, duration_minutes = ?, follow_up_required = ?, notes = ? WHERE id = ?`,
+            [Date.now(), meeting_outcome, duration_minutes || 0, follow_up_required ? 1 : 0, notes, meetingId]
+        );
+        
+        res.json({ completed: true, outcome: meeting_outcome });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/meetings/upcoming - List upcoming scheduled meetings
+app.get('/api/meetings/upcoming', async (req, res) => {
+    try {
+        const now = Date.now();
+        
+        const upcoming = await db.all(`
+            SELECT 
+                pm.id,
+                pm.lead_id,
+                pq.company_name,
+                pq.contact_name,
+                pq.contact_email,
+                pm.meeting_type,
+                pm.scheduled_at,
+                pm.attendees,
+                pm.notes
+            FROM prospect_meetings pm
+            JOIN prospect_queue pq ON pm.lead_id = pq.id
+            WHERE pm.meeting_status = 'scheduled' AND pm.scheduled_at > ?
+            ORDER BY pm.scheduled_at ASC
+            LIMIT 100
+        `, [now]);
+        
+        res.json({
+            upcomingMeetings: {
+                total: upcoming.length,
+                meetings: upcoming.map(m => ({
+                    id: m.id,
+                    lead_id: m.lead_id,
+                    company: m.company_name,
+                    contact: m.contact_name,
+                    email: m.contact_email,
+                    type: m.meeting_type,
+                    scheduled_at: new Date(m.scheduled_at).toISOString(),
+                    attendees: m.attendees
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ upcomingMeetings: { total: 0, meetings: [] } });
+    }
+});
+
+// GET /api/meetings/:leadId/history - Meeting history for a prospect
+app.get('/api/meetings/:leadId/history', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const history = await db.all(`
+            SELECT 
+                id,
+                meeting_type,
+                scheduled_at,
+                completed_at,
+                meeting_status,
+                meeting_outcome,
+                duration_minutes,
+                notes
+            FROM prospect_meetings
+            WHERE lead_id = ?
+            ORDER BY scheduled_at DESC
+        `, [leadId]);
+        
+        res.json({
+            meetingHistory: history.map(m => ({
+                id: m.id,
+                type: m.meeting_type,
+                scheduled_at: new Date(m.scheduled_at).toISOString(),
+                completed_at: m.completed_at ? new Date(m.completed_at).toISOString() : null,
+                status: m.meeting_status,
+                outcome: m.meeting_outcome,
+                duration: m.duration_minutes,
+                notes: m.notes
+            }))
+        });
+    } catch (error) {
+        res.json({ meetingHistory: [] });
+    }
+});
+
+// GET /api/analytics/meeting-effectiveness - Meeting conversion and outcome metrics
+app.get('/api/analytics/meeting-effectiveness', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_meetings,
+                SUM(CASE WHEN meeting_status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN meeting_outcome = 'interested' THEN 1 ELSE 0 END) as interested,
+                SUM(CASE WHEN meeting_outcome = 'demo_needed' THEN 1 ELSE 0 END) as demo_needed,
+                SUM(CASE WHEN meeting_outcome = 'not_interested' THEN 1 ELSE 0 END) as not_interested,
+                SUM(CASE WHEN meeting_outcome = 'no_show' THEN 1 ELSE 0 END) as no_shows,
+                AVG(duration_minutes) as avg_duration
+            FROM prospect_meetings
+        `);
+        
+        const total = stats.total_meetings || 0;
+        const completed = stats.completed || 0;
+        const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const interested = stats.interested || 0;
+        const successRate = completed > 0 ? Math.round(((interested + stats.demo_needed) / completed) * 100) : 0;
+        
+        res.json({
+            meetingEffectiveness: {
+                total_meetings: total,
+                completed_meetings: completed,
+                completion_rate: `${completionRate}%`,
+                success_rate: `${successRate}%`,
+                interested_count: interested,
+                demo_needed_count: stats.demo_needed || 0,
+                not_interested_count: stats.not_interested || 0,
+                no_show_count: stats.no_shows || 0,
+                avg_meeting_duration: Math.round(stats.avg_duration || 0),
+                status: completionRate >= 80 && successRate >= 50 ? '✅ Strong' : '⚠️ Needs improvement'
+            }
+        });
+    } catch (error) {
+        res.json({ meetingEffectiveness: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
