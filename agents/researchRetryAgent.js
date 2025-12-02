@@ -37,6 +37,36 @@ let db = null;
 let heartbeat = null;
 let isRunning = false;
 
+// ERROR CLASSIFICATION - Transient vs Permanent
+function classifyError(errorMessage) {
+  const transientPatterns = [
+    /timeout/i, /network/i, /connection refused/i, /econnreset/i,
+    /429/i, /rate limit/i, /throttle/i, /temporarily/i, /unavailable/i,
+    /error 500/i, /error 502/i, /error 503/i, /error 504/i
+  ];
+  
+  const permanentPatterns = [
+    /404 not found/i, /domain.*not.*exist/i, /invalid url/i,
+    /404.*permanently/i, /gone/i, /410/i, /site.*blocked/i
+  ];
+  
+  if (permanentPatterns.some(p => p.test(errorMessage))) return 'PERMANENT';
+  if (transientPatterns.some(p => p.test(errorMessage))) return 'TRANSIENT';
+  return 'UNKNOWN';
+}
+
+// EXPONENTIAL BACKOFF - Calculate next retry time
+function calculateNextRetryTime(retryCount, errorType) {
+  if (errorType === 'PERMANENT') return null; // Don't retry permanent errors
+  
+  // Exponential backoff: 30s, 2min, 8min, 30min, 2hr, 8hr
+  const baseDelays = [30, 120, 480, 1800, 7200, 28800];
+  const delaySeconds = baseDelays[Math.min(retryCount, baseDelays.length - 1)];
+  const jitter = Math.random() * 0.2 * delaySeconds; // 20% jitter to prevent thundering herd
+  
+  return Date.now() + ((delaySeconds + jitter) * 1000);
+}
+
 const DEEP_SEARCH_STRATEGIES = [
   {
     name: 'deep_website_crawl',
