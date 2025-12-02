@@ -379,6 +379,31 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN enriched_at INTEGER`);
   } catch (e) { /* column exists */ }
   
+  // Add send time optimization columns
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN timezone TEXT DEFAULT 'US/Eastern'`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN preferred_send_hour INTEGER`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN last_email_sent INTEGER`);
+  } catch (e) { /* column exists */ }
+  
+  CREATE TABLE IF NOT EXISTS email_send_times (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id TEXT NOT NULL,
+    sent_at INTEGER NOT NULL,
+    sent_hour INTEGER,
+    sent_day TEXT,
+    reply_received INTEGER,
+    reply_time_hours INTEGER,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_send_times_lead ON email_send_times(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_send_times_hour ON email_send_times(sent_hour);
+  
   console.log("✅ Agent tables initialized");
 }
 

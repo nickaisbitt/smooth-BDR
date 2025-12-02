@@ -4480,6 +4480,127 @@ app.get('/api/prospects/needs-enrichment', async (req, res) => {
     }
 });
 
+// POST /api/prospects/:leadId/send-time - Track email send time and analyze
+app.post('/api/prospects/:leadId/send-time', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { sent_at, reply_received, reply_time_hours } = req.body;
+        
+        const sent = new Date(sent_at);
+        const hour = sent.getHours();
+        const day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][sent.getDay()];
+        
+        await db.run(
+            `INSERT INTO email_send_times (lead_id, sent_at, sent_hour, sent_day, reply_received, reply_time_hours)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [leadId, sent_at, hour, day, reply_received ? 1 : 0, reply_time_hours || null]
+        );
+        
+        res.json({ tracked: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/send-time-optimization - Find best sending hours
+app.get('/api/analytics/send-time-optimization', async (req, res) => {
+    try {
+        const hourAnalytics = await db.all(`
+            SELECT 
+                sent_hour,
+                COUNT(*) as total_sends,
+                SUM(reply_received) as replies,
+                AVG(CASE WHEN reply_received = 1 THEN reply_time_hours ELSE NULL END) as avg_reply_time
+            FROM email_send_times
+            WHERE sent_hour IS NOT NULL
+            GROUP BY sent_hour
+            ORDER BY sent_hour
+        `);
+        
+        const dayAnalytics = await db.all(`
+            SELECT 
+                sent_day,
+                COUNT(*) as total_sends,
+                SUM(reply_received) as replies
+            FROM email_send_times
+            WHERE sent_day IS NOT NULL
+            GROUP BY sent_day
+            ORDER BY CASE WHEN sent_day = 'Mon' THEN 1 WHEN sent_day = 'Tue' THEN 2 WHEN sent_day = 'Wed' THEN 3 WHEN sent_day = 'Thu' THEN 4 WHEN sent_day = 'Fri' THEN 5 ELSE 6 END
+        `);
+        
+        const bestHour = hourAnalytics.reduce((best, h) => {
+            const replyRate = h.total_sends > 0 ? (h.replies / h.total_sends) : 0;
+            const bestRate = best.total_sends > 0 ? (best.replies / best.total_sends) : 0;
+            return replyRate > bestRate ? h : best;
+        }, hourAnalytics[0] || {});
+        
+        const bestDay = dayAnalytics.reduce((best, d) => {
+            const replyRate = d.total_sends > 0 ? (d.replies / d.total_sends) : 0;
+            const bestRate = best.total_sends > 0 ? (best.replies / best.total_sends) : 0;
+            return replyRate > bestRate ? d : best;
+        }, dayAnalytics[0] || {});
+        
+        res.json({
+            sendTimeOptimization: {
+                best_hour: bestHour.sent_hour,
+                best_hour_reply_rate: bestHour.total_sends > 0 ? Math.round((bestHour.replies / bestHour.total_sends) * 100) : 0,
+                best_day: bestDay.sent_day,
+                best_day_reply_rate: bestDay.total_sends > 0 ? Math.round((bestDay.replies / bestDay.total_sends) * 100) : 0,
+                hourly_breakdown: hourAnalytics.map(h => ({
+                    hour: h.sent_hour,
+                    sends: h.total_sends,
+                    replies: h.replies || 0,
+                    reply_rate: h.total_sends > 0 ? Math.round((h.replies / h.total_sends) * 100) : 0
+                })),
+                daily_breakdown: dayAnalytics.map(d => ({
+                    day: d.sent_day,
+                    sends: d.total_sends,
+                    replies: d.replies || 0,
+                    reply_rate: d.total_sends > 0 ? Math.round((d.replies / d.total_sends) * 100) : 0
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ sendTimeOptimization: {} });
+    }
+});
+
+// GET /api/analytics/best-send-window - Optimal sending window by prospect
+app.get('/api/analytics/best-send-window', async (req, res) => {
+    try {
+        const leadSendTimes = await db.all(`
+            SELECT 
+                lead_id,
+                AVG(sent_hour) as avg_send_hour,
+                COUNT(*) as total_sends,
+                SUM(reply_received) as reply_count
+            FROM email_send_times
+            GROUP BY lead_id
+            HAVING total_sends >= 2
+        `);
+        
+        const recommendations = leadSendTimes.map(l => {
+            const hour = Math.round(l.avg_send_hour);
+            const replyRate = l.total_sends > 0 ? Math.round((l.reply_count / l.total_sends) * 100) : 0;
+            return {
+                lead_id: l.lead_id,
+                recommended_hour: hour,
+                send_history: l.total_sends,
+                reply_rate: `${replyRate}%`
+            };
+        });
+        
+        res.json({
+            sendWindowRecommendations: {
+                total_prospects_analyzed: recommendations.length,
+                recommendations: recommendations.slice(0, 50)
+            }
+        });
+    } catch (error) {
+        res.json({ sendWindowRecommendations: { total_prospects_analyzed: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
