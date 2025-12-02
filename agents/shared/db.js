@@ -266,6 +266,17 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE draft_queue ADD COLUMN unverified_hooks TEXT`);
   } catch (e) { /* column exists */ }
   
+  // Add followup tracking columns to email_queue
+  try {
+    await db.run(`ALTER TABLE email_queue ADD COLUMN parent_email_id INTEGER`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_queue ADD COLUMN sequence_number INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE email_queue ADD COLUMN scheduled_followup_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   console.log("✅ Agent tables initialized");
 }
 

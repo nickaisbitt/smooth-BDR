@@ -3226,6 +3226,228 @@ app.get('/api/pipeline/stage-velocity', async (req, res) => {
     }
 });
 
+// POST /api/followups/configure - Set up automated follow-up sequence for a prospect
+app.post('/api/followups/configure', async (req, res) => {
+    try {
+        const { lead_id, days_to_wait, max_followups } = req.body;
+        
+        if (!lead_id || !days_to_wait) {
+            return res.status(400).json({ error: 'lead_id and days_to_wait required' });
+        }
+        
+        // Store follow-up config in activity timeline metadata
+        await db.run(
+            `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, metadata, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [lead_id, 'followup_configured', `Auto-followup scheduled: ${days_to_wait} days, max ${max_followups || 3} followups`, 
+             JSON.stringify({days_to_wait, max_followups: max_followups || 3}), Date.now()]
+        );
+        
+        res.json({
+            configured: true,
+            lead_id: lead_id,
+            days_to_wait: days_to_wait,
+            max_followups: max_followups || 3,
+            message: `Follow-up sequence enabled for this prospect`
+        });
+    } catch (error) {
+        console.error("Followup Config Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/followups/process-pending - Generate follow-ups for prospects who haven't replied
+app.post('/api/followups/process-pending', async (req, res) => {
+    try {
+        const now = Date.now();
+        const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000); // Default 3 day wait
+        
+        // Find prospects who:
+        // 1. Had emails sent 3+ days ago
+        // 2. Have not replied
+        // 3. Haven't been unsubscribed/bounced
+        // 4. Haven't already had max followups
+        const nonresponders = await db.all(`
+            SELECT DISTINCT
+                eq.lead_id,
+                eq.id as original_email_id,
+                pq.company_name,
+                pq.contact_email,
+                eq.research_quality,
+                COUNT(eq2.id) as followup_count
+            FROM email_queue eq
+            LEFT JOIN email_queue eq2 ON eq.lead_id = eq2.lead_id AND eq2.sequence_number > 0
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            LEFT JOIN bounce_list bl ON pq.contact_email = bl.email
+            LEFT JOIN unsubscribe_list ul ON pq.contact_email = ul.email
+            LEFT JOIN prospect_queue pq ON eq.lead_id = pq.id
+            WHERE eq.status = 'sent'
+              AND eq.sent_at < ?
+              AND em.id IS NULL
+              AND bl.email IS NULL
+              AND ul.email IS NULL
+              AND eq.sequence_number = 0
+            GROUP BY eq.lead_id
+            HAVING COUNT(eq2.id) < 3
+            LIMIT 50
+        `, [threeDaysAgo]);
+        
+        let followupsScheduled = 0;
+        
+        for (const prospect of nonresponders) {
+            // Get the last email content for this prospect to generate follow-up variant
+            const lastEmail = await db.get(`
+                SELECT eq.email_body, eq.subject FROM email_queue eq
+                WHERE eq.lead_id = ? AND eq.status = 'sent'
+                ORDER BY eq.sent_at DESC LIMIT 1
+            `, [prospect.lead_id]);
+            
+            if (lastEmail) {
+                // Create follow-up email with different angle
+                const followupSubject = `${lastEmail.subject} - Quick Follow-up`;
+                const followupBody = `${lastEmail.email_body}\n\n---\nJust following up on my previous message. Would love to connect! 👋`;
+                
+                // Queue follow-up email
+                await db.run(
+                    `INSERT INTO draft_queue (prospect_id, lead_id, company_name, contact_email, contact_name, 
+                     research_quality, research_data, status, email_subject, email_body, sequence_number, parent_email_id, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [prospect.lead_id, prospect.lead_id, prospect.company_name, prospect.contact_email, '', 
+                     prospect.research_quality, '{}', 'pending', followupSubject, followupBody, 
+                     prospect.followup_count + 1, prospect.original_email_id, Date.now(), Date.now()]
+                );
+                
+                followupsScheduled++;
+            }
+        }
+        
+        res.json({
+            processed: followupsScheduled,
+            message: `Scheduled ${followupsScheduled} follow-up emails for non-responders`,
+            prospects_analyzed: nonresponders.length
+        });
+    } catch (error) {
+        console.error("Process Pending Followups Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/followups/pending - Get all pending follow-ups scheduled to send
+app.get('/api/followups/pending', async (req, res) => {
+    try {
+        const pending = await db.all(`
+            SELECT 
+                dq.id,
+                dq.company_name,
+                dq.contact_email,
+                dq.email_subject,
+                dq.sequence_number,
+                COUNT(eq.id) as previous_emails,
+                MAX(eq.sent_at) as last_email_sent
+            FROM draft_queue dq
+            LEFT JOIN email_queue eq ON dq.lead_id = eq.lead_id
+            WHERE dq.status = 'pending' AND dq.sequence_number > 0
+            GROUP BY dq.id
+            ORDER BY dq.created_at DESC
+            LIMIT 100
+        `);
+        
+        res.json({
+            pending_followups: {
+                total_pending: pending.length,
+                followups: pending.map(p => ({
+                    id: p.id,
+                    company: p.company_name,
+                    email: p.contact_email,
+                    subject: p.email_subject?.substring(0, 50),
+                    sequence: `Follow-up #${p.sequence_number}`,
+                    attempts: p.previous_emails,
+                    last_contact: new Date(p.last_email_sent).toLocaleDateString()
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Get Pending Followups Error:", error);
+        res.json({ pending_followups: { total_pending: 0 } });
+    }
+});
+
+// GET /api/followups/stats - Follow-up campaign effectiveness
+app.get('/api/followups/stats', async (req, res) => {
+    try {
+        const stats = await db.all(`
+            SELECT 
+                eq.sequence_number,
+                COUNT(*) as sent,
+                SUM(CASE WHEN em.id IS NOT NULL THEN 1 ELSE 0 END) as replies
+            FROM email_queue eq
+            LEFT JOIN email_messages em ON eq.lead_id = em.lead_id AND em.received_at > eq.sent_at
+            WHERE eq.sequence_number > 0 AND eq.status = 'sent'
+            GROUP BY eq.sequence_number
+            ORDER BY eq.sequence_number
+        `);
+        
+        const followupMetrics = stats.map(s => {
+            const replyRate = s.sent > 0 ? Math.round((s.replies / s.sent) * 100) : 0;
+            return {
+                followup_number: s.sequence_number,
+                sent: s.sent,
+                replies: s.replies,
+                reply_rate: `${replyRate}%`,
+                effectiveness: replyRate > 20 ? '✅ Highly effective' : replyRate > 10 ? '→ Moderate' : '⚠️ Low engagement'
+            };
+        });
+        
+        const totalFollowups = stats.reduce((sum, s) => sum + s.sent, 0);
+        const totalFollowupReplies = stats.reduce((sum, s) => sum + (s.replies || 0), 0);
+        
+        res.json({
+            followupStats: {
+                total_followups_sent: totalFollowups,
+                total_followup_replies: totalFollowupReplies,
+                overall_followup_reply_rate: totalFollowups > 0 ? `${Math.round((totalFollowupReplies / totalFollowups) * 100)}%` : '0%',
+                by_sequence: followupMetrics,
+                insight: 'Follow-ups typically have 10-30% reply rates. Monitor effectiveness to optimize sequences.'
+            }
+        });
+    } catch (error) {
+        console.error("Followup Stats Error:", error);
+        res.json({ followupStats: {} });
+    }
+});
+
+// POST /api/followups/bulk-configure - Set up follow-ups for multiple prospects
+app.post('/api/followups/bulk-configure', async (req, res) => {
+    try {
+        const { lead_ids, days_to_wait, max_followups } = req.body;
+        
+        if (!Array.isArray(lead_ids) || !days_to_wait) {
+            return res.status(400).json({ error: 'lead_ids array and days_to_wait required' });
+        }
+        
+        let configured = 0;
+        for (const leadId of lead_ids) {
+            await db.run(
+                `INSERT INTO activity_timeline (lead_id, activity_type, activity_description, metadata, created_at)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [leadId, 'followup_configured', `Bulk follow-up configured: ${days_to_wait} days, max ${max_followups || 3}`,
+                 JSON.stringify({days_to_wait, max_followups: max_followups || 3}), Date.now()]
+            );
+            configured++;
+        }
+        
+        res.json({
+            bulk_configured: configured,
+            days_to_wait: days_to_wait,
+            max_followups: max_followups || 3,
+            message: `Follow-up sequences enabled for ${configured} prospects`
+        });
+    } catch (error) {
+        console.error("Bulk Followup Config Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
