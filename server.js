@@ -107,8 +107,19 @@ let db;
             CREATE INDEX IF NOT EXISTS idx_email_messages_external_id ON email_messages(external_id);
             CREATE INDEX IF NOT EXISTS idx_email_messages_lead_id ON email_messages(lead_id);
             CREATE INDEX IF NOT EXISTS idx_email_messages_from_email ON email_messages(from_email);
+            CREATE INDEX IF NOT EXISTS idx_email_messages_received_at ON email_messages(received_at);
+            CREATE INDEX IF NOT EXISTS idx_email_logs_lead_id ON email_logs(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_email_logs_to_email ON email_logs(to_email);
+            CREATE INDEX IF NOT EXISTS idx_email_logs_sent_at ON email_logs(sent_at);
+            CREATE INDEX IF NOT EXISTS idx_prospect_queue_status_created ON prospect_queue(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_research_queue_status_created ON research_queue(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_draft_queue_status_created ON draft_queue(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_email_queue_status_created ON email_queue(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_email_queue_status_sent ON email_queue(status, sent_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_agent_last ON agent_activity(agent_name, last_activity);
+            CREATE INDEX IF NOT EXISTS idx_reply_analysis_lead_id ON reply_analysis(lead_id);
         `);
-        console.log("✅ SQLite Database Initialized");
+        console.log("✅ SQLite Database Initialized with performance indexes");
         
         // Migration: Add research_quality column to email_queue if it doesn't exist
         try {
