@@ -4,6 +4,7 @@ import { Lead, LeadStatus, ServiceProfile, AgentLog, StrategyNode, ViewType, Ema
 import { PipelineTable } from './components/PipelineTable';
 import { PipelineBoard } from './components/PipelineBoard';
 import { StatCard } from './components/StatCard';
+import { MetricsPanel } from './components/MetricsPanel';
 import { Sidebar } from './components/Sidebar';
 import { AgentTerminal } from './components/AgentTerminal';
 import { StrategyQueue } from './components/StrategyQueue';
@@ -756,6 +757,9 @@ function App() {
                      <StatCard title="Est. Cost" value={`$${(stats.estimatedCost).toFixed(2)}`} trend={`${stats.totalOperations} Ops`} colorTheme="purple" />
                      <StatCard title="A/B Test" value={`${stats.abTestWins.A} vs ${stats.abTestWins.B}`} trend="A vs B Wins" colorTheme="pink" />
                  </div>
+
+                 {/* Real-time Metrics Dashboard */}
+                 <MetricsPanel metrics={metrics} />
 
                  <div className="flex flex-col xl:flex-row gap-6 h-auto min-h-[400px]">
                      <div className="flex-1 flex flex-col gap-2">
