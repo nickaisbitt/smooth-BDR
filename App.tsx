@@ -8,7 +8,7 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { Sidebar } from './components/Sidebar';
 import { AgentTerminal } from './components/AgentTerminal';
 
-// Agent display name mapping
+// Agent display name mapping with emoji profile icons
 const AGENT_DISPLAY_NAMES: Record<string, string> = {
   'COO': 'Atlas - COO',
   'prospect-finder': 'Scout - Prospect Finder',
@@ -21,8 +21,24 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
   'logo-finder': 'Canvas - Logo Finder'
 };
 
+const AGENT_ICONS: Record<string, string> = {
+  'COO': '🎯',
+  'prospect-finder': '🔍',
+  'research': '📚',
+  'research-retry': '🔄',
+  'email-generator': '✍️',
+  'email-reviewer': '🛡️',
+  'email-sender': '📧',
+  'inbox': '👁️',
+  'logo-finder': '🎨'
+};
+
 function getAgentDisplayName(agentName: string): string {
   return AGENT_DISPLAY_NAMES[agentName] || agentName.replace('-', ' ').toUpperCase();
+}
+
+function getAgentIcon(agentName: string): string {
+  return AGENT_ICONS[agentName] || '🤖';
 }
 import { StrategyQueue } from './components/StrategyQueue';
 import { AnalyticsView } from './components/AnalyticsView';
@@ -809,11 +825,12 @@ function App() {
                                   }`}
                                 >
                                   <div className="flex items-center gap-1.5 mb-1">
-                                    <div className={`w-2 h-2 rounded-full ${agent.health === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
-                                    <span className="font-medium text-slate-700 dark:text-slate-300 capitalize truncate">
+                                    <span className="text-lg">{getAgentIcon(agent.name)}</span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300 capitalize truncate text-xs">
                                       {getAgentDisplayName(agent.name)}
                                     </span>
                                   </div>
+                                  <div className={`w-2 h-2 rounded-full ${agent.health === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                                     {agent.current_item ? (
                                       <span className="text-blue-600 dark:text-blue-400">
