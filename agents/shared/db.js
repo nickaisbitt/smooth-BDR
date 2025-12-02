@@ -134,6 +134,38 @@ export async function initAgentTables(db) {
     );
     
     CREATE INDEX IF NOT EXISTS idx_agent_messages_to ON agent_messages(to_agent, read_at);
+    
+    CREATE TABLE IF NOT EXISTS bounce_list (
+      email TEXT PRIMARY KEY,
+      bounce_type TEXT DEFAULT 'hard_bounce',
+      detected_at INTEGER NOT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS unsubscribe_list (
+      email TEXT PRIMARY KEY,
+      reason TEXT,
+      unsubscribed_at INTEGER NOT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS lead_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL UNIQUE,
+      email TEXT,
+      engagement_score INTEGER DEFAULT 0,
+      reply_count INTEGER DEFAULT 0,
+      click_count INTEGER DEFAULT 0,
+      open_count INTEGER DEFAULT 0,
+      research_quality_avg INTEGER DEFAULT 0,
+      days_in_pipeline INTEGER DEFAULT 0,
+      last_activity_at INTEGER,
+      priority_rank TEXT DEFAULT 'medium',
+      updated_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_lead_scores_priority ON lead_scores(priority_rank);
+    CREATE INDEX IF NOT EXISTS idx_bounce_list_email ON bounce_list(email);
+    CREATE INDEX IF NOT EXISTS idx_unsubscribe_list_email ON unsubscribe_list(email);
   `);
   
   const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];

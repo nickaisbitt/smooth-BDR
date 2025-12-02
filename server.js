@@ -1935,6 +1935,100 @@ app.get('/api/email/bounce-unsubscribe-stats', async (req, res) => {
     }
 });
 
+// GET /api/leads/engagement-scoring - Calculate lead engagement scores and ranks
+app.get('/api/leads/engagement-scoring', async (req, res) => {
+    try {
+        // Recalculate all lead scores based on engagement patterns
+        const leads = await db.all(`
+            SELECT DISTINCT eq.lead_id, eq.to_email
+            FROM email_queue eq
+            WHERE eq.status = 'sent'
+        `);
+        
+        for (const lead of leads) {
+            const emails_sent = await db.get(`
+                SELECT COUNT(*) as count FROM email_queue 
+                WHERE lead_id = ? AND status = 'sent'
+            `, [lead.lead_id]);
+            
+            const replies = await db.get(`
+                SELECT COUNT(*) as count FROM email_messages 
+                WHERE lead_id = ? AND from_email = ?
+            `, [lead.lead_id, lead.to_email]);
+            
+            const research_quality = await db.get(`
+                SELECT AVG(research_quality) as avg_quality FROM email_queue 
+                WHERE lead_id = ? AND research_quality > 0
+            `, [lead.lead_id]);
+            
+            const days_in_pipeline = Math.floor((Date.now() - (await db.get(
+                `SELECT MIN(created_at) as min_created FROM email_queue WHERE lead_id = ?`,
+                [lead.lead_id]
+            )).min_created) / (1000 * 60 * 60 * 24));
+            
+            // Engagement scoring formula: replies (weighted 50%) + research quality (30%) + send frequency (20%)
+            const engagement_score = Math.min(100, 
+                (replies?.count || 0) * 50 + 
+                (research_quality?.avg_quality || 0) * 3 + 
+                Math.min((emails_sent?.count || 0) * 5, 20)
+            );
+            
+            // Priority ranking based on engagement
+            let priority_rank = 'low';
+            if (engagement_score >= 70) priority_rank = 'hot';
+            else if (engagement_score >= 40) priority_rank = 'high';
+            else if (engagement_score >= 20) priority_rank = 'medium';
+            
+            await db.run(`
+                INSERT OR REPLACE INTO lead_scores 
+                (lead_id, email, engagement_score, reply_count, research_quality_avg, days_in_pipeline, priority_rank, updated_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [lead.lead_id, lead.to_email, engagement_score, replies?.count || 0, 
+                Math.round((research_quality?.avg_quality || 0) * 10) / 10, days_in_pipeline, priority_rank, Date.now(), Date.now()]);
+        }
+        
+        // Get top prospects by score
+        const topProspects = await db.all(`
+            SELECT lead_id, email, engagement_score, reply_count, priority_rank, days_in_pipeline
+            FROM lead_scores
+            ORDER BY engagement_score DESC, updated_at DESC
+            LIMIT 20
+        `);
+        
+        const scoreDistribution = await db.get(`
+            SELECT 
+                SUM(CASE WHEN engagement_score >= 70 THEN 1 ELSE 0 END) as hot_leads,
+                SUM(CASE WHEN engagement_score >= 40 AND engagement_score < 70 THEN 1 ELSE 0 END) as high_leads,
+                SUM(CASE WHEN engagement_score >= 20 AND engagement_score < 40 THEN 1 ELSE 0 END) as medium_leads,
+                SUM(CASE WHEN engagement_score < 20 THEN 1 ELSE 0 END) as cold_leads,
+                AVG(engagement_score) as avg_engagement
+            FROM lead_scores
+        `);
+        
+        res.json({
+            engagementMetrics: {
+                leads_scored: leads.length,
+                hot_leads: scoreDistribution?.hot_leads || 0,
+                high_priority_leads: scoreDistribution?.high_leads || 0,
+                medium_priority_leads: scoreDistribution?.medium_leads || 0,
+                cold_leads: scoreDistribution?.cold_leads || 0,
+                avg_engagement_score: Math.round((scoreDistribution?.avg_engagement || 0) * 10) / 10,
+                conversion_potential: `${Math.round((scoreDistribution?.hot_leads || 0) * 30)}% est. close rate on hot leads`,
+                top_prospects: topProspects.map(p => ({
+                    lead: p.lead_id,
+                    score: p.engagement_score,
+                    replies: p.reply_count,
+                    priority: p.priority_rank,
+                    days_active: p.days_in_pipeline
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Engagement Scoring Error:", error);
+        res.json({ engagementMetrics: { leads_scored: 0, hot_leads: 0, avg_engagement_score: 0 } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
