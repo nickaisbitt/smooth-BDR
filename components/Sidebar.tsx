@@ -6,13 +6,15 @@ import { LayoutDashboard, Users, BarChart3, Settings, ShieldCheck, Activity, Cal
 interface Props {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
-export const Sidebar: React.FC<Props> = ({ currentView, onViewChange }) => {
+export const Sidebar: React.FC<Props> = ({ currentView, onViewChange, isOpen = true, onToggle }) => {
   return (
-    <div className="w-20 lg:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col items-center lg:items-stretch py-8 h-screen sticky top-0 z-20">
-      <div className="mb-10 flex items-center justify-center lg:justify-start lg:px-8 gap-3 cursor-pointer" onClick={() => onViewChange('dashboard')}>
-        <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-white flex items-center justify-center text-white dark:text-slate-900 font-bold text-xl shadow-lg">
+    <div className={`${isOpen ? 'w-20 lg:w-64' : 'w-20'} bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col items-center lg:items-stretch py-8 h-screen sticky top-0 z-20`}>
+      <div className="mb-10 flex items-center justify-center lg:justify-start lg:px-8 gap-3 cursor-pointer" onClick={() => onToggle?.()}>
+        <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-white flex items-center justify-center text-white dark:text-slate-900 font-bold text-xl shadow-lg hover:shadow-xl transition-shadow">
           S
         </div>
         <div className="hidden lg:block">

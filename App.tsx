@@ -72,6 +72,7 @@ const DEFAULT_PROFILE: ServiceProfile = {
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
   // STATE
   const [leads, setLeads] = useState<Lead[]>(() => loadLeadsFromStorage());
@@ -764,7 +765,7 @@ function App() {
   
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+      <Sidebar currentView={currentView} onViewChange={setCurrentView} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
 
       <main className="flex-1 p-4 lg:p-8 overflow-y-auto h-screen flex flex-col">
         {/* Sync Status Badge (Top Right) */}
