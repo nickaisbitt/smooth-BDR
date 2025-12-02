@@ -174,8 +174,20 @@ export async function initAgentTables(db) {
       FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
     );
     
+    CREATE TABLE IF NOT EXISTS prospect_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id TEXT NOT NULL,
+      tag_name TEXT NOT NULL,
+      tag_category TEXT,
+      added_at INTEGER NOT NULL,
+      UNIQUE(lead_id, tag_name),
+      FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+    );
+    
     CREATE INDEX IF NOT EXISTS idx_activity_timeline_lead ON activity_timeline(lead_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_timeline_type ON activity_timeline(activity_type);
+    CREATE INDEX IF NOT EXISTS idx_prospect_tags_lead ON prospect_tags(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_prospect_tags_tag ON prospect_tags(tag_name);
     CREATE INDEX IF NOT EXISTS idx_lead_scores_priority ON lead_scores(priority_rank);
     CREATE INDEX IF NOT EXISTS idx_bounce_list_email ON bounce_list(email);
     CREATE INDEX IF NOT EXISTS idx_unsubscribe_list_email ON unsubscribe_list(email);

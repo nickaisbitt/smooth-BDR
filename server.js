@@ -2108,6 +2108,198 @@ app.get('/api/leads/engagement-scoring', async (req, res) => {
     }
 });
 
+// POST /api/prospects/:leadId/tags - Add tags to a prospect
+app.post('/api/prospects/:leadId/tags', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { tags } = req.body; // Array of {name, category}
+        
+        if (!Array.isArray(tags)) {
+            return res.status(400).json({ error: 'tags must be an array' });
+        }
+        
+        let added = 0;
+        for (const tag of tags) {
+            try {
+                await db.run(
+                    `INSERT OR IGNORE INTO prospect_tags (lead_id, tag_name, tag_category, added_at)
+                     VALUES (?, ?, ?, ?)`,
+                    [leadId, tag.name, tag.category || 'general', Date.now()]
+                );
+                added++;
+            } catch (e) {
+                // Duplicate tag - skip
+            }
+        }
+        
+        res.json({ added, message: `Added ${added} tags to prospect` });
+    } catch (error) {
+        console.error("Add Tags Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/:leadId/tags - Get all tags for a prospect
+app.get('/api/prospects/:leadId/tags', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const tags = await db.all(`
+            SELECT tag_name, tag_category, added_at
+            FROM prospect_tags
+            WHERE lead_id = ?
+            ORDER BY added_at DESC
+        `, [leadId]);
+        
+        res.json({
+            prospect: leadId,
+            total_tags: tags.length,
+            tags: tags.map(t => ({
+                name: t.tag_name,
+                category: t.tag_category,
+                added: new Date(t.added_at).toLocaleString()
+            }))
+        });
+    } catch (error) {
+        console.error("Get Tags Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/prospects/:leadId/tags/:tagName - Remove a tag
+app.delete('/api/prospects/:leadId/tags/:tagName', async (req, res) => {
+    try {
+        const { leadId, tagName } = req.params;
+        
+        await db.run(
+            `DELETE FROM prospect_tags WHERE lead_id = ? AND tag_name = ?`,
+            [leadId, tagName]
+        );
+        
+        res.json({ removed: true, message: `Removed tag "${tagName}"` });
+    } catch (error) {
+        console.error("Delete Tag Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/by-tag/:tagName - Find all prospects with a specific tag
+app.get('/api/prospects/by-tag/:tagName', async (req, res) => {
+    try {
+        const { tagName } = req.params;
+        
+        const prospects = await db.all(`
+            SELECT DISTINCT
+                pq.id as lead_id,
+                pq.company_name,
+                pq.contact_email,
+                ls.engagement_score,
+                ls.priority_rank,
+                COUNT(pt.tag_name) as tag_count
+            FROM prospect_tags pt
+            LEFT JOIN prospect_queue pq ON pt.lead_id = pq.id
+            LEFT JOIN lead_scores ls ON pt.lead_id = ls.lead_id
+            WHERE pt.tag_name = ?
+            GROUP BY pq.id
+            ORDER BY ls.engagement_score DESC
+            LIMIT 100
+        `, [tagName]);
+        
+        res.json({
+            tag: tagName,
+            prospects_found: prospects.length,
+            prospects: prospects.map(p => ({
+                id: p.lead_id,
+                company: p.company_name,
+                email: p.contact_email,
+                engagement_score: p.engagement_score || 0,
+                priority: p.priority_rank || 'unknown'
+            }))
+        });
+    } catch (error) {
+        console.error("Get By Tag Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/tags/summary - Get summary of all tags used
+app.get('/api/tags/summary', async (req, res) => {
+    try {
+        const tagStats = await db.all(`
+            SELECT tag_name, tag_category, COUNT(*) as prospect_count
+            FROM prospect_tags
+            GROUP BY tag_name, tag_category
+            ORDER BY prospect_count DESC
+            LIMIT 50
+        `);
+        
+        const categoryStats = await db.all(`
+            SELECT tag_category, COUNT(DISTINCT tag_name) as unique_tags, COUNT(*) as total_tags
+            FROM prospect_tags
+            GROUP BY tag_category
+            ORDER BY total_tags DESC
+        `);
+        
+        res.json({
+            tagMetrics: {
+                total_unique_tags: tagStats.length,
+                total_tag_assignments: tagStats.reduce((sum, t) => sum + t.prospect_count, 0),
+                top_tags: tagStats.slice(0, 10).map(t => ({
+                    name: t.tag_name,
+                    category: t.tag_category,
+                    prospects: t.prospect_count
+                })),
+                by_category: categoryStats.map(c => ({
+                    category: c.tag_category,
+                    unique_tags: c.unique_tags,
+                    total_assignments: c.total_tags
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Tag Summary Error:", error);
+        res.json({ tagMetrics: { total_unique_tags: 0, total_tag_assignments: 0 } });
+    }
+});
+
+// POST /api/prospects/bulk-tag - Apply tags to multiple prospects at once
+app.post('/api/prospects/bulk-tag', async (req, res) => {
+    try {
+        const { lead_ids, tags } = req.body;
+        
+        if (!Array.isArray(lead_ids) || !Array.isArray(tags)) {
+            return res.status(400).json({ error: 'lead_ids and tags must be arrays' });
+        }
+        
+        let totalAdded = 0;
+        
+        for (const leadId of lead_ids) {
+            for (const tag of tags) {
+                try {
+                    await db.run(
+                        `INSERT OR IGNORE INTO prospect_tags (lead_id, tag_name, tag_category, added_at)
+                         VALUES (?, ?, ?, ?)`,
+                        [leadId, tag.name, tag.category || 'general', Date.now()]
+                    );
+                    totalAdded++;
+                } catch (e) {
+                    // Duplicate - skip
+                }
+            }
+        }
+        
+        res.json({
+            prospects_tagged: lead_ids.length,
+            tags_applied: tags.length,
+            total_assignments: totalAdded,
+            message: `Tagged ${lead_ids.length} prospects with ${tags.length} tags`
+        });
+    } catch (error) {
+        console.error("Bulk Tag Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
