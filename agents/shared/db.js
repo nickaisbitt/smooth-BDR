@@ -209,6 +209,14 @@ export async function initAgentTables(db) {
     await db.run(`ALTER TABLE prospect_queue ADD COLUMN stage_updated_at INTEGER`);
   } catch (e) { /* column exists */ }
   
+  // Add brief storage for cached insights
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN insights_brief TEXT`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE research_queue ADD COLUMN brief_generated_at INTEGER`);
+  } catch (e) { /* column exists */ }
+  
   const agents = ['prospect-finder', 'research', 'research-retry', 'email-generator', 'email-sender', 'inbox'];
   for (const agent of agents) {
     await db.run(`INSERT OR IGNORE INTO agent_enabled (agent_name, enabled, updated_at) VALUES (?, 1, ?)`, [agent, Date.now()]);

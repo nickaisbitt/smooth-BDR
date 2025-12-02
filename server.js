@@ -2689,6 +2689,165 @@ app.get('/api/prospects/by-stage/:stage', async (req, res) => {
     }
 });
 
+// GET /api/prospects/:leadId/insights - Generate AI-powered prospect brief
+app.get('/api/prospects/:leadId/insights', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        // Get prospect info
+        const prospect = await db.get(`
+            SELECT pq.id, pq.company_name, pq.contact_name, pq.contact_email, pq.website_url
+            FROM prospect_queue pq
+            WHERE pq.id = ?
+        `, [leadId]);
+        
+        if (!prospect) {
+            return res.status(404).json({ error: 'Prospect not found' });
+        }
+        
+        // Get research data (most recent)
+        const research = await db.get(`
+            SELECT rq.id, rq.research_data, rq.insights_brief, rq.brief_generated_at
+            FROM research_queue rq
+            WHERE rq.prospect_id = ?
+            ORDER BY rq.completed_at DESC
+            LIMIT 1
+        `, [leadId]);
+        
+        // Return cached brief if exists and recent (< 7 days)
+        if (research?.insights_brief && research?.brief_generated_at) {
+            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            if (research.brief_generated_at > sevenDaysAgo) {
+                return res.json({
+                    prospect: prospect.company_name,
+                    brief: JSON.parse(research.insights_brief),
+                    cached: true,
+                    generated: new Date(research.brief_generated_at).toLocaleString()
+                });
+            }
+        }
+        
+        if (!research?.research_data) {
+            return res.status(404).json({ error: 'No research data found for this prospect' });
+        }
+        
+        // Generate new brief using AI
+        const researchData = typeof research.research_data === 'string' 
+            ? JSON.parse(research.research_data) 
+            : research.research_data;
+        
+        const prompt = `You are a business development expert. Generate a concise, professional one-page PROSPECT BRIEF based on this research data about ${prospect.company_name}.
+
+RESEARCH DATA:
+${JSON.stringify(researchData, null, 2)}
+
+Generate a JSON response with these EXACT fields:
+{
+  "executive_summary": "2-3 sentence overview of the company and why they're a good prospect",
+  "company_snapshot": {
+    "industry": "industry sector",
+    "size": "company size (estimate from research)",
+    "recent_activity": "key news/updates from research"
+  },
+  "key_decision_makers": ["Name1 - Title", "Name2 - Title"],
+  "primary_pain_points": ["pain point 1", "pain point 2", "pain point 3"],
+  "opportunity_fit": "1-2 sentences on why our solution fits their needs based on research",
+  "recommended_angle": "specific talking point or hook to use in outreach",
+  "engagement_level": "high/medium/low based on research quality and signals",
+  "next_steps": "suggested follow-up action"
+}
+
+Return ONLY valid JSON, no explanations.`;
+        
+        const response = await openrouter.chat.completions.create({
+            model: "meta-llama/llama-3.3-70b-instruct",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 800
+        });
+        
+        const briefText = response.choices[0]?.message?.content || '{}';
+        
+        // Extract JSON
+        let brief;
+        try {
+            const jsonMatch = briefText.match(/\{[\s\S]*\}/);
+            brief = JSON.parse(jsonMatch ? jsonMatch[0] : briefText);
+        } catch (e) {
+            brief = { error: 'Failed to parse brief', raw: briefText };
+        }
+        
+        // Cache the brief
+        if (research?.id) {
+            await db.run(
+                `UPDATE research_queue SET insights_brief = ?, brief_generated_at = ? WHERE id = ?`,
+                [JSON.stringify(brief), Date.now(), research.id]
+            );
+        }
+        
+        res.json({
+            prospect: prospect.company_name,
+            contact: prospect.contact_name,
+            email: prospect.contact_email,
+            website: prospect.website_url,
+            brief: brief,
+            generated: new Date().toLocaleString(),
+            cached: false
+        });
+    } catch (error) {
+        console.error("Insights Generation Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/prospects/bulk-insights - Generate briefs for multiple prospects
+app.post('/api/prospects/bulk-insights', async (req, res) => {
+    try {
+        const { lead_ids } = req.body;
+        
+        if (!Array.isArray(lead_ids)) {
+            return res.status(400).json({ error: 'lead_ids must be an array' });
+        }
+        
+        let generated = 0;
+        const results = [];
+        
+        for (const leadId of lead_ids) {
+            try {
+                const prospect = await db.get(
+                    `SELECT company_name FROM prospect_queue WHERE id = ?`,
+                    [leadId]
+                );
+                
+                if (prospect) {
+                    results.push({
+                        lead_id: leadId,
+                        company: prospect.company_name,
+                        status: 'processing'
+                    });
+                    generated++;
+                }
+            } catch (e) {
+                results.push({
+                    lead_id: leadId,
+                    status: 'error',
+                    error: e.message
+                });
+            }
+        }
+        
+        res.json({
+            total_requested: lead_ids.length,
+            generated: generated,
+            message: `Queued ${generated} briefs for generation`,
+            results: results
+        });
+    } catch (error) {
+        console.error("Bulk Insights Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
