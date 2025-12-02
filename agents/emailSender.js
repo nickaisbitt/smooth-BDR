@@ -153,23 +153,36 @@ async function processPendingEmails() {
         logger.error(`Failed to send email to ${email.to_email}`, { error: error.message });
         heartbeat.incrementErrors();
         
-        const attempts = await db.get('SELECT attempts FROM email_queue WHERE id = ?', [email.id]);
-        const currentAttempts = (attempts?.attempts || 0) + 1;
+        // CRITICAL: Hostinger rate limiting detected - skip incrementing attempts
+        // These will naturally retry on next cycle with exponential backoff
+        const isRateLimited = error.message?.includes('451') || error.message?.includes('Ratelimit');
+        
+        if (isRateLimited) {
+          // Rate limited: just log and move on, don't mark as failed
+          await db.run(
+            'UPDATE email_queue SET last_error = ? WHERE id = ?',
+            [`Rate limited: ${error.message}`, email.id]
+          );
+          logger.warn(`Rate limited for ${email.to_email}, will retry next cycle`);
+          continue;  // Skip to next email without incrementing attempts
+        }
+        
+        // OTHER ERRORS: Retry up to 3 times, then mark failed
+        const currentAttempts = (email.attempts || 0) + 1;
         const maxAttempts = 3;
         
-        // Auto-retry up to 3 times, then mark failed
         if (currentAttempts < maxAttempts) {
           await db.run(
-            'UPDATE email_queue SET attempts = ?, last_error = ?, retry_at = ? WHERE id = ?',
-            [currentAttempts, error.message, Date.now() + (60000 * currentAttempts), email.id]
+            'UPDATE email_queue SET attempts = ?, last_error = ? WHERE id = ?',
+            [currentAttempts, error.message, email.id]
           );
-          logger.info(`Scheduled retry ${currentAttempts}/${maxAttempts} for ${email.to_email}`);
+          logger.info(`Retry attempt ${currentAttempts}/${maxAttempts} for ${email.to_email}`);
         } else {
           await db.run(
             'UPDATE email_queue SET status = ?, attempts = ?, last_error = ? WHERE id = ?',
             ['failed', currentAttempts, error.message, email.id]
           );
-          logger.warn(`Max retries reached for ${email.to_email}`);
+          logger.warn(`Max retries reached (${currentAttempts}) for ${email.to_email}`);
         }
       }
       
