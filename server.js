@@ -1756,6 +1756,141 @@ app.get('/api/email/duplicate-prevention-stats', async (req, res) => {
     }
 });
 
+// GET /api/prospects/reengagement-opportunities - Find stale prospects needing follow-ups
+app.get('/api/prospects/reengagement-opportunities', async (req, res) => {
+    try {
+        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        
+        // Find prospects who:
+        // 1. Had an email sent 7+ days ago
+        // 2. Have no replies yet
+        // 3. No follow-up already queued
+        const stalePros = await db.all(`
+            SELECT DISTINCT
+                eq.id as email_id,
+                eq.lead_name,
+                eq.to_email,
+                eq.subject as original_subject,
+                eq.sent_at,
+                (? - eq.sent_at) / (1000 * 60 * 60 * 24) as days_since_sent
+            FROM email_queue eq
+            WHERE eq.status = 'sent' 
+                AND eq.sent_at < ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM inbox_messages im 
+                    WHERE im.from_email = eq.to_email 
+                    AND im.received_at > eq.sent_at
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM email_queue eq2
+                    WHERE eq2.to_email = eq.to_email 
+                    AND eq2.status IN ('pending', 'pending_approval', 'sent')
+                    AND eq2.id != eq.id
+                    AND eq2.created_at > eq.created_at
+                )
+            ORDER BY eq.sent_at ASC
+            LIMIT 50
+        `, [Date.now(), sevenDaysAgo]);
+        
+        // Count by engagement stage
+        const staleCount = stalePros.length;
+        const readyForFollowup = stalePros.filter(p => p.days_since_sent >= 7 && p.days_since_sent < 14).length;
+        const veryStale = stalePros.filter(p => p.days_since_sent >= 14).length;
+        
+        res.json({
+            reengagementMetrics: {
+                stale_prospects_found: staleCount,
+                ready_for_followup_7to14days: readyForFollowup,
+                very_stale_14plus_days: veryStale,
+                estimated_conversion_uplift: `${Math.round(staleCount * 0.15 * 100) / 100} additional replies expected`,
+                sample_prospects: stalePros.slice(0, 5).map(p => ({
+                    contact: p.lead_name,
+                    email: p.to_email,
+                    days_silent: Math.round(p.days_since_sent),
+                    original_subject: p.original_subject?.substring(0, 40)
+                }))
+            }
+        });
+    } catch (error) {
+        console.error("Re-engagement Opportunities Error:", error);
+        res.json({ reengagementMetrics: { stale_prospects_found: 0, ready_for_followup_7to14days: 0, very_stale_14plus_days: 0 } });
+    }
+});
+
+// POST /api/prospects/queue-followups - Auto-queue follow-ups for stale prospects
+app.post('/api/prospects/queue-followups', async (req, res) => {
+    try {
+        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        
+        // Find stale prospects again
+        const stalePros = await db.all(`
+            SELECT DISTINCT
+                eq.id as email_id,
+                eq.lead_name,
+                eq.to_email,
+                eq.subject as original_subject,
+                eq.research_quality
+            FROM email_queue eq
+            WHERE eq.status = 'sent' 
+                AND eq.sent_at < ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM inbox_messages im 
+                    WHERE im.from_email = eq.to_email 
+                    AND im.received_at > eq.sent_at
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM email_queue eq2
+                    WHERE eq2.to_email = eq.to_email 
+                    AND eq2.status IN ('pending', 'pending_approval')
+                    AND eq2.id != eq.id
+                    AND eq2.created_at > eq.created_at
+                )
+            LIMIT 25
+        `, [sevenDaysAgo]);
+        
+        let queued = 0;
+        
+        for (const prospect of stalePros) {
+            try {
+                // Generate lightweight follow-up email subject
+                const followupSubject = `Following up: ${prospect.original_subject?.substring(0, 20)}`;
+                const followupBody = `Hi ${prospect.lead_name.split(' ')[0]},\n\nJust checking in on my previous message. Still interested in exploring this opportunity?\n\nLooking forward to hearing from you.\n\nBest regards,\nSmooth AI`;
+                
+                // Queue as a follow-up email
+                await db.run(`
+                    INSERT INTO email_queue (
+                        lead_id, lead_name, to_email, subject, body, 
+                        scheduled_for, status, created_at, research_quality, 
+                        approval_status, approval_reason
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, 'needs_review', 'Auto follow-up after 7 days no reply')
+                `, [
+                    `followup_${prospect.email_id}`,
+                    prospect.lead_name,
+                    prospect.to_email,
+                    followupSubject,
+                    followupBody,
+                    Date.now() + (Math.random() * 60 * 60 * 1000), // Stagger send times
+                    Date.now(),
+                    prospect.research_quality || 8
+                ]);
+                
+                queued++;
+            } catch (e) {
+                console.error(`Failed to queue follow-up for ${prospect.lead_name}:`, e.message);
+            }
+        }
+        
+        res.json({
+            followupsQueued: queued,
+            message: `Queued ${queued} follow-up emails for stale prospects`,
+            nextAction: 'Follow-ups will be reviewed and sent by Mercury agent'
+        });
+    } catch (error) {
+        console.error("Queue Follow-ups Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
