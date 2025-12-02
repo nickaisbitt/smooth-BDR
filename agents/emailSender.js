@@ -11,6 +11,12 @@ let db = null;
 let heartbeat = null;
 let isRunning = false;
 
+// EMAIL VALIDATION - Prevent sending to invalid addresses
+function validateEmailAddress(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email) && email.length <= 254;
+}
+
 async function loadSmtpConfig() {
   const settings = await db.get('SELECT * FROM imap_settings WHERE id = 1');
   if (!settings || !settings.host) return null;
@@ -122,6 +128,17 @@ async function processPendingEmails() {
       if (!isRunning) break;
       
       heartbeat.setCurrentItem({ id: email.id, to: email.to_email });
+      
+      // VALIDATION: Check email format before sending
+      if (!validateEmailAddress(email.to_email)) {
+        logger.warn(`🚫 Invalid email format - skipping: ${email.to_email}`);
+        await db.run(
+          `UPDATE email_queue SET status = 'failed', approval_status = 'rejected', approval_reason = 'Invalid email format' WHERE id = ?`,
+          [email.id]
+        );
+        heartbeat.incrementErrors();
+        continue;
+      }
       
       try {
         await sendEmail(email, smtpConfig);

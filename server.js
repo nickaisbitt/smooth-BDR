@@ -1693,6 +1693,37 @@ app.get('/api/research/cache-stats', async (req, res) => {
     }
 });
 
+// GET /api/email/validation-stats - Email validation metrics
+app.get('/api/email/validation-stats', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as total_emails,
+                SUM(CASE WHEN approval_reason LIKE '%Invalid email%' THEN 1 ELSE 0 END) as invalid_emails_blocked,
+                SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as valid_emails_sent
+            FROM email_queue
+            WHERE created_at > ?
+        `, [Date.now() - (24 * 60 * 60 * 1000)]); // Last 24 hours
+        
+        const validationRate = stats?.total_emails > 0 
+            ? Math.round(((stats.total_emails - (stats?.invalid_emails_blocked || 0)) / stats.total_emails) * 100)
+            : 100;
+        
+        res.json({
+            validationMetrics: {
+                total_emails_processed: stats?.total_emails || 0,
+                invalid_emails_blocked: stats?.invalid_emails_blocked || 0,
+                valid_emails_sent: stats?.valid_emails_sent || 0,
+                validation_success_rate: `${validationRate}%`,
+                waste_prevented_emails: stats?.invalid_emails_blocked || 0
+            }
+        });
+    } catch (error) {
+        console.error("Validation Stats Error:", error);
+        res.json({ validationMetrics: { total_emails_processed: 0, invalid_emails_blocked: 0, validation_success_rate: '100%' } });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
