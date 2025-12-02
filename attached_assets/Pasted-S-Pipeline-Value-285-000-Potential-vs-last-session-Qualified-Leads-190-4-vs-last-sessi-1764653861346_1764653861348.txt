@@ -1,0 +1,697 @@
+S
+
+
+
+
+
+
+
+
+
+
+
+
+Pipeline Value
+$285,000
+Potential
+vs last session
+Qualified Leads
+190
++4
+vs last session
+Est. Cost
+$8.98
+936 Ops
+vs last session
+A/B Test
+0 vs 0
+A vs B Wins
+vs last session
+📊 Real-time Pipeline Metrics
+✉️ Emails Sent
+
+162
+
+0 this hour
+
+⏳ Pending Send
+
+0
+
+In queue
+
+🔍 Awaiting Review
+
+0
+
+Under review
+
+❌ Failed
+
+2
+
+Retry queue
+
+⭐ Avg Quality
+
+8.0/10
+
+✅ Approved
+
+112
+
+Passed review
+
+📋 Queue Depth
+
+Research: 136
+Prospects: 135
+Drafts: 119
+
+Pipeline Health:
+OPTIMAL
+- All systems operational, sustainable throughput maintained
+
+NEURAL_ENGINE :: ONLINE
+v2.5.0
+00:37:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:37:26
+⚠️ COO Alert: 2 stale agents detected
+00:37:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:37:11
+⚠️ COO Alert: 2 stale agents detected
+00:36:56
+⚠️ COO Alert: 2 stale agents detected
+00:36:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:36:41
+⚠️ COO Alert: 2 stale agents detected
+00:36:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:36:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:36:26
+⚠️ COO Alert: 2 stale agents detected
+00:36:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:36:11
+⚠️ COO Alert: 2 stale agents detected
+00:35:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:35:56
+⚠️ COO Alert: 2 stale agents detected
+00:35:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:35:41
+⚠️ COO Alert: 2 stale agents detected
+00:35:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:35:26
+⚠️ COO Alert: 2 stale agents detected
+00:35:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:35:11
+⚠️ COO Alert: 2 stale agents detected
+00:34:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:34:56
+⚠️ COO Alert: 2 stale agents detected
+00:34:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:34:41
+⚠️ COO Alert: 2 stale agents detected
+00:34:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:34:26
+⚠️ COO Alert: 2 stale agents detected
+00:34:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:34:11
+⚠️ COO Alert: 2 stale agents detected
+00:33:56
+⚠️ COO Alert: 2 stale agents detected
+00:33:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:33:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:33:41
+⚠️ COO Alert: 2 stale agents detected
+00:33:26
+⚠️ COO Alert: 2 stale agents detected
+00:33:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:33:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:33:11
+⚠️ COO Alert: 2 stale agents detected
+00:32:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:32:56
+⚠️ COO Alert: 2 stale agents detected
+00:32:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:32:41
+⚠️ COO Alert: 2 stale agents detected
+00:32:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:32:26
+⚠️ COO Alert: 2 stale agents detected
+00:32:11
+⚠️ COO Alert: 2 stale agents detected
+00:32:11
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:31:56
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:31:56
+⚠️ COO Alert: 2 stale agents detected
+00:31:41
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:31:41
+⚠️ COO Alert: 2 stale agents detected
+00:31:26
+✅ COO Health Monitor: 7 healthy, 2 stale | Queues: prospect=0, research=0, draft=0, approval=0, send=0
+00:31:26
+⚠️ COO Alert: 2 stale agents detected
+⚡ GROWTH ENGINE RUNNING
+Agent Activity
+7/9 Active
+🤖
+COO
+218 done
+8:53:26 PM
+🤖
+COO
+16 done
+7:51:34 PM
+✍️
+Scribe - Email Generator
+Waiting...
+12:37:23 AM
+🛡️
+Guardian - Email Reviewer
+Waiting...
+12:37:24 AM
+📧
+Mercury - Email Sender
+Waiting...
+12:37:24 AM
+👁️
+Sentinel - Inbox
+Waiting...
+12:37:25 AM
+🔍
+Scout - Prospect Finder
+Waiting...
+12:37:28 AM
+📚
+Scholar - Research
+Waiting...
+12:37:23 AM
+🔄
+Persistence - Research Retry
+Waiting...
+12:37:23 AM
+Campaign Funnel
+EXECUTING
+Targeting Now
+
+Wholesale (Midwest)
+
+"Ineffective supply chain management"
+
+Up Next
+
+Legal (South)
+
+law firms in Texas with 10+ attorneys
+
+HVAC (Northeast)
+
+heating and cooling system installers in Massachusetts
+
+
++
+Inject Manual Strategy
+1 sectors conquered
+
+Prospect Pipeline
+676
+Search pipeline...
+
+All Status
+Company	Fit Score	Research Quality	Key Contact	Source	Actions
+N
+Nicholas & Company
+http://www.nicholasandcompany.com
+Nicholas & Company is a food wholesaler and distributor of specialty and gourmet foods to restaurants, cafes, and retailers in the Midwest, with a focus on artisanal and locally sourced products.
+
+NEW
+-	-	Wholesale (Midwest)	
+Analyze
+R
+Reinhart Foodservice
+http://www.reinhartfoodservice.com
+Reinhart Foodservice is a food wholesaler and distributor of a wide range of products, including meat, produce, dairy, and dry goods to restaurants, schools, and other foodservice operators in Illinois and the Midwest.
+
+NEW
+-	-	Wholesale (Midwest)	
+Analyze
+S
+Sysco Chicago
+http://www.syscochicago.com
+Sysco Chicago is a food wholesaler and distributor of a wide range of products, including meat, produce, dairy, and dry goods to restaurants, schools, and other foodservice operators in the Chicago area.
+
+NEW
+-	-	Wholesale (Midwest)	
+Analyze
+P
+Prairie Farms Dairy
+http://www.prairiefarms.com
+Prairie Farms Dairy is a dairy wholesaler and distributor of milk, cheese, and other dairy products to restaurants, schools, and retailers in the Midwest, with a focus on locally sourced and sustainable products.
+
+NEW
+-	-	Wholesale (Midwest)	
+Analyze
+S
+Smile Designs of NY
+https://www.smiledesignsny.com
+Smile Designs of NY is a dental practice with multiple locations in New York, offering cosmetic and general dentistry services.
+
+QUALIFIED
+85
+Voice + SMS Booking Agent
+n8n
++1
+6/10 ⚠️	
+Dr. Anthony M. Carrao
+
+Founder & CEO
+
+Dentistry (Northeast)
+🔥 news
+-
+C
+Carolina Metal Works
+https://carolinametalworks.com
+Carolina Metal Works is a full-service metal fabrication shop specializing in custom metal fabrication, CNC machining, and welding for industrial and commercial clients.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+S
+Southeastern Fabrication
+https://southeasternfab.com
+Southeastern Fabrication is a custom metal fabrication shop offering precision metal fabrication, machining, and assembly services for various industries, including aerospace and defense.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+C
+Coastal Metal Fabrication
+https://coastalmetalfab.com
+Coastal Metal Fabrication is a custom metal fabrication shop specializing in metal fabrication, CNC machining, and welding for clients in the marine, industrial, and commercial industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+H
+Hunter Engineering
+https://huntereng.com
+Hunter Engineering is a custom metal fabrication shop providing metal fabrication, machining, and welding services to clients in the industrial, commercial, and residential sectors, with a focus on precision engineering and design.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+M
+Metal Works Inc.
+https://metalworksinc.com
+Metal Works Inc. is a custom metal fabrication shop providing precision cutting, forming, and welding services for various industries.
+
+QUALIFIED
+80
+ERP system
+Manufacturing execution system
++1
+8/10 ✓	
+Dale Wilken
+
+Owner
+
+Manufacturing (Southeast)
+🔥 news
+-
+A
+Atlantic Metal Fabrication
+https://atlanticmetal.net
+Atlantic Metal Fabrication is a full-service custom metal fabrication shop specializing in stainless steel, aluminum, and carbon steel fabrication.
+
+QUALIFIED
+85
+n8n for workflow automation
+LangChain for AI-powered document processing
++1
+6/10 ⚠️	
+David G. McLaughlin Jr.
+
+Founder/President
+
+Manufacturing (Southeast)
+🔥 news
+-
+S
+Southeastern Metal Fabricators
+https://southeasternmetal.com
+Southeastern Metal Fabricators offers custom metal fabrication, machining, and welding services for clients in the southeastern United States.
+
+QUALIFIED
+85
+n8n for workflow automation
+LangChain for document processing
++1
+6/10 ⚠️	
+David H. Ginn
+
+President
+
+Manufacturing (Southeast)
+🔥 news
+-
+I
+Industrial Metal Fabricators
+https://industrialmetalfab.com
+Industrial Metal Fabricators provides custom metal fabrication, welding, and assembly services for industries such as manufacturing, construction, and transportation.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+P
+Precision Metal Fab
+https://precisionmetalfab.com
+Precision Metal Fab is a custom metal fabrication shop offering precision cutting, forming, and welding services for clients across North Carolina and surrounding states.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+C
+Carolina Metal Fabricators
+https://www.carolinametal.com
+Carolina Metal Fabricators is a custom metal fabrication shop providing services such as welding, machining, and assembly to various industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+S
+Southern Fabricators
+https://www.southernfabricators.com
+Southern Fabricators is a metal fabrication company offering custom fabrication, welding, and machining services to clients in North Carolina and beyond.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+P
+Piedmont Metal Fabricators
+https://www.piedmontmetal.com
+Piedmont Metal Fabricators provides custom metal fabrication services, including laser cutting, punching, and forming, to a range of industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+C
+Coastal Metal Fabricators
+https://www.coastalmetal.net
+Coastal Metal Fabricators is a custom metal fabrication shop specializing in stainless steel, aluminum, and carbon steel fabrication for industries such as food processing and pharmaceuticals.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+T
+Triad Metal Fabricators
+https://www.triadmetal.com
+Triad Metal Fabricators offers custom metal fabrication services, including welding, machining, and assembly, to clients in the southeastern United States.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+E
+Eastern Metal Works
+https://www.easternmetalworks.com
+Eastern Metal Works is a custom metal fabrication shop providing services such as metal stamping, laser cutting, and CNC machining to various industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+P
+Precision Metal Fab
+https://www.precisionmetalfab.com
+Precision Metal Fab is a custom metal fabrication company offering services such as welding, machining, and assembly to clients in North Carolina and surrounding areas.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+C
+Carolina Metal Fabrication
+https://carolinametal.com
+Carolina Metal Fabrication is a full-service metal fabrication shop providing custom fabrication, machining, and welding services to various industries.
+
+QUALIFIED
+85
+n8n
+Zapier
++1
+8/10 ✓	
+Brent Wood
+
+CEO
+
+Manufacturing (Southeast)
+🔥 news
+-
+M
+Metal Works Inc.
+https://metalworksinc.net
+Metal Works Inc. offers custom metal fabrication, precision machining, and assembly services for clients in the aerospace, automotive, and energy sectors.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+P
+Piedmont Metal Fabricators
+https://piedmontmetal.com
+Piedmont Metal Fabricators provides custom metal fabrication, welding, and machining services to customers in the construction, manufacturing, and transportation industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+S
+Southern Fabricators
+https://southernfabricators.com
+Southern Fabricators is a custom metal fabrication shop specializing in stainless steel, aluminum, and carbon steel fabrication for the food, pharmaceutical, and chemical industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+T
+Tar Heel Fabrication
+https://tarheelfabrication.com
+Tar Heel Fabrication offers custom metal fabrication, machining, and welding services for clients in the aerospace, defense, and energy sectors.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+T
+Triangle Metal Fabrication
+https://trianglemetal.com
+Triangle Metal Fabrication provides custom metal fabrication, precision machining, and assembly services for customers in the medical, automotive, and aerospace industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+W
+Watson Fabrication
+https://watsonfab.com
+Watson Fabrication is a custom metal fabrication shop offering welding, machining, and fabrication services for clients in the construction, manufacturing, and transportation industries.
+
+NEW
+-	-	Manufacturing (Southeast)	
+Analyze
+D
+DHL Supply Chain
+https://www.dhl.com/en/logistics/supply_chain.html
+DHL Supply Chain is a third-party logistics provider with a presence in California, offering customized supply chain solutions for businesses.
+
+NEW
+-	-	Logistics (West Coast)	
+Analyze
+K
+Kenco Logistics
+https://www.kencologistics.com
+Kenco Logistics is a third-party logistics provider with operations in California, offering services including warehousing, transportation, and freight management.
+
+NEW
+-	-	Logistics (West Coast)	
+Analyze
+M
+Matson Logistics
+https://www.matsonlogistics.com
+Matson Logistics is a third-party logistics provider with operations in California, offering services including warehousing, transportation, and supply chain management.
+
+NEW
+-	-	Logistics (West Coast)	
+Analyze
+P
+PSS Distribution Services
+https://www.pssdistribution.com
+PSS Distribution Services is a third-party logistics provider with operations in California, offering services including warehousing, transportation, and distribution.
+
+NEW
+-	-	Logistics (West Coast)	
+Analyze
+J
+J.C. Higgins Corp.
+http://jchigginscorp.com
+J.C. Higgins Corp. is a mechanical contracting company providing HVAC, plumbing, and piping services to commercial, industrial, and residential clients in Massachusetts.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+F
+F.W. Webb Company
+https://www.fwwebb.com
+F.W. Webb Company is a wholesale distributor and contractor providing HVAC, plumbing, and piping products and services to commercial and industrial clients in Massachusetts.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+B
+Boston Mechanical Services
+http://bostonmechanicalservices.com
+Boston Mechanical Services is a full-service HVAC contractor providing installation, maintenance, and repair services to commercial and industrial clients in the Boston area.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+E
+Environmental Engineering Inc.
+http://eei-ma.com
+Environmental Engineering Inc. is a mechanical contracting company providing HVAC, plumbing, and piping services to commercial, industrial, and institutional clients in Massachusetts.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+C
+Commonwealth Heating and Cooling
+http://commonwealthhvac.com
+Commonwealth Heating and Cooling is a full-service HVAC contractor providing installation, maintenance, and repair services to commercial and residential clients in Massachusetts.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+N
+New England Mechanical Services
+http://nemsvac.com
+New England Mechanical Services is a full-service HVAC contractor providing installation, maintenance, and repair services to commercial and residential clients in Massachusetts.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+C
+Coolidge Plumbing, Heating & Cooling
+https://coolidgeplumbing.com
+Coolidge Plumbing, Heating & Cooling is a family-owned HVAC contractor offering heating, cooling, and plumbing services to homes and businesses in the Boston area.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+N
+Needham Oil & Air
+https://needhamoilandair.com
+Needham Oil & Air is a Massachusetts-based HVAC contractor providing heating oil delivery, HVAC installation, and repair services to residential and commercial customers.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+B
+Boston Standard Plumbing & Heating
+https://bostonstandardplumbing.com
+Boston Standard Plumbing & Heating is a full-service HVAC contractor offering plumbing, heating, and cooling services to homes and businesses in the Boston area.
+
+NEW
+-	-	HVAC (Northeast)	
+Analyze
+C
+Clark Hill
+https://www.clarkhill.com
+Clark Hill is a law firm with over 650 attorneys, providing legal services to individuals, businesses, and organizations in areas such as corporate law, intellectual property, and litigation.
+
+NEW
+-	-	Legal (National)	
+Analyze
+L
+Landspan
+https://www.landspan.com
+Landspan is a trucking company based in Illinois with a fleet of over 200 trucks, offering dry van, refrigerated, and flatbed trucking services.
+
+NEW
+-	-	Logistics (Midwest)	
+Analyze
+K
+Koch Trucking
+https://www.kochcompanies.com
+Koch Trucking is a trucking company based in Illinois with a fleet of over 100 trucks, offering dry van, refrigerated, and dedicated trucking services.
+
+NEW
+-	-	Logistics (Midwest)	
+Analyze
+S
+Sysco North Texas
+http://www.sysconorthtexas.com
+Sysco North Texas is a leading wholesale food distributor providing high-quality products and services to restaurants, schools, and other foodservice operators in North Texas.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+L
+Labatt Food Service
+http://www.labattfood.com
+Labatt Food Service is a family-owned wholesale food distributor based in San Antonio, Texas, offering a broad range of products to the foodservice industry.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+F
+FreshPoint Dallas
+http://www.freshpointdallas.com
+FreshPoint Dallas is a wholesale produce distributor serving the Dallas-Fort Worth area with a wide variety of fresh fruits and vegetables.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+G
+Gordon Food Service
+http://www.gfs.com
+Gordon Food Service is a wholesale food distributor with operations in Texas, providing products and services to restaurants, schools, and other foodservice operators.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+A
+Amerifresh
+http://www.amerifresh.com
+Amerifresh is a wholesale produce distributor based in Houston, Texas, offering a range of fresh fruits and vegetables to the foodservice industry.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+R
+Redi-Cut Foods
+http://www.redicut.com
+Redi-Cut Foods is a wholesale food distributor specializing in pre-cut and pre-prepared produce, serving the foodservice industry in Texas and surrounding states.
+
+NEW
+-	-	Wholesale (South)	
+Analyze
+Previous
+Page 1 of 14
+Next
