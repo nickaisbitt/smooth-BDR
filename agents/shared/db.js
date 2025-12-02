@@ -728,7 +728,7 @@ export async function initAgentTables(db) {
   try {
     await db.run(`CREATE INDEX IF NOT EXISTS idx_research_company ON research_diagnostics(company_name)`);
     await db.run(`CREATE INDEX IF NOT EXISTS idx_research_reason ON research_diagnostics(failure_reason)`);
-  } catch (e) { /* indexes exist */
+  } catch (e) { /* indexes exist */ }
   
   console.log("✅ Agent tables initialized");
 }
