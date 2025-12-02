@@ -461,6 +461,25 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_meeting_scheduled ON prospect_meetings(scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_meeting_status ON prospect_meetings(meeting_status);
   
+  CREATE TABLE IF NOT EXISTS prospect_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prospect_1_id TEXT NOT NULL,
+    prospect_2_id TEXT NOT NULL,
+    relationship_type TEXT,
+    company_id TEXT,
+    relationship_quality INTEGER DEFAULT 0,
+    is_buying_committee_member INTEGER DEFAULT 0,
+    notes TEXT,
+    created_at INTEGER NOT NULL,
+    UNIQUE(prospect_1_id, prospect_2_id),
+    FOREIGN KEY (prospect_1_id) REFERENCES prospect_queue(id),
+    FOREIGN KEY (prospect_2_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_connection_prospect1 ON prospect_connections(prospect_1_id);
+  CREATE INDEX IF NOT EXISTS idx_connection_prospect2 ON prospect_connections(prospect_2_id);
+  CREATE INDEX IF NOT EXISTS idx_connection_company ON prospect_connections(company_id);
+  
   console.log("✅ Agent tables initialized");
 }
 

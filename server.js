@@ -5094,6 +5094,151 @@ app.get('/api/analytics/meeting-effectiveness', async (req, res) => {
     }
 });
 
+// POST /api/prospects/connections/map - Map relationship between two prospects
+app.post('/api/prospects/connections/map', async (req, res) => {
+    try {
+        const { prospect_1_id, prospect_2_id, relationship_type, company_id, is_buying_committee_member, notes } = req.body;
+        
+        if (!prospect_1_id || !prospect_2_id) {
+            return res.status(400).json({ error: 'prospect_1_id and prospect_2_id required' });
+        }
+        
+        await db.run(
+            `INSERT INTO prospect_connections (prospect_1_id, prospect_2_id, relationship_type, company_id, is_buying_committee_member, notes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [prospect_1_id, prospect_2_id, relationship_type || 'colleague', company_id, is_buying_committee_member ? 1 : 0, notes, Date.now()]
+        );
+        
+        res.json({ mapped: true, prospect_1: prospect_1_id, prospect_2: prospect_2_id });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/prospects/:leadId/network - Get all connections for a prospect
+app.get('/api/prospects/:leadId/network', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const connections = await db.all(`
+            SELECT 
+                CASE WHEN prospect_1_id = ? THEN prospect_2_id ELSE prospect_1_id END as connected_prospect_id,
+                pq.company_name,
+                pq.contact_name,
+                pq.contact_email,
+                pq.job_title,
+                relationship_type,
+                is_buying_committee_member,
+                relationship_quality
+            FROM prospect_connections pc
+            LEFT JOIN prospect_queue pq ON 
+                CASE WHEN prospect_1_id = ? THEN prospect_2_id ELSE prospect_1_id END = pq.id
+            WHERE prospect_1_id = ? OR prospect_2_id = ?
+        `, [leadId, leadId, leadId, leadId]);
+        
+        res.json({
+            prospectNetwork: {
+                total_connections: connections.length,
+                connections: connections.map(c => ({
+                    id: c.connected_prospect_id,
+                    name: c.contact_name,
+                    email: c.contact_email,
+                    company: c.company_name,
+                    title: c.job_title,
+                    relationship: c.relationship_type,
+                    buying_committee_member: c.is_buying_committee_member === 1,
+                    relationship_quality: c.relationship_quality
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ prospectNetwork: { total_connections: 0 } });
+    }
+});
+
+// GET /api/analytics/buying-committees - Find buying committees by company
+app.get('/api/analytics/buying-committees', async (req, res) => {
+    try {
+        const committees = await db.all(`
+            SELECT 
+                pq.company_name,
+                COUNT(DISTINCT CASE WHEN pc.is_buying_committee_member = 1 THEN pc.prospect_1_id ELSE NULL END) +
+                COUNT(DISTINCT CASE WHEN pc.is_buying_committee_member = 1 THEN pc.prospect_2_id ELSE NULL END) as committee_size,
+                COUNT(DISTINCT pq.id) as total_contacts,
+                GROUP_CONCAT(DISTINCT pq.job_title, ', ') as titles
+            FROM prospect_queue pq
+            LEFT JOIN prospect_connections pc ON pq.id = pc.prospect_1_id OR pq.id = pc.prospect_2_id
+            WHERE pc.is_buying_committee_member = 1
+            GROUP BY pq.company_name
+            ORDER BY committee_size DESC
+            LIMIT 50
+        `);
+        
+        res.json({
+            buyingCommittees: {
+                total_companies: committees.length,
+                committees: committees.map(c => ({
+                    company: c.company_name,
+                    committee_size: c.committee_size || 0,
+                    total_contacts: c.total_contacts || 0,
+                    key_roles: c.titles || 'Unknown'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ buyingCommittees: { total_companies: 0 } });
+    }
+});
+
+// GET /api/analytics/influence-map - Map influence relationships
+app.get('/api/analytics/influence-map', async (req, res) => {
+    try {
+        const influences = await db.all(`
+            SELECT 
+                pc.relationship_type,
+                COUNT(*) as relationship_count,
+                AVG(pc.relationship_quality) as avg_quality
+            FROM prospect_connections pc
+            GROUP BY pc.relationship_type
+            ORDER BY relationship_count DESC
+        `);
+        
+        res.json({
+            influenceMap: {
+                total_relationships: influences.reduce((sum, i) => sum + i.relationship_count, 0),
+                by_type: influences.map(i => ({
+                    type: i.relationship_type,
+                    count: i.relationship_count,
+                    avg_strength: Math.round(i.avg_quality || 0)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ influenceMap: {} });
+    }
+});
+
+// POST /api/prospects/connections/:connectionId/strength - Update relationship quality
+app.post('/api/prospects/connections/:connectionId/strength', async (req, res) => {
+    try {
+        const { connectionId } = req.params;
+        const { relationship_quality } = req.body;
+        
+        if (relationship_quality === undefined || relationship_quality < 0 || relationship_quality > 100) {
+            return res.status(400).json({ error: 'relationship_quality must be 0-100' });
+        }
+        
+        await db.run(
+            `UPDATE prospect_connections SET relationship_quality = ? WHERE id = ?`,
+            [relationship_quality, connectionId]
+        );
+        
+        res.json({ updated: true, strength: relationship_quality });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
