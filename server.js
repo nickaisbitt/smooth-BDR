@@ -6739,6 +6739,188 @@ app.get('/api/webhooks/stats', async (req, res) => {
     }
 });
 
+// GET /api/analytics/lead-sources - Analyze lead quality by source
+app.get('/api/analytics/lead-sources', async (req, res) => {
+    try {
+        const sources = await db.all(`
+            SELECT 
+                pq.lead_source,
+                COUNT(DISTINCT pq.id) as total_leads,
+                COUNT(DISTINCT CASE WHEN pq.workflow_stage != 'new' THEN pq.id END) as engaged,
+                COUNT(DISTINCT CASE WHEN pq.workflow_stage IN ('closed_won', 'deal_qualified') THEN pq.id END) as converted,
+                ROUND(AVG(COALESCE(pl.deal_value, 0)), 2) as avg_deal_value,
+                SUM(COALESCE(pl.deal_value, 0)) as total_value,
+                ROUND(100.0 * COUNT(DISTINCT CASE WHEN pq.workflow_stage != 'new' THEN pq.id END) / NULLIF(COUNT(DISTINCT pq.id), 0), 1) as engagement_rate,
+                ROUND(100.0 * COUNT(DISTINCT CASE WHEN pq.workflow_stage IN ('closed_won', 'deal_qualified') THEN pq.id END) / NULLIF(COUNT(DISTINCT pq.id), 0), 1) as conversion_rate
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline pl ON pq.id = pl.lead_id
+            GROUP BY pq.lead_source
+            ORDER BY total_value DESC
+        `);
+        
+        const bestSource = sources.length > 0 ? sources[0].lead_source : 'N/A';
+        
+        res.json({
+            leadSources: {
+                total_sources: sources.length,
+                best_performing: bestSource,
+                by_source: sources.map(s => ({
+                    source: s.lead_source || 'unknown',
+                    leads: s.total_leads,
+                    engaged: s.engaged,
+                    converted: s.converted,
+                    conversion_rate: s.conversion_rate,
+                    engagement_rate: s.engagement_rate,
+                    revenue: Math.round(s.total_value || 0),
+                    avg_deal: Math.round(s.avg_deal_value || 0)
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ leadSources: { total_sources: 0, by_source: [] } });
+    }
+});
+
+// GET /api/analytics/campaign-roi - Campaign return on investment
+app.get('/api/analytics/campaign-roi', async (req, res) => {
+    try {
+        const past30Days = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        const campaigns = await db.all(`
+            SELECT 
+                pq.campaign_name,
+                COUNT(DISTINCT pq.id) as prospects,
+                (SELECT COUNT(*) FROM email_sends WHERE campaign_name = pq.campaign_name AND created_at > ?) as emails_sent,
+                COUNT(DISTINCT CASE WHEN pq.workflow_stage IN ('closed_won', 'deal_qualified') THEN pq.id END) as deals_won,
+                SUM(COALESCE(pl.deal_value, 0)) as revenue,
+                ROUND(100.0 * COUNT(DISTINCT CASE WHEN pq.workflow_stage IN ('closed_won', 'deal_qualified') THEN pq.id END) / NULLIF(COUNT(DISTINCT pq.id), 0), 1) as conversion_rate
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline pl ON pq.id = pl.lead_id
+            WHERE pq.created_at > ? AND pq.campaign_name IS NOT NULL
+            GROUP BY pq.campaign_name
+            ORDER BY revenue DESC
+        `, [past30Days, past30Days]);
+        
+        const totalRevenue = campaigns.reduce((sum, c) => sum + (c.revenue || 0), 0);
+        
+        res.json({
+            campaignROI: {
+                period: 'last_30_days',
+                total_campaigns: campaigns.length,
+                total_revenue: Math.round(totalRevenue),
+                campaigns: campaigns.map(c => ({
+                    name: c.campaign_name,
+                    prospects_added: c.prospects,
+                    emails_sent: c.emails_sent || 0,
+                    deals_won: c.deals_won,
+                    revenue: Math.round(c.revenue || 0),
+                    conversion_rate: c.conversion_rate,
+                    roi_indicator: c.revenue >= 10000 ? '🟢 Strong ROI' : c.revenue >= 5000 ? '🟡 Good ROI' : '🔴 Needs improvement'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ campaignROI: { campaigns: [] } });
+    }
+});
+
+// GET /api/analytics/source-quality - Source quality scoring
+app.get('/api/analytics/source-quality', async (req, res) => {
+    try {
+        const sources = await db.all(`
+            SELECT 
+                pq.lead_source,
+                COUNT(DISTINCT pq.id) as total,
+                AVG(COALESCE(pl.deal_probability, 0)) as avg_probability,
+                AVG(COALESCE(pq.data_quality_score, 0)) as avg_quality,
+                COUNT(DISTINCT CASE WHEN COALESCE(pq.data_quality_score, 0) >= 70 THEN pq.id END) as high_quality_leads,
+                ROUND(100.0 * AVG(COALESCE(pq.data_quality_score, 0)), 1) as quality_score
+            FROM prospect_queue pq
+            LEFT JOIN deal_pipeline pl ON pq.id = pl.lead_id
+            WHERE pq.lead_source IS NOT NULL
+            GROUP BY pq.lead_source
+            ORDER BY quality_score DESC
+        `);
+        
+        res.json({
+            sourceQuality: {
+                quality_metrics: sources.map(s => ({
+                    source: s.lead_source,
+                    leads: s.total,
+                    quality_score: Math.round(s.quality_score || 0),
+                    high_quality: s.high_quality_leads,
+                    avg_probability: Math.round(s.avg_probability || 0),
+                    grade: s.quality_score >= 80 ? 'A+' : s.quality_score >= 70 ? 'A' : s.quality_score >= 60 ? 'B' : 'C'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ sourceQuality: { quality_metrics: [] } });
+    }
+});
+
+// GET /api/analytics/source-trends - Source performance trends over time
+app.get('/api/analytics/source-trends', async (req, res) => {
+    try {
+        const weeks = [];
+        for (let i = 4; i >= 0; i--) {
+            const weekStart = new Date(Date.now() - (i * 7 * 24 * 60 * 60 * 1000));
+            const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+            
+            const week = await db.all(`
+                SELECT 
+                    pq.lead_source,
+                    COUNT(*) as leads
+                FROM prospect_queue pq
+                WHERE pq.created_at >= ? AND pq.created_at < ?
+                GROUP BY pq.lead_source
+                ORDER BY leads DESC
+            `, [weekStart.getTime(), weekEnd.getTime()]);
+            
+            weeks.push({
+                week: `Week of ${weekStart.toISOString().split('T')[0]}`,
+                by_source: week.map(w => ({
+                    source: w.lead_source || 'unknown',
+                    leads: w.leads
+                }))
+            });
+        }
+        
+        res.json({
+            sourceTrends: {
+                last_5_weeks: weeks
+            }
+        });
+    } catch (error) {
+        res.json({ sourceTrends: { last_5_weeks: [] } });
+    }
+});
+
+// POST /api/analytics/track-campaign - Track campaign metrics
+app.post('/api/analytics/track-campaign', async (req, res) => {
+    try {
+        const { campaign_name, source, leads_added, leads_responded, leads_converted, revenue_generated } = req.body;
+        
+        await db.run(`
+            INSERT INTO campaign_performance (campaign_name, source, leads_added, leads_responded, leads_converted, revenue_generated, period_date, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            campaign_name,
+            source,
+            leads_added || 0,
+            leads_responded || 0,
+            leads_converted || 0,
+            revenue_generated || 0,
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+            Date.now()
+        ]);
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {

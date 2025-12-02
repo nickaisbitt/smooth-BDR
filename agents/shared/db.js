@@ -617,6 +617,22 @@ export async function initAgentTables(db) {
   
   CREATE INDEX IF NOT EXISTS idx_webhook_active ON webhooks(is_active);
   
+  CREATE TABLE IF NOT EXISTS campaign_performance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_name TEXT,
+    source TEXT,
+    leads_added INTEGER DEFAULT 0,
+    leads_responded INTEGER DEFAULT 0,
+    leads_converted INTEGER DEFAULT 0,
+    revenue_generated REAL DEFAULT 0,
+    avg_engagement_score INTEGER DEFAULT 0,
+    period_date INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_campaign_source ON campaign_performance(source);
+  CREATE INDEX IF NOT EXISTS idx_campaign_period ON campaign_performance(period_date);
+  
   console.log("✅ Agent tables initialized");
 }
 
