@@ -480,6 +480,40 @@ export async function initAgentTables(db) {
   CREATE INDEX IF NOT EXISTS idx_connection_prospect2 ON prospect_connections(prospect_2_id);
   CREATE INDEX IF NOT EXISTS idx_connection_company ON prospect_connections(company_id);
   
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN opportunity_score INTEGER DEFAULT 0`);
+  } catch (e) { /* column exists */ }
+  try {
+    await db.run(`ALTER TABLE prospect_queue ADD COLUMN score_last_updated INTEGER`);
+  } catch (e) { /* column exists */ }
+  
+  CREATE TABLE IF NOT EXISTS opportunity_scoring_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id TEXT NOT NULL,
+    old_score INTEGER,
+    new_score INTEGER,
+    score_factors TEXT,
+    calculated_at INTEGER NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_score_history_lead ON opportunity_scoring_history(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_score_history_date ON opportunity_scoring_history(calculated_at);
+  
+  CREATE TABLE IF NOT EXISTS stage_transitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id TEXT NOT NULL,
+    from_stage TEXT,
+    to_stage TEXT,
+    transition_at INTEGER NOT NULL,
+    duration_days INTEGER,
+    FOREIGN KEY (lead_id) REFERENCES prospect_queue(id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_transition_lead ON stage_transitions(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_transition_from ON stage_transitions(from_stage);
+  CREATE INDEX IF NOT EXISTS idx_transition_to ON stage_transitions(to_stage);
+  
   console.log("✅ Agent tables initialized");
 }
 

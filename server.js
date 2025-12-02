@@ -5239,6 +5239,403 @@ app.post('/api/prospects/connections/:connectionId/strength', async (req, res) =
     }
 });
 
+// POST /api/prospects/recalculate-opportunities - Recalculate all opportunity scores
+app.post('/api/prospects/recalculate-opportunities', async (req, res) => {
+    try {
+        const prospects = await db.all(`SELECT id, engagement_score, workflow_stage FROM prospect_queue LIMIT 1000`);
+        
+        let updated = 0;
+        for (const prospect of prospects) {
+            // Fetch related data for scoring
+            const engagement = await db.get(`SELECT engagement_score FROM lead_scores WHERE lead_id = ?`, [prospect.id]);
+            const meetings = await db.get(`
+                SELECT COUNT(*) as total, 
+                       SUM(CASE WHEN meeting_outcome IN ('interested', 'demo_needed') THEN 1 ELSE 0 END) as positive
+                FROM prospect_meetings WHERE lead_id = ?
+            `, [prospect.id]);
+            const enrichment = await db.get(`
+                SELECT data_quality_score FROM prospect_queue WHERE id = ?
+            `, [prospect.id]);
+            const deal = await db.get(`SELECT deal_probability FROM deal_pipeline WHERE lead_id = ?`, [prospect.id]);
+            
+            // Calculate composite opportunity score (0-100)
+            let score = 0;
+            const factors = {};
+            
+            // Engagement factor (40 points max)
+            if (engagement?.engagement_score) {
+                const engagementFactor = Math.min(40, Math.round((engagement.engagement_score / 100) * 40));
+                score += engagementFactor;
+                factors.engagement = engagementFactor;
+            }
+            
+            // Meeting success factor (30 points max)
+            if (meetings?.total > 0) {
+                const successRate = meetings.positive / meetings.total;
+                const meetingFactor = Math.round(successRate * 30);
+                score += meetingFactor;
+                factors.meetings = meetingFactor;
+            }
+            
+            // Data quality factor (15 points max)
+            if (enrichment?.data_quality_score) {
+                const qualityFactor = Math.min(15, Math.round((enrichment.data_quality_score / 100) * 15));
+                score += qualityFactor;
+                factors.data_quality = qualityFactor;
+            }
+            
+            // Deal stage factor (15 points max)
+            if (deal?.deal_probability) {
+                const dealFactor = Math.min(15, Math.round((deal.deal_probability / 100) * 15));
+                score += dealFactor;
+                factors.deal_probability = dealFactor;
+            }
+            
+            score = Math.min(100, Math.max(0, score));
+            
+            const oldScore = prospect.opportunity_score || 0;
+            await db.run(
+                `UPDATE prospect_queue SET opportunity_score = ?, score_last_updated = ? WHERE id = ?`,
+                [score, Date.now(), prospect.id]
+            );
+            
+            // Log score change
+            if (oldScore !== score) {
+                await db.run(
+                    `INSERT INTO opportunity_scoring_history (lead_id, old_score, new_score, score_factors, calculated_at)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [prospect.id, oldScore, score, JSON.stringify(factors), Date.now()]
+                );
+            }
+            updated++;
+        }
+        
+        res.json({ recalculated: updated, message: `Recalculated scores for ${updated} prospects` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/top-opportunities - Top prospects ranked by opportunity score
+app.get('/api/analytics/top-opportunities', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        
+        const opportunities = await db.all(`
+            SELECT 
+                id,
+                company_name,
+                contact_name,
+                contact_email,
+                workflow_stage,
+                opportunity_score,
+                performance_tier,
+                (SELECT COUNT(*) FROM prospect_meetings WHERE lead_id = prospect_queue.id) as meetings_count,
+                (SELECT COUNT(*) FROM email_sends WHERE lead_id = prospect_queue.id) as emails_sent
+            FROM prospect_queue
+            WHERE opportunity_score > 0
+            ORDER BY opportunity_score DESC
+            LIMIT ?
+        `, [limit]);
+        
+        res.json({
+            topOpportunities: {
+                total: opportunities.length,
+                opportunities: opportunities.map(o => ({
+                    id: o.id,
+                    company: o.company_name,
+                    contact: o.contact_name,
+                    email: o.contact_email,
+                    stage: o.workflow_stage,
+                    score: o.opportunity_score,
+                    tier: o.performance_tier,
+                    engagement_signals: {
+                        meetings: o.meetings_count,
+                        emails_sent: o.emails_sent
+                    },
+                    action: o.opportunity_score >= 75 ? '🎯 High Priority' : o.opportunity_score >= 50 ? '📊 Medium Priority' : '⏳ Low Priority'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ topOpportunities: { total: 0 } });
+    }
+});
+
+// GET /api/analytics/opportunity-distribution - Distribution of prospects by score tier
+app.get('/api/analytics/opportunity-distribution', async (req, res) => {
+    try {
+        const distribution = await db.get(`
+            SELECT 
+                SUM(CASE WHEN opportunity_score >= 75 THEN 1 ELSE 0 END) as high_priority,
+                SUM(CASE WHEN opportunity_score >= 50 AND opportunity_score < 75 THEN 1 ELSE 0 END) as medium_priority,
+                SUM(CASE WHEN opportunity_score >= 25 AND opportunity_score < 50 THEN 1 ELSE 0 END) as low_priority,
+                SUM(CASE WHEN opportunity_score > 0 AND opportunity_score < 25 THEN 1 ELSE 0 END) as minimal_priority,
+                SUM(CASE WHEN opportunity_score = 0 THEN 1 ELSE 0 END) as no_score,
+                AVG(opportunity_score) as avg_score
+            FROM prospect_queue
+        `);
+        
+        const total = (distribution.high_priority || 0) + (distribution.medium_priority || 0) + 
+                      (distribution.low_priority || 0) + (distribution.minimal_priority || 0) + (distribution.no_score || 0);
+        
+        res.json({
+            opportunityDistribution: {
+                total_prospects: total,
+                high_priority: {
+                    count: distribution.high_priority || 0,
+                    percent: total > 0 ? Math.round(((distribution.high_priority || 0) / total) * 100) : 0,
+                    action: 'Push hard - close immediately'
+                },
+                medium_priority: {
+                    count: distribution.medium_priority || 0,
+                    percent: total > 0 ? Math.round(((distribution.medium_priority || 0) / total) * 100) : 0,
+                    action: 'Nurture actively'
+                },
+                low_priority: {
+                    count: distribution.low_priority || 0,
+                    percent: total > 0 ? Math.round(((distribution.low_priority || 0) / total) * 100) : 0,
+                    action: 'Automated sequences'
+                },
+                minimal_priority: {
+                    count: distribution.minimal_priority || 0,
+                    percent: total > 0 ? Math.round(((distribution.minimal_priority || 0) / total) * 100) : 0,
+                    action: 'Research & qualify'
+                },
+                average_opportunity_score: Math.round(distribution.avg_score || 0)
+            }
+        });
+    } catch (error) {
+        res.json({ opportunityDistribution: {} });
+    }
+});
+
+// GET /api/prospects/:leadId/opportunity-score - Get detailed opportunity score breakdown
+app.get('/api/prospects/:leadId/opportunity-score', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        const prospect = await db.get(`
+            SELECT opportunity_score, score_last_updated FROM prospect_queue WHERE id = ?
+        `, [leadId]);
+        
+        const history = await db.all(`
+            SELECT old_score, new_score, score_factors, calculated_at 
+            FROM opportunity_scoring_history 
+            WHERE lead_id = ? 
+            ORDER BY calculated_at DESC 
+            LIMIT 10
+        `, [leadId]);
+        
+        res.json({
+            opportunityScore: {
+                current_score: prospect?.opportunity_score || 0,
+                last_updated: prospect?.score_last_updated ? new Date(prospect.score_last_updated).toISOString() : null,
+                history: history.map(h => ({
+                    old_score: h.old_score,
+                    new_score: h.new_score,
+                    factors: JSON.parse(h.score_factors || '{}'),
+                    calculated_at: new Date(h.calculated_at).toISOString()
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ opportunityScore: {} });
+    }
+});
+
+// POST /api/deals/track-stage-change - Track when a deal moves to new stage
+app.post('/api/deals/track-stage-change', async (req, res) => {
+    try {
+        const { lead_id, from_stage, to_stage } = req.body;
+        
+        if (!lead_id || !to_stage) {
+            return res.status(400).json({ error: 'lead_id and to_stage required' });
+        }
+        
+        // Calculate how many days in previous stage
+        const lastTransition = await db.get(
+            `SELECT transition_at FROM stage_transitions WHERE lead_id = ? ORDER BY transition_at DESC LIMIT 1`,
+            [lead_id]
+        );
+        
+        const durationDays = lastTransition ? 
+            Math.floor((Date.now() - lastTransition.transition_at) / (1000 * 60 * 60 * 24)) : 
+            null;
+        
+        await db.run(
+            `INSERT INTO stage_transitions (lead_id, from_stage, to_stage, transition_at, duration_days)
+             VALUES (?, ?, ?, ?, ?)`,
+            [lead_id, from_stage || 'initial', to_stage, Date.now(), durationDays]
+        );
+        
+        res.json({ tracked: true, from: from_stage, to: to_stage, days_in_stage: durationDays });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/analytics/pipeline-velocity - Deal movement speed through stages
+app.get('/api/analytics/pipeline-velocity', async (req, res) => {
+    try {
+        const stageMetrics = await db.all(`
+            SELECT 
+                from_stage,
+                to_stage,
+                COUNT(*) as transitions,
+                AVG(duration_days) as avg_days,
+                MIN(duration_days) as fastest_days,
+                MAX(duration_days) as slowest_days
+            FROM stage_transitions
+            WHERE duration_days IS NOT NULL
+            GROUP BY from_stage, to_stage
+            ORDER BY avg_days DESC
+        `);
+        
+        res.json({
+            pipelineVelocity: {
+                total_transitions: stageMetrics.reduce((sum, s) => sum + s.transitions, 0),
+                stage_metrics: stageMetrics.map(s => ({
+                    from: s.from_stage,
+                    to: s.to_stage,
+                    transitions: s.transitions,
+                    avg_days: Math.round(s.avg_days || 0),
+                    fastest_days: s.fastest_days,
+                    slowest_days: s.slowest_days,
+                    velocity_status: (s.avg_days || 0) <= 7 ? '🚀 Fast' : (s.avg_days || 0) <= 21 ? '✅ Normal' : '⏸️ Slow'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ pipelineVelocity: {} });
+    }
+});
+
+// GET /api/analytics/stage-conversion-rates - % of deals that convert from each stage
+app.get('/api/analytics/stage-conversion-rates', async (req, res) => {
+    try {
+        const stageConversions = await db.all(`
+            SELECT 
+                to_stage,
+                COUNT(*) as entered_stage,
+                COUNT(DISTINCT CASE WHEN (
+                    SELECT to_stage FROM stage_transitions t2 
+                    WHERE t2.lead_id = stage_transitions.lead_id 
+                    AND t2.transition_at > stage_transitions.transition_at 
+                    ORDER BY t2.transition_at DESC LIMIT 1
+                ) IS NOT NULL THEN 1 END) as moved_forward,
+                COUNT(DISTINCT CASE WHEN (
+                    SELECT outcome FROM deal_outcomes 
+                    WHERE lead_id = stage_transitions.lead_id
+                ) = 'won' THEN 1 END) as won
+            FROM stage_transitions
+            GROUP BY to_stage
+            ORDER BY entered_stage DESC
+        `);
+        
+        res.json({
+            stageConversionRates: {
+                stages: stageConversions.map(s => ({
+                    stage: s.to_stage,
+                    prospects_entered: s.entered_stage,
+                    advanced_forward: s.moved_forward || 0,
+                    deals_won: s.won || 0,
+                    advancement_rate: s.entered_stage > 0 ? Math.round(((s.moved_forward || 0) / s.entered_stage) * 100) : 0,
+                    close_rate: s.entered_stage > 0 ? Math.round(((s.won || 0) / s.entered_stage) * 100) : 0
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ stageConversionRates: { stages: [] } });
+    }
+});
+
+// GET /api/analytics/bottleneck-analysis - Identify where deals are stuck
+app.get('/api/analytics/bottleneck-analysis', async (req, res) => {
+    try {
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+        
+        const bottlenecks = await db.all(`
+            SELECT 
+                pq.workflow_stage,
+                COUNT(*) as stuck_count,
+                AVG(CAST((? - pq.updated_at) AS FLOAT) / (1000 * 60 * 60 * 24)) as avg_days_stuck
+            FROM prospect_queue pq
+            WHERE pq.updated_at < ? AND pq.workflow_stage NOT IN ('won', 'lost', 'archived')
+            GROUP BY pq.workflow_stage
+            ORDER BY avg_days_stuck DESC
+        `, [now, thirtyDaysAgo]);
+        
+        res.json({
+            bottleneckAnalysis: {
+                total_stuck: bottlenecks.reduce((sum, b) => sum + b.stuck_count, 0),
+                bottlenecks: bottlenecks.map(b => ({
+                    stage: b.workflow_stage,
+                    stuck_count: b.stuck_count,
+                    avg_days_stuck: Math.round(b.avg_days_stuck || 0),
+                    action: (b.avg_days_stuck || 0) > 21 ? '🚨 Critical - Take action' : (b.avg_days_stuck || 0) > 14 ? '⚠️ Warning' : '✅ Normal'
+                }))
+            }
+        });
+    } catch (error) {
+        res.json({ bottleneckAnalysis: { total_stuck: 0 } });
+    }
+});
+
+// GET /api/analytics/close-date-prediction - Predict revenue close dates
+app.get('/api/analytics/close-date-prediction', async (req, res) => {
+    try {
+        // Get average days in each stage from history
+        const stageAverages = await db.all(`
+            SELECT from_stage, AVG(duration_days) as avg_days
+            FROM stage_transitions
+            WHERE duration_days IS NOT NULL
+            GROUP BY from_stage
+        `);
+        
+        const stageMap = {};
+        stageAverages.forEach(s => { stageMap[s.from_stage] = s.avg_days; });
+        
+        // Get current deals and predict close dates
+        const currentDeals = await db.all(`
+            SELECT 
+                id,
+                company_name,
+                workflow_stage,
+                updated_at,
+                (SELECT deal_value FROM deal_pipeline WHERE lead_id = prospect_queue.id) as deal_value
+            FROM prospect_queue
+            WHERE workflow_stage NOT IN ('won', 'lost', 'archived')
+            AND deal_value > 0
+            LIMIT 100
+        `);
+        
+        const predictions = currentDeals.map(deal => {
+            const stageAvg = stageMap[deal.workflow_stage] || 7;
+            const predictedCloseAt = deal.updated_at + (stageAvg * 24 * 60 * 60 * 1000);
+            return {
+                company: deal.company_name,
+                stage: deal.workflow_stage,
+                deal_value: Math.round(deal.deal_value || 0),
+                predicted_close: new Date(predictedCloseAt).toISOString().split('T')[0],
+                days_until_close: Math.round(stageAvg)
+            };
+        });
+        
+        const totalPredicted = predictions.reduce((sum, p) => sum + p.deal_value, 0);
+        
+        res.json({
+            closeDatePredictions: {
+                total_predicted_revenue: Math.round(totalPredicted),
+                predictions: predictions.sort((a, b) => new Date(a.predicted_close) - new Date(b.predicted_close))
+            }
+        });
+    } catch (error) {
+        res.json({ closeDatePredictions: {} });
+    }
+});
+
 // Serve React App
 const distPath = join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
