@@ -166,6 +166,20 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
     }
   };
 
+  const fetchAgentLogs = useCallback(async (agentName: string) => {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`${apiBase}/agents/logs?agent=${agentName}&limit=50`);
+      const data = await res.json();
+      if (data.logs) setAgentLogs(data.logs);
+    } catch (error) {
+      console.error('Failed to fetch agent logs:', error);
+      setAgentLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, [apiBase]);
+
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, 10000);
@@ -182,20 +196,6 @@ export default function AgentDashboard({ apiBase = '/api', leads = [], selectedA
       }
     }
   }, [selectedAgent, agents, fetchAgentLogs]);
-
-  const fetchAgentLogs = useCallback(async (agentName: string) => {
-    setLoadingLogs(true);
-    try {
-      const res = await fetch(`${apiBase}/agents/logs?agent=${agentName}&limit=50`);
-      const data = await res.json();
-      if (data.logs) setAgentLogs(data.logs);
-    } catch (error) {
-      console.error('Failed to fetch agent logs:', error);
-      setAgentLogs([]);
-    } finally {
-      setLoadingLogs(false);
-    }
-  }, [apiBase]);
 
   const handleAgentClick = (agent: AgentStatus) => {
     setSelectedAgentObj(agent);
