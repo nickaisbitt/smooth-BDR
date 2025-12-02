@@ -53,9 +53,10 @@ interface QueueStats {
 interface AgentDashboardProps {
   apiBase?: string;
   leads?: any[];
+  selectedAgent?: string | null;
 }
 
-export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDashboardProps) {
+export default function AgentDashboard({ apiBase = '/api', leads = [], selectedAgent }: AgentDashboardProps) {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [queues, setQueues] = useState<Record<string, QueueStats>>({});
   const [loading, setLoading] = useState(true);
@@ -64,7 +65,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
   const [adding, setAdding] = useState(false);
   const [masterEnabled, setMasterEnabled] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<AgentStatus | null>(null);
+  const [selectedAgentObj, setSelectedAgentObj] = useState<AgentStatus | null>(null);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -171,6 +172,16 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
+  // Auto-load logs for selected agent from navigation
+  useEffect(() => {
+    if (selectedAgent && agents.length > 0) {
+      const agent = agents.find(a => a.name === selectedAgent);
+      if (agent) {
+        handleAgentClick(agent);
+      }
+    }
+  }, [selectedAgent, agents, handleAgentClick]);
+
   const fetchAgentLogs = useCallback(async (agentName: string) => {
     setLoadingLogs(true);
     try {
@@ -186,12 +197,12 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
   }, [apiBase]);
 
   const handleAgentClick = (agent: AgentStatus) => {
-    setSelectedAgent(agent);
+    setSelectedAgentObj(agent);
     fetchAgentLogs(agent.name);
   };
 
   const closeAgentDetail = () => {
-    setSelectedAgent(null);
+    setSelectedAgentObj(null);
     setAgentLogs([]);
   };
 
@@ -627,12 +638,12 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${selectedAgent.health === 'healthy' && selectedAgent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                <div className={`p-2 rounded-lg ${ selectedAgentObj?.health === 'healthy' && selectedAgent.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
                   {getAgentIcon(selectedAgent.name)}
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                    {selectedAgent.name.replace('-', ' ')} Agent
+                    { selectedAgentObj?.name.replace('-', ' ')} Agent
                   </h3>
                   <p className="text-sm text-gray-500">Activity & Status Details</p>
                 </div>
@@ -648,22 +659,22 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
             <div className="p-5 border-b border-gray-100">
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-gray-900">{selectedAgent.processed}</div>
+                  <div className="text-2xl font-bold text-gray-900">{ selectedAgentObj?.processed}</div>
                   <div className="text-xs text-gray-500">Processed</div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-red-600">{selectedAgent.errors}</div>
+                  <div className="text-2xl font-bold text-red-600">{ selectedAgentObj?.errors}</div>
                   <div className="text-xs text-gray-500">Errors</div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className={`text-sm font-medium ${selectedAgent.health === 'healthy' ? 'text-green-600' : 'text-yellow-600'}`}>
-                    {selectedAgent.health}
+                  <div className={`text-sm font-medium ${ selectedAgentObj?.health === 'healthy' ? 'text-green-600' : 'text-yellow-600'}`}>
+                    { selectedAgentObj?.health}
                   </div>
                   <div className="text-xs text-gray-500">Health</div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className={`text-sm font-medium ${selectedAgent.enabled ? 'text-green-600' : 'text-gray-500'}`}>
-                    {selectedAgent.enabled ? 'Enabled' : 'Disabled'}
+                  <div className={`text-sm font-medium ${ selectedAgentObj?.enabled ? 'text-green-600' : 'text-gray-500'}`}>
+                    { selectedAgentObj?.enabled ? 'Enabled' : 'Disabled'}
                   </div>
                   <div className="text-xs text-gray-500">Status</div>
                 </div>
@@ -671,8 +682,8 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
               <div className="mt-3 flex gap-4 text-xs text-gray-500">
                 <span>Started: {formatDateTime(selectedAgent.started_at)}</span>
                 <span>Last heartbeat: {formatDateTime(selectedAgent.last_heartbeat)}</span>
-                {selectedAgent.current_item && (
-                  <span className="text-blue-600">Working on: {selectedAgent.current_item}</span>
+                { selectedAgentObj?.current_item && (
+                  <span className="text-blue-600">Working on: { selectedAgentObj?.current_item}</span>
                 )}
               </div>
             </div>
@@ -752,7 +763,7 @@ export default function AgentDashboard({ apiBase = '/api', leads = [] }: AgentDa
                     : 'bg-green-50 text-green-600 hover:bg-green-100'
                 }`}
               >
-                {selectedAgent.enabled ? (
+                { selectedAgentObj?.enabled ? (
                   <>
                     <ToggleRight className="w-4 h-4" />
                     Disable Agent

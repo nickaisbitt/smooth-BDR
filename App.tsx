@@ -60,6 +60,7 @@ function App() {
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isGrowthEngineActive, setIsGrowthEngineActive] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<any[]>([]);
   
@@ -772,7 +773,7 @@ function App() {
                               {agentStatuses.map((agent) => (
                                 <div 
                                   key={agent.name}
-                                  onClick={() => setCurrentView('agents')}
+                                  onClick={() => { setCurrentView('agents'); setSelectedAgent(agent.name); }}
                                   className={`p-2 rounded-lg border text-xs cursor-pointer transition-all hover:shadow-md ${
                                     agent.health === 'healthy' 
                                       ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40' 
@@ -878,7 +879,7 @@ function App() {
         {currentView === 'linkedin' && <LinkedInView />}
         {currentView === 'inbox' && <InboxView leads={leads} />}
         {currentView === 'system_status' && <SystemStatusView smtpConfig={emailConfig} leads={leads} />}
-        {currentView === 'agents' && <AgentDashboard />}
+        {currentView === 'agents' && <AgentDashboard selectedAgent={selectedAgent} />}
         {currentView === 'deals' && (
           <DealsView 
             leads={leads} 
