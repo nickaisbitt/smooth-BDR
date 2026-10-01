@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+.key_tmp
+.venv/
+data/
+outsend/
+__pycache__/
+*.egg-info/
+
+# OS & runtime
+.DS_Store
+Thumbs.db
+
+# Databases (catch stray sqlite outside data/ and outsend/)
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm
+
+# IDE
+.vscode/
+.idea/

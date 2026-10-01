@@ -1,0 +1,9 @@
+M5 reviewed source snapshot, 2026-10-01 UTC.
+Project: bdr
+
+This preserves selected current source without merging or replacing existing histories.
+Original working copies, branches and index were left untouched.
+Workflows, runtime credentials, database dumps, dependency/build directories, generated media, private operational collections and nested repositories are excluded.
+Potential credential matches withheld: 0.
+Files changed during review withheld: 0.
+Binary assets and excluded content remain local. This is a preservation snapshot, not a release or deployment.

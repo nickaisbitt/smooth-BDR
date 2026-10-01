@@ -1,0 +1,34 @@
+business:
+  name: Smooth AI Consultancy
+  value_prop: >-
+    Missed-call recovery for heating firms: every missed call gets a text back in
+    minutes, every quote gets chased the next morning, every finished job asks for
+    the review once, politely. Starts with a free outline Map; paid 48h credited
+    diagnostic ($250-$500 USD) if they want the leaks proven; fixed-fee build live
+    in 14 days.
+
+icp:
+  description: >-
+    Heating firms (furnace, boiler, forced-air; HVAC companies whose lead product
+    is heating) in Canada and the US, roughly 2-50 staff, owner-led, taking
+    customer contact by phone and website. Best signals: no missed-call textback,
+    no online booking, contact forms only, dated site builder. Off-wedge: dental,
+    electricians, cooling-only HVAC, commercial/industrial distributors, media or
+    directory sites.
+  search_queries:
+    # Heating-only queue. Proven: hvacontario.ca, peelheating.ca, airpoint.ca,
+    # furnaceacexperts.ca, tamasmech.com all came from furnace/boiler + town
+    # queries. Town-by-town beats province-wide: it finds owner-operators,
+    # not directories. Non-heating trades were dropped with the Sept 2026 wedge.
+    - furnace repair Mississauga OR Brampton OR Hamilton
+    - furnace installation Toronto OR Oakville OR Burlington
+    - boiler service Toronto OR Mississauga
+    - heating and cooling company Ontario family owned
+    - HVAC heating contractor GTA "contact us" phone
+    - furnace repair Ottawa OR Kingston OR Peterborough
+    - heating company Barrie OR Newmarket OR Oshawa
+
+limits:
+  min_fit_score: 60
+  ingest_per_run: 20
+  discover_per_query: 5
